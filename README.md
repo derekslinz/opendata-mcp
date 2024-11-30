@@ -1,6 +1,7 @@
 # Open Swiss Model Context Protocol
 
-[generated image Karpathy style about Data Connecting]
+![vc3598_A_typical_scene_of_natural_Switzerland_with_a_swiss_trai_867174fe-a627-4ea9-af22-5025026780a5](https://github.com/user-attachments/assets/7f105fa3-1db4-411b-aee4-448e268fc0a6)
+
 [labels: testing, pypi, stars, forks...]
 
 [short description of what this project is about key goals and objectif]
