@@ -4,7 +4,9 @@
 
 [![PyPI version](https://badge.fury.io/py/osmcp.svg)](https://badge.fury.io/py/osmcp)
 [![CI](https://github.com/grll/OpenSwissMCP/actions/workflows/ci.yml/badge.svg)](https://github.com/grll/OpenSwissMCP/actions/workflows/ci.yml)
+<!--
 [![Downloads](https://pepy.tech/badge/osmcp)](https://pepy.tech/project/osmcp)
+-->
 [![GitHub stars](https://img.shields.io/github/stars/grll/OpenSwissMCP.svg)](https://github.com/grll/OpenSwissMCP/stargazers)
 [![License](https://img.shields.io/github/license/grll/OpenSwissMCP.svg)](https://github.com/grll/OpenSwissMCP/blob/main/LICENSE)
 
