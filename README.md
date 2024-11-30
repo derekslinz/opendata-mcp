@@ -3,7 +3,7 @@
 ![vc3598_A_typical_scene_of_natural_Switzerland_with_a_swiss_trai_867174fe-a627-4ea9-af22-5025026780a5](https://github.com/user-attachments/assets/7f105fa3-1db4-411b-aee4-448e268fc0a6)
 
 [![PyPI version](https://badge.fury.io/py/osmcp.svg)](https://badge.fury.io/py/osmcp)
-[![Tests](https://github.com/grll/OpenSwissMCP/actions/workflows/tests.yml/badge.svg)](https://github.com/grll/OpenSwissMCP/actions/workflows/tests.yml)
+[![CI](https://github.com/grll/OpenSwissMCP/actions/workflows/ci.yml/badge.svg)](https://github.com/grll/OpenSwissMCP/actions/workflows/ci.yml)
 [![Downloads](https://pepy.tech/badge/osmcp)](https://pepy.tech/project/osmcp)
 [![GitHub stars](https://img.shields.io/github/stars/grll/OpenSwissMCP.svg)](https://github.com/grll/OpenSwissMCP/stargazers)
 [![License](https://img.shields.io/github/license/grll/OpenSwissMCP.svg)](https://github.com/grll/OpenSwissMCP/blob/main/LICENSE)
