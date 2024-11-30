@@ -2,6 +2,12 @@
 
 ![vc3598_A_typical_scene_of_natural_Switzerland_with_a_swiss_trai_867174fe-a627-4ea9-af22-5025026780a5](https://github.com/user-attachments/assets/7f105fa3-1db4-411b-aee4-448e268fc0a6)
 
+[![PyPI version](https://badge.fury.io/py/osmcp.svg)](https://badge.fury.io/py/osmcp)
+[![Tests](https://github.com/grll/OpenSwissMCP/actions/workflows/tests.yml/badge.svg)](https://github.com/grll/OpenSwissMCP/actions/workflows/tests.yml)
+[![Downloads](https://pepy.tech/badge/osmcp)](https://pepy.tech/project/osmcp)
+[![GitHub stars](https://img.shields.io/github/stars/grll/OpenSwissMCP.svg)](https://github.com/grll/OpenSwissMCP/stargazers)
+[![License](https://img.shields.io/github/license/grll/OpenSwissMCP.svg)](https://github.com/grll/OpenSwissMCP/blob/main/LICENSE)
+
 [labels: testing, pypi, stars, forks...]
 
 [short description of what this project is about key goals and objectif]
@@ -35,5 +41,13 @@ data extension
 framework extension
 1. add support for 
 
+## Limitations
+* please oblige to the license must be quoted in commercial application
+* please oblige to the license of the data providers
+
 ## References
 * Model Context Protocol (Anthropic)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
