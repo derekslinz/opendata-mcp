@@ -12,7 +12,7 @@
 [![Downloads](https://pepy.tech/badge/odmcp)](https://pepy.tech/project/odmcp)
 -->
 
-## Connect any Open Data to LLM in minutes!
+## Connect any Open Data to LLMs in minutes!
 
 We enable 2 things: 
 
