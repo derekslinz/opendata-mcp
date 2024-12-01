@@ -114,12 +114,17 @@ def setup(provider: str):
     else:  # Windows
         config_path = Path(os.getenv("APPDATA")) / "Claude/claude_desktop_config.json"
 
-    # Check if config file exists
-    if not config_path.exists():
+    # Check if config directory exists
+    if not config_path.parent.exists():
         click.echo(
-            f"Couldn't find claude_desktop_config.json at {config_path}. Have you installed the Claude Desktop app?"
+            f"Couldn't find Claude configuration directory at {config_path.parent}. Have you installed the Claude Desktop app?"
         )
         sys.exit(1)
+
+    # Create config file if it doesn't exist
+    if not config_path.exists():
+        with open(config_path, "w") as f:
+            json.dump({}, f, indent=2)
 
     try:
         # Read existing config
