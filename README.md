@@ -205,13 +205,16 @@ Because of our target scale we want to keep things simple and pragmatic at first
    * Ensure type safety in data handling
 
 ### Tactical Topics (our current priorities)
-
-* **integrate more datasets...**
-* Clear definitions of Resources vs Tools
-* Design a scalable architecture for the repository
-* Support more parameter of the python MCP sdk (for example at server creation time)
-* Support more types from the MCP protocol (prompts, resource templates...)
-* Support other transport protocole than (stdio)
+* [x] Initialize repository with guidelines, testing framework, and contribution workflow
+* [x] Implement CI/CD pipeline with automated PyPI releases
+* [x] Develop provider template and first reference implementation
+* [ ] **Integrate additional open datasets (actively seeking contributors)**
+* [ ] Establish clear guidelines for choosing between Resources and Tools
+* [ ] Develop scalable repository architecture for long-term growth
+* [ ] Expand MCP SDK parameter support (authentication, rate limiting, etc.)
+* [ ] Implement additional MCP protocol features (prompts, resource templates)
+* [ ] Add support for alternative transport protocols beyond stdio (SSE)
+* [ ] Deploy hosted MCP servers for improved accessibility
 
 ## Roadmap
 Let’s build the open source infrastructure that will allow all LLMs to access all Open Data together!
