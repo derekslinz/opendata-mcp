@@ -11,9 +11,22 @@
 [![Downloads](https://pepy.tech/badge/osmcp)](https://pepy.tech/project/osmcp)
 -->
 
-[short description of what this project is about key goals and objectif]
--> clean, simple, scalable MCP servers for open swiss data
-->
+Open Swiss MCP connects Large Language Models to Switzerland's open data infrastructure through Anthropic's Open Source Model Context Protocol. This enables any LLMs to provide real-time, data-grounded responses about Swiss public services and informations.
+
+## Why Open Swiss MCP?
+
+- **Rich Data Source**: Access to 12,000+ high-quality datasets from opendata.swiss, Switzerland's official open data platform.
+- **Real-Time Insights**: Get accurate answers about Swiss public services (weather, transport, etc.)
+- **Simple Integration**: Built on Anthropic's Model Context Protocol for seamless LLM integration with any supported clients.
+- **Open Architecture**: Designed for community contribution and dataset expansion.
+
+## Key Features
+
+- One-Command setup
+- Access to Swiss public datasets (incl. SBB real-time train informations, Weather updates...)
+- Compatible with Claude and other MCP-enabled LLMs Application
+
+We maintain a strong focus on reliability, simplicity, and extensibility. Contributions to expand the supported datasets are welcome!
 
 ## Usage
 
