@@ -11,7 +11,7 @@ import click
 
 @click.group()
 def cli():
-    """OpenSwissMCP CLI tool"""
+    """OpenDataMCP CLI tool"""
     pass
 
 
@@ -20,7 +20,7 @@ def cli():
 def run(provider: str):
     """Run a specific provider MCP server."""
     try:
-        module = importlib.import_module(f"osmcp.providers.{provider}")
+        module = importlib.import_module(f"odmcp.providers.{provider}")
         anyio.run(module.main)
     except ImportError:
         click.echo(f"Provider '{provider}' not found.")
@@ -36,7 +36,7 @@ def list():
     try:
         import pkgutil
 
-        import osmcp.providers as providers_pkg
+        import odmcp.providers as providers_pkg
 
         # Get all modules in the providers package
         providers = [
@@ -62,7 +62,7 @@ def list():
 def info(provider: str):
     """Show detailed information about a provider"""
     try:
-        module = importlib.import_module(f"osmcp.providers.{provider}")
+        module = importlib.import_module(f"odmcp.providers.{provider}")
 
         click.echo(f"Provider: {provider}")
         if hasattr(module, "__doc__") and module.__doc__:
@@ -71,7 +71,7 @@ def info(provider: str):
             click.echo(f"Supported types: {', '.join(module.SUPPORTED_TYPES)}")
     except ImportError:
         click.echo(f"Provider '{provider}' not found. Make sure it's installed with:")
-        click.echo(f"uv pip install 'osmcp[{provider}]'")
+        click.echo(f"uv pip install 'odmcp[{provider}]'")
         sys.exit(1)
     except Exception as e:
         click.echo(f"Error getting provider info: {e}")
@@ -80,18 +80,18 @@ def info(provider: str):
 
 @cli.command()
 def version():
-    """Show the OSMCP version"""
+    """Show the odmcp version"""
     try:
         from importlib.metadata import version as get_version
 
         try:
-            ver = get_version("osmcp")
+            ver = get_version("odmcp")
         except importlib.metadata.PackageNotFoundError:
             # Fallback to reading version from __init__.py
-            from osmcp import __version__ as ver
-        click.echo(f"OSMCP version: {ver}")
+            from odmcp import __version__ as ver
+        click.echo(f"odmcp version: {ver}")
     except Exception as e:
-        click.echo(f"Error getting OSMCP version: {e}")
+        click.echo(f"Error getting odmcp version: {e}")
         sys.exit(1)
 
 
@@ -133,7 +133,7 @@ def setup(provider: str):
         # TODO: add support for env variables
         config["mcpServers"][provider] = {
             "command": "uvx",
-            "args": ["osmcp", "run", provider],
+            "args": ["odmcp", "run", provider],
         }
 
         # Write updated config

@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "osmcp"
+name = "odmcp"
 dynamic = ["version"]
-description = "Python MCP servers exposing Swiss Open Data to compatible LLM clients."
+description = "Python MCP servers exposing Open Data to compatible LLM clients."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -14,10 +14,10 @@ dependencies = [
 ]
 
 [tool.hatch.version]
-path = "src/osmcp/__init__.py"
+path = "src/odmcp/__init__.py"
 
 [project.scripts]
-osmcp = "osmcp.cli:main"
+odmcp = "odmcp.cli:main"
 
 [tool.ruff]
 line-length = 88
@@ -48,4 +48,4 @@ log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/osmcp"]
+packages = ["src/odmcp"]

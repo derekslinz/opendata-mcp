@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from osmcp.cli import cli
+from odmcp.cli import cli
 
 
 @pytest.fixture
@@ -76,4 +76,4 @@ def test_version_command(runner):
         result = runner.invoke(cli, ["version"])
 
         assert result.exit_code == 0
-        assert "OSMCP version: 1.0.0" in result.output
+        assert "odmcp version: 1.0.0" in result.output

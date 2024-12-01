@@ -14,7 +14,7 @@ PROVIDER = "sbb"
 # Create server parameters for stdio connection
 server_params = StdioServerParameters(
     command="uv",
-    args=["run", "osmcp", "run", PROVIDER],  # Optional command line arguments
+    args=["run", "odmcp", "run", PROVIDER],  # Optional command line arguments
     env=None,  # Optional environment variables
 )
 

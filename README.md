@@ -1,22 +1,22 @@
-# Open Swiss Model Context Protocol
+# Open Data Model Context Protocol
 
 ![vc3598_A_typical_scene_of_natural_Switzerland_with_a_swiss_trai_867174fe-a627-4ea9-af22-5025026780a5](https://github.com/user-attachments/assets/7f105fa3-1db4-411b-aee4-448e268fc0a6)
 
-[![PyPI version](https://badge.fury.io/py/osmcp.svg)](https://badge.fury.io/py/osmcp)
-[![CI](https://github.com/grll/OpenSwissMCP/actions/workflows/ci.yml/badge.svg)](https://github.com/grll/OpenSwissMCP/actions/workflows/ci.yml)
-[![GitHub stars](https://img.shields.io/github/stars/grll/OpenSwissMCP.svg)](https://github.com/grll/OpenSwissMCP/stargazers)
-[![License](https://img.shields.io/github/license/grll/OpenSwissMCP.svg)](https://github.com/grll/OpenSwissMCP/blob/main/LICENSE)
+[![PyPI version](https://badge.fury.io/py/odmcp.svg)](https://badge.fury.io/py/odmcp)
+[![CI](https://github.com/grll/OpenDataMCP/actions/workflows/ci.yml/badge.svg)](https://github.com/grll/OpenDataMCP/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/grll/OpenDataMCP.svg)](https://github.com/grll/OpenDataMCP/stargazers)
+[![License](https://img.shields.io/github/license/grll/OpenDataMCP.svg)](https://github.com/grll/OpenDataMCP/blob/main/LICENSE)
 
 <!--
-[![Downloads](https://pepy.tech/badge/osmcp)](https://pepy.tech/project/osmcp)
+[![Downloads](https://pepy.tech/badge/odmcp)](https://pepy.tech/project/odmcp)
 -->
 
-Open Swiss MCP connects Large Language Models to Switzerland's open data infrastructure through Anthropic's Open Source Model Context Protocol. This enables any LLMs to provide real-time, data-grounded responses about Swiss public services and informations.
+Open Data MCP connects Large Language Models to open data infrastructures through Anthropic's Open Source Model Context Protocol. This enables any LLMs to provide real-time, data-grounded responses about public services and informations.
 
-## Why Open Swiss MCP?
+## Why Open Data MCP?
 
-- **Rich Data Source**: Access to 12,000+ high-quality datasets from opendata.swiss, Switzerland's official open data platform.
-- **Real-Time Insights**: Get accurate answers about Swiss public services (weather, transport, etc.)
+- **Rich Data Source**: Access to millions of high-quality public datasets from governments, regions, cities, NGOs...
+- **Real-Time Insights**: Get live accurate answers about this data directly in your favorite LLM application.
 - **Simple Integration**: Built on Anthropic's Model Context Protocol for seamless LLM integration with any supported clients.
 - **Open Architecture**: Designed for community contribution and dataset expansion.
 
@@ -32,7 +32,7 @@ We maintain a strong focus on reliability, simplicity, and extensibility. Contri
 
 ### Prerequisites
 
-If you want to use Open Swiss MCP with Claude Desktop app client you need to install the [Claude Desktop app](https://claude.ai/download).
+If you want to use Open Data MCP with Claude Desktop app client you need to install the [Claude Desktop app](https://claude.ai/download).
 
 You will also need `uv` to easily run our CLI and MCP servers.
 
@@ -48,25 +48,25 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-### Open Swiss MCP - CLI Tool
+### Open Data MCP - CLI Tool
 
 #### Overview
 
 ```bash
 # show available commands
-uvx osmcp 
+uvx odmcp 
 
 # show available providers
-uvx osmcp list
+uvx odmcp list
 
 # show info about a provider
-uvx osmcp info $PROVIDER_NAME
+uvx odmcp info $PROVIDER_NAME
 
 # setup a provider's MCP server on your Claude Desktop app
-uvx osmcp setup $PROVIDER_NAME
+uvx odmcp setup $PROVIDER_NAME
 
 # remove a provider's MCP server from your Claude Desktop app
-uvx osmcp remove $PROVIDER_NAME
+uvx odmcp remove $PROVIDER_NAME
 ```
 
 #### Example
@@ -74,7 +74,7 @@ uvx osmcp remove $PROVIDER_NAME
 Quickstart for the SBB provider:
 
 ```bash
-uvx setup sbb
+uvx odmcp setup sbb
 ```
 
 ## Contributing
