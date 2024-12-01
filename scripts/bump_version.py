@@ -1,7 +1,17 @@
 #!/usr/bin/env python
 import re
 import sys
+import subprocess
 from pathlib import Path
+
+
+def run_command(command):
+    try:
+        subprocess.run(command, check=True, shell=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing command: {command}")
+        print(f"Error: {e}")
+        sys.exit(1)
 
 
 def bump_version(version_type):
@@ -29,7 +39,20 @@ def bump_version(version_type):
     )
     init_file.write_text(new_content)
 
+    # Git operations
+    run_command("git add src/osmcp/__init__.py")
+    run_command(f'git commit -m "release {new_version}: version bump commit"')
+    run_command("git push")
+    run_command(f"git tag v{new_version}")
+    run_command("git push --tags")
+
+    # Create GitHub release using gh CLI
+    run_command(
+        f'gh release create v{new_version} --title "Release {new_version}" --generate-notes'
+    )
+
     print(f"Version bumped from {current_version} to {new_version}")
+    print(f"Git operations completed and GitHub release v{new_version} created")
 
 
 if __name__ == "__main__":
