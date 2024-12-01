@@ -21,6 +21,7 @@ from typing import Any, List, Optional, Sequence
 
 import httpx
 import mcp.types as types
+from mcp.server import stdio_server
 from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
@@ -156,13 +157,18 @@ TOOLS_HANDLERS["rail-traffic-info"] = handle_rail_traffic_info
 ...
 
 
-def main():
-    import anyio
+async def main():
+    from osmcp.providers.utils import create_mcp_server
 
-    from osmcp.providers.utils import run_server
+    # create the server
+    server = create_mcp_server("data.sbb.ch", TOOLS, TOOLS_HANDLERS)
 
-    anyio.run(run_server, "data.sbb.ch", TOOLS, TOOLS_HANDLERS)
+    # run the server
+    async with stdio_server() as streams:
+        await server.run(streams[0], streams[1], server.create_initialization_options())
 
 
 if __name__ == "__main__":
-    main()
+    import anyio
+
+    anyio.run(main)

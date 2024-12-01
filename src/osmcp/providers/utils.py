@@ -3,12 +3,11 @@ from typing import Any, Callable, Sequence
 
 from mcp import types
 from mcp.server import Server
-from mcp.server.stdio import stdio_server
 
 log = logging.getLogger(__name__)
 
 
-async def run_server(
+def create_mcp_server(
     server_name: str,
     tools: list[types.Tool],
     tools_handlers: dict[
@@ -18,14 +17,17 @@ async def run_server(
             Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource],
         ],
     ],
-):
+) -> Server:
     """
-    Run the MCP server with the given tools and handlers.
+    Create a MCP server with the given tools and handlers.
 
     Args:
         server_name: The name of the server.
         tools: The list of tools to register.
         tools_handlers: The dictionary of tools handlers.
+
+    Returns:
+        The created MCP server.
     """
     # instantiate the server
     server = Server(server_name)
@@ -50,6 +52,4 @@ async def run_server(
             log.error(f"Error calling tool {name}: {e}")
             raise
 
-    # run the server
-    async with stdio_server() as streams:
-        await server.run(streams[0], streams[1], server.create_initialization_options())
+    return server
