@@ -14,6 +14,10 @@
 
 ## Connect any Open Data to LLMs in minutes!
 
+
+https://github.com/user-attachments/assets/8b4eeab3-d111-4e0d-9e7b-5108cd12c58f
+
+
 We enable 2 things: 
 
 * **Open Data Access**: Access to many public datasets right from your LLM application (starting with Claude, more to come).
