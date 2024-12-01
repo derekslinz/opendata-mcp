@@ -22,15 +22,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
-      - name: Check version matches tag
-        run: |
-          PKG_VERSION=$(python -c "from osmcp import __version__; print(__version__)")
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
-            echo "Version mismatch: Package version ($PKG_VERSION) does not match tag version ($TAG_VERSION)"
-            exit 1
-          fi
-
       - name: Install uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -42,6 +33,15 @@ jobs:
           source .venv/bin/activate
           uv sync --no-dev
           uv build
+
+      - name: Check version matches tag
+        run: |
+          PKG_VERSION=$(uv run python -c "from osmcp import __version__; print(__version__)")
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch: Package version ($PKG_VERSION) does not match tag version ($TAG_VERSION)"
+            exit 1
+          fi
 
       - name: Upload to GitHub Release
         env:
