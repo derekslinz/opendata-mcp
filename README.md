@@ -17,6 +17,53 @@
 
 ## Usage
 
+### Prerequisites
+
+If you want to use Open Swiss MCP with Claude Desktop app client you need to install the [Claude Desktop app](https://claude.ai/download).
+
+You will also need `uv` to easily run our CLI and MCP servers.
+
+#### macOS & Linux
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+#### Windows
+
+```bash
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+### Open Swiss MCP - CLI Tool
+
+#### Overview
+
+```bash
+# show available commands
+uvx osmcp 
+
+# show available providers
+uvx osmcp list
+
+# show info about a provider
+uvx osmcp info $PROVIDER_NAME
+
+# setup a provider's MCP server on your Claude Desktop app
+uvx osmcp setup $PROVIDER_NAME
+
+# remove a provider's MCP server from your Claude Desktop app
+uvx osmcp remove $PROVIDER_NAME
+```
+
+#### Example
+
+Quickstart for the SBB provider:
+
+```bash
+uvx setup sbb
+```
+
 ## Contributing
 
 We want to scale!
