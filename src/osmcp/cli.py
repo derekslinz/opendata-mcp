@@ -1,5 +1,9 @@
 import importlib
+import json
+import os
+import platform
 import sys
+from pathlib import Path
 
 import anyio
 import click
@@ -88,6 +92,60 @@ def version():
         click.echo(f"OSMCP version: {ver}")
     except Exception as e:
         click.echo(f"Error getting OSMCP version: {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("provider")
+def setup(provider: str):
+    """Setup the MCP server for use with Claude Desktop"""
+    # Check platform
+    system = platform.system()
+    if system not in ["Darwin", "Windows"]:
+        click.echo("This command is only supported on Windows and macOS")
+        sys.exit(1)
+
+    # Determine config path
+    if system == "Darwin":
+        config_path = (
+            Path.home()
+            / "Library/Application Support/Claude/claude_desktop_config.json"
+        )
+    else:  # Windows
+        config_path = Path(os.getenv("APPDATA")) / "Claude/claude_desktop_config.json"
+
+    # Check if config file exists
+    if not config_path.exists():
+        click.echo(
+            f"Couldn't find claude_desktop_config.json at {config_path}. Have you installed the Claude Desktop app?"
+        )
+        sys.exit(1)
+
+    try:
+        # Read existing config
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        # Add or update mcpServers entry
+        if "mcpServers" not in config:
+            config["mcpServers"] = {}
+
+        # TODO: add support for env variables
+        config["mcpServers"][provider] = {
+            "command": "uvx",
+            "args": ["osmcp", "run", provider],
+        }
+
+        # Write updated config
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=2)
+
+        click.echo(
+            f"Successfully configured MCP server for provider '{provider}'. You can now restart Claude Desktop."
+        )
+
+    except Exception as e:
+        click.echo(f"Error updating config file: {e}")
         sys.exit(1)
 
 
