@@ -29,10 +29,14 @@ log = logging.getLogger(__name__)
 BASE_URL = "https://data.sbb.ch/api/explore/v2.1"
 
 # Registration Variables
-RESOURCES = []  # resources that will be registered by each endpoints
-RESOURCES_HANDLERS = {}  # resources handlers that will be registered by each endpoints
-TOOLS = []  # tools that will be registered by each endpoints
-TOOLS_HANDLERS = {}  # tools handlers that will be registered by each endpoints
+RESOURCES: List[Any] = []  # resources that will be registered by each endpoints
+RESOURCES_HANDLERS: dict[
+    str, Any
+] = {}  # resources handlers that will be registered by each endpoints
+TOOLS: List[types.Tool] = []  # tools that will be registered by each endpoints
+TOOLS_HANDLERS: dict[
+    str, Any
+] = {}  # tools handlers that will be registered by each endpoints
 
 
 ###################

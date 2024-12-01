@@ -4,13 +4,23 @@
 
 
 [![PyPI version](https://badge.fury.io/py/odmcp.svg)](https://badge.fury.io/py/odmcp&cache-control=no-cache)
-[![CI](https://github.com/grll/OpenDataMCP/actions/workflows/ci.yml/badge.svg)](https://github.com/grll/OpenDataMCP/actions/workflows/ci.yml&cache-control=no-cache)
-[![GitHub stars](https://img.shields.io/github/stars/grll/OpenDataMCP.svg)](https://github.com/grll/OpenDataMCP/stargazers&cache-control=no-cache)
-[![License](https://img.shields.io/github/license/grll/OpenDataMCP.svg)](https://github.com/grll/OpenDataMCP/blob/main/LICENSE)
+[![CI](https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml&cache-control=no-cache)
+[![GitHub stars](https://img.shields.io/github/stars/OpenDataMCP/OpenDataMCP.svg)](https://github.com/OpenDataMCP/OpenDataMCP/stargazers&cache-control=no-cache)
+[![License](https://img.shields.io/github/license/OpenDataMCP/OpenDataMCP.svg)](https://github.com/OpenDataMCP/OpenDataMCP/blob/main/LICENSE)
 
 <!--
 [![Downloads](https://pepy.tech/badge/odmcp)](https://pepy.tech/project/odmcp)
 -->
+
+Connect any Open Data to LLM in minutes.
+
+We tackle two problems: 
+
+* *Access*: Access Open Data right from your LLM application (starting with Claude, more to come).
+* *Publish*: Build & distribute (your) Open Data MCP server in minutes. Get everyone to use it!
+
+How it works:
+
 
 Open Data MCP connects Large Language Models to open data infrastructures through Anthropic's Open Source Model Context Protocol. This enables any LLMs to provide real-time, data-grounded responses about public services and informations.
 
@@ -77,7 +87,7 @@ uvx odmcp remove $PROVIDER_NAME
 Quickstart for the SBB provider:
 
 ```bash
-uvx odmcp setup sbb
+uvx odmcp setup ch_sbb
 ```
 
 ## Contributing

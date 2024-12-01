@@ -1,7 +1,7 @@
 """
-Template for API Client Modules
+Template for MCP server definitions.
 
-This template provides a standardized structure for creating API client modules.
+This template provides a standardized structure for creating MCP server modules.
 Each module should follow this pattern to ensure consistency across the codebase.
 
 Module Structure:
@@ -33,9 +33,14 @@ log = logging.getLogger(__name__)
 BASE_URL = "https://api.example.com/v1"
 
 # 3. Registration Variables
-RESOURCES: List[Any] = []  # Used for resource registration
-TOOLS: List[types.Tool] = []  # For registering available tools
-TOOLS_HANDLERS: dict[str, Any] = {}  # For mapping tools to handlers
+RESOURCES: List[Any] = []  # resources that will be registered by each endpoints
+RESOURCES_HANDLERS: dict[
+    str, Any
+] = {}  # resources handlers that will be registered by each endpoints
+TOOLS: List[types.Tool] = []  # tools that will be registered by each endpoints
+TOOLS_HANDLERS: dict[
+    str, Any
+] = {}  # tools handlers that will be registered by each endpoints
 
 ###################
 # [Endpoint Name]
@@ -123,4 +128,6 @@ if __name__ == "__main__":
 
     from utils import run_server
 
-    anyio.run(run_server, "service.name", TOOLS, TOOLS_HANDLERS)
+    anyio.run(
+        run_server, "service.name", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
+    )
