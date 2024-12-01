@@ -1,6 +1,8 @@
-import click
 import importlib
 import sys
+
+import anyio
+import click
 
 
 @click.group()
@@ -15,7 +17,7 @@ def run(provider: str):
     """Run a specific provider MCP server."""
     try:
         module = importlib.import_module(f"osmcp.providers.{provider}")
-        module.main()
+        anyio.run(module.main)
     except ImportError:
         click.echo(f"Provider '{provider}' not found.")
         sys.exit(1)
@@ -29,6 +31,7 @@ def list():
     """List all available providers"""
     try:
         import pkgutil
+
         import osmcp.providers as providers_pkg
 
         # Get all modules in the providers package
