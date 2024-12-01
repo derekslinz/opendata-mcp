@@ -7,7 +7,7 @@ name = "odmcp"
 dynamic = ["version"]
 description = "Python MCP servers exposing Open Data to compatible LLM clients."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.28.0",
     "mcp>=1.0.0",
