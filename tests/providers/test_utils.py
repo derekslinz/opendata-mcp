@@ -11,7 +11,8 @@ from osmcp.providers.utils import create_mcp_server
 
 log = logging.getLogger(__name__)
 
-
+RESOURCES = []
+RESOURCES_HANDLERS = {}
 TOOLS = [
     types.Tool(
         name="test-tool",
@@ -35,7 +36,7 @@ async def handle_test_tool(
 TOOLS_HANDLERS = {"test-tool": handle_test_tool}
 
 # Create server with the greeting tool
-server = create_mcp_server("test", TOOLS, TOOLS_HANDLERS)
+server = create_mcp_server("test", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS)
 
 
 async def main():

@@ -30,6 +30,7 @@ BASE_URL = "https://data.sbb.ch/api/explore/v2.1"
 
 # Registration Variables
 RESOURCES = []  # resources that will be registered by each endpoints
+RESOURCES_HANDLERS = {}  # resources handlers that will be registered by each endpoints
 TOOLS = []  # tools that will be registered by each endpoints
 TOOLS_HANDLERS = {}  # tools handlers that will be registered by each endpoints
 
@@ -161,7 +162,9 @@ async def main():
     from osmcp.providers.utils import create_mcp_server
 
     # create the server
-    server = create_mcp_server("data.sbb.ch", TOOLS, TOOLS_HANDLERS)
+    server = create_mcp_server(
+        "data.sbb.ch", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
+    )
 
     # run the server
     async with stdio_server() as streams:

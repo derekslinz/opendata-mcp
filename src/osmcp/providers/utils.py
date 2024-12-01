@@ -3,20 +3,23 @@ from typing import Any, Callable, Sequence
 
 from mcp import types
 from mcp.server import Server
+from pydantic import AnyUrl
 
 log = logging.getLogger(__name__)
 
 
 def create_mcp_server(
     server_name: str,
-    tools: list[types.Tool],
+    resources: list[types.Resource] = [],
+    resources_handlers: dict[AnyUrl, Callable[[AnyUrl], str | bytes]] = {},
+    tools: list[types.Tool] = [],
     tools_handlers: dict[
         str,
         Callable[
             [dict[str, Any] | None],
             Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource],
         ],
-    ],
+    ] = {},
 ) -> Server:
     """
     Create a MCP server with the given tools and handlers.
@@ -31,6 +34,21 @@ def create_mcp_server(
     """
     # instantiate the server
     server = Server(server_name)
+
+    # register resources
+    @server.list_resources()
+    async def handle_list_resources() -> list[types.Resource]:
+        return resources
+
+    # register resources handlers
+    # TODO: handle better the resource handler we probably dont want to have a handler per URI...
+    @server.read_resource()
+    async def handle_read_resource(resource_uri: AnyUrl) -> str | bytes:
+        if resource_uri not in resources_handlers:
+            log.error(f"Resource {resource_uri} not found")
+            raise AttributeError(f"Resource {resource_uri} not found")
+
+        return resources_handlers[resource_uri]()
 
     # register the tools
     @server.list_tools()
