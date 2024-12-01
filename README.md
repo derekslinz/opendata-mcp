@@ -204,7 +204,7 @@ Because of our target scale we want to keep things simple and pragmatic at first
    * Leverage Pydantic models for API request/response validation
    * Ensure type safety in data handling
 
-### Tactical Topics on which we are focusing
+### Tactical Topics (our current priorities)
 
 * **integrate more datasets...**
 * Clear definitions of Resources vs Tools
