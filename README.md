@@ -37,10 +37,12 @@ If you want to use Open Data MCP with Claude Desktop app client you need to inst
 
 You will also need `uv` to easily run our CLI and MCP servers.
 
-#### macOS & Linux
+#### macOS
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# you need to install uv through homebrew as using the install shell script 
+# will install it locally to your user which make it unavailable in the Claude Desktop app context.
+brew install uv
 ```
 
 #### Windows
