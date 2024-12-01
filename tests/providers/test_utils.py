@@ -7,7 +7,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server.stdio import stdio_server
 
-from odmcp.providers.utils import create_mcp_server
+from odmcp.utils import create_mcp_server
 
 log = logging.getLogger(__name__)
 

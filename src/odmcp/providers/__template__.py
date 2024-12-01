@@ -122,11 +122,17 @@ TOOLS.append(
 )
 TOOLS_HANDLERS["endpoint-name"] = handle_endpoint
 
+
+###################
+# [Another Endpoint Name]
+###################
+...
+
 # Server initialization (if module is run directly)
 if __name__ == "__main__":
     import anyio
 
-    from utils import run_server
+    from odmcp.utils import run_server
 
     anyio.run(
         run_server, "service.name", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
