@@ -14,9 +14,7 @@
 
 ## Connect any Open Data to LLMs in minutes!
 
-
 https://github.com/user-attachments/assets/8b4eeab3-d111-4e0d-9e7b-5108cd12c58f
-
 
 We enable 2 things: 
 
@@ -25,7 +23,7 @@ We enable 2 things:
 
 How do we do that?
 
-* **Access**: Setup MCP servers in your LLM application in 2 clicks via our CLI tool (starting with Claude, see Roadmap for next steps).
+* **Access**: Setup our MCP servers in your LLM application in 2 clicks via our CLI tool (starting with Claude, see Roadmap for next steps).
 * **Publish**: Use provided templates and guidelines to quickly contribute and publish on Open Data MCP. Make your data easily discoverable!
 
 ## Usage
