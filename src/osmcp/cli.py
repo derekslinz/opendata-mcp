@@ -149,6 +149,62 @@ def setup(provider: str):
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("provider")
+def remove(provider: str):
+    """Remove MCP server configuration for a provider"""
+    # Check platform
+    system = platform.system()
+    if system not in ["Darwin", "Windows"]:
+        click.echo("This command is only supported on Windows and macOS")
+        sys.exit(1)
+
+    # Determine config path
+    if system == "Darwin":
+        config_path = (
+            Path.home()
+            / "Library/Application Support/Claude/claude_desktop_config.json"
+        )
+    else:  # Windows
+        config_path = Path(os.getenv("APPDATA")) / "Claude/claude_desktop_config.json"
+
+    # Check if config file exists
+    if not config_path.exists():
+        click.echo(
+            f"Couldn't find claude_desktop_config.json at {config_path}. Have you installed the Claude Desktop app?"
+        )
+        sys.exit(1)
+
+    try:
+        # Read existing config
+        with open(config_path, "r") as f:
+            config = json.load(f)
+
+        # Check if mcpServers exists and provider is configured
+        if "mcpServers" not in config or provider not in config["mcpServers"]:
+            click.echo(f"Provider '{provider}' is not configured")
+            return
+
+        # Remove the provider
+        del config["mcpServers"][provider]
+
+        # Remove mcpServers if it's empty
+        if not config["mcpServers"]:
+            del config["mcpServers"]
+
+        # Write updated config
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=2)
+
+        click.echo(
+            f"Successfully removed MCP server configuration for provider '{provider}'. You can now restart Claude Desktop."
+        )
+
+    except Exception as e:
+        click.echo(f"Error updating config file: {e}")
+        sys.exit(1)
+
+
 def main():
     cli()
 
