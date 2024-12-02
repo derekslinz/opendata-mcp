@@ -14,7 +14,7 @@
 
 ## Connect any Open Data to LLMs in minutes!
 
-https://github.com/user-attachments/assets/8b4eeab3-d111-4e0d-9e7b-5108cd12c58f
+https://github.com/user-attachments/assets/760e1a16-add6-49a1-bf71-dfbb335e893e
 
 We enable 2 things: 
 
