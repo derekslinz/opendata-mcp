@@ -243,7 +243,7 @@ As Anthropic's MCP evolves we will adapt and upgrade Open Data MCP.
 
 ## References
 
-* Kudos to Anthropic's open source MCP release enabling initiative like this one
+* Kudos to [Anthropic's open source MCP](https://spec.modelcontextprotocol.io/) release enabling initiative like this one.
 
 ## License
 
