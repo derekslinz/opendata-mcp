@@ -131,14 +131,22 @@ def setup(provider: str):
         with open(config_path, "r") as f:
             config = json.load(f)
 
+        # Get the package version
+        try:
+            from importlib.metadata import version as get_version
+
+            ver = get_version("odmcp")
+        except importlib.metadata.PackageNotFoundError:
+            # Fallback to reading version from __init__.py
+            from odmcp import __version__ as ver
+
         # Add or update mcpServers entry
         if "mcpServers" not in config:
             config["mcpServers"] = {}
 
-        # TODO: add support for env variables
         config["mcpServers"][provider] = {
             "command": "uvx",
-            "args": ["odmcp", "run", provider],
+            "args": ["odmcp@" + ver, "run", provider],
         }
 
         # Write updated config
