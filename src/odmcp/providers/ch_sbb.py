@@ -157,6 +157,117 @@ TOOLS.append(
 TOOLS_HANDLERS["rail-traffic-info"] = handle_rail_traffic_info
 
 ###################
+# Railway Line Information
+###################
+
+
+# 1. define models for the input / output
+class RailwayLineParams(BaseModel):
+    select: Optional[str] = Field(
+        None,
+        description="Fields to select in the response. Examples: 'linie,linienname' for basic info, 'bpk_anfang,bpk_ende' for station info",
+    )
+    where: Optional[str] = Field(
+        None,
+        description="Filter conditions. Examples: 'linie = 100', 'bpk_anfang LIKE \"*Zürich*\"'",
+    )
+    group_by: Optional[str] = Field(
+        None,
+        description="Group railway lines by specific fields. Example: 'bpk_anfang' to group by starting station",
+    )
+    order_by: Optional[str] = Field(
+        None,
+        description="Sort railway lines. Example: 'linie ASC' for line number order, 'km_ende DESC' for longest routes first",
+    )
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum number of railway line entries to return (1-100)",
+    )
+    offset: int = Field(
+        default=0,
+        ge=0,
+        description="Number of railway line entries to skip for pagination",
+    )
+
+
+class GeoPoint2D(BaseModel):
+    lon: float = Field(description="Longitude coordinate")
+    lat: float = Field(description="Latitude coordinate")
+
+
+class LineGeometry(BaseModel):
+    coordinates: List[List[float]] = Field(
+        description="List of coordinate pairs [lon, lat]"
+    )
+    type: str = Field(description="Geometry type (usually 'LineString')")
+
+
+class LineFeature(BaseModel):
+    type: str = Field(description="Feature type")
+    geometry: LineGeometry = Field(description="Line geometry information")
+    properties: dict = Field(description="Additional properties")
+
+
+class RailwayLineResult(BaseModel):
+    linie: int = Field(description="Line number")
+    linienname: str = Field(description="Line name/description")
+    bpk_anfang: str = Field(description="Starting station")
+    bpk_ende: str = Field(description="End station")
+    km_anfang: float = Field(description="Starting kilometer")
+    km_ende: float = Field(description="End kilometer")
+    stationierung_anfang: int = Field(description="Starting stationing")
+    stationierung_ende: int = Field(description="End stationing")
+    tst: LineFeature = Field(description="Geographic line feature")
+    geo_point_2d: GeoPoint2D = Field(description="Center point of the line")
+
+
+class RailwayLineResponse(BaseModel):
+    total_count: int = Field(description="Total number of results available")
+    results: List[RailwayLineResult] = Field(description="List of railway line items")
+
+
+# 2. define the function to fetch the data
+def fetch_railway_lines(params: RailwayLineParams) -> RailwayLineResponse:
+    """
+    Fetch railway line information based on the provided parameters.
+
+    Args:
+        params: RailwayLineParams object containing all query parameters
+
+    Returns:
+        RailwayLineResponse object containing the results
+    """
+    endpoint = f"{BASE_URL}/catalog/datasets/linie/records"
+    response = httpx.get(endpoint, params=params.model_dump(exclude_none=True))
+    response.raise_for_status()
+    return RailwayLineResponse(**response.json())
+
+
+# 3. register the function to run when the tool is called
+async def handle_railway_lines(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    try:
+        railway_lines_response = fetch_railway_lines(RailwayLineParams(**arguments))
+        return [types.TextContent(type="text", text=str(railway_lines_response))]
+    except Exception as e:
+        log.error(f"Error fetching railway lines: {e}")
+        raise
+
+
+# 4. register the tool
+TOOLS.append(
+    types.Tool(
+        name="railway-lines",
+        description="Fetch railway line information",
+        inputSchema=RailwayLineParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["railway-lines"] = handle_railway_lines
+
+###################
 # Other Endpoint Name
 ###################
 ...
