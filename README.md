@@ -3,7 +3,7 @@
 ![vc3598_Hyper-realistic_Swiss_landscape_pristine_SBB_red_train_p_40803c2e-43f5-410e-89aa-f6bdcb4cd089](https://github.com/user-attachments/assets/80c823dd-0b26-4d06-98f9-5c6d7c9103de)
 
 
-[![PyPI version](https://badge.fury.io/py/odmcp.svg)](https://badge.fury.io/py/odmcp&cache-control=no-cache)
+[![PyPI version](https://badge.fury.io/py/odmcp.svg)](https://badge.fury.io/py/odmcp)
 [![CI](https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml&cache-control=no-cache)
 [![GitHub stars](https://img.shields.io/github/stars/OpenDataMCP/OpenDataMCP.svg)](https://github.com/OpenDataMCP/OpenDataMCP/stargazers&cache-control=no-cache)
 [![License](https://img.shields.io/github/license/OpenDataMCP/OpenDataMCP.svg)](https://github.com/OpenDataMCP/OpenDataMCP/blob/main/LICENSE)
