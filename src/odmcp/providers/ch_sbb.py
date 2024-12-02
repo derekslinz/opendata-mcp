@@ -98,14 +98,26 @@ class TrafficInfoParams(BaseModel):
 
 
 class TrafficInfoResult(BaseModel):
-    title: str = Field(description="Title of the traffic info")
-    link: str = Field(description="URL to more details")
-    description: str = Field(description="Plain text description")
-    published: datetime = Field(description="Publication timestamp")
-    author: str = Field(description="Author of the traffic info")
-    validitybegin: datetime = Field(description="Start time of the disruption")
-    validityend: datetime = Field(description="End time of the disruption")
-    description_html: str = Field(description="HTML formatted description")
+    title: Optional[str] = Field(default=None, description="Title of the traffic info")
+    link: Optional[str] = Field(default=None, description="URL to more details")
+    description: Optional[str] = Field(
+        default=None, description="Plain text description"
+    )
+    published: Optional[datetime] = Field(
+        default=None, description="Publication timestamp"
+    )
+    author: Optional[str] = Field(
+        default=None, description="Author of the traffic info"
+    )
+    validitybegin: Optional[datetime] = Field(
+        default=None, description="Start time of the disruption"
+    )
+    validityend: Optional[datetime] = Field(
+        default=None, description="End time of the disruption"
+    )
+    description_html: Optional[str] = Field(
+        default=None, description="HTML formatted description"
+    )
 
 
 class TrafficInfoResponse(BaseModel):
@@ -211,16 +223,24 @@ class LineFeature(BaseModel):
 
 
 class RailwayLineResult(BaseModel):
-    linie: int = Field(description="Line number")
-    linienname: str = Field(description="Line name/description")
-    bpk_anfang: str = Field(description="Starting station")
-    bpk_ende: str = Field(description="End station")
-    km_anfang: float = Field(description="Starting kilometer")
-    km_ende: float = Field(description="End kilometer")
-    stationierung_anfang: int = Field(description="Starting stationing")
-    stationierung_ende: int = Field(description="End stationing")
-    tst: LineFeature = Field(description="Geographic line feature")
-    geo_point_2d: GeoPoint2D = Field(description="Center point of the line")
+    linie: Optional[int] = Field(default=None, description="Line number")
+    linienname: Optional[str] = Field(default=None, description="Line name/description")
+    bpk_anfang: Optional[str] = Field(default=None, description="Starting station")
+    bpk_ende: Optional[str] = Field(default=None, description="End station")
+    km_anfang: Optional[float] = Field(default=None, description="Starting kilometer")
+    km_ende: Optional[float] = Field(default=None, description="End kilometer")
+    stationierung_anfang: Optional[int] = Field(
+        default=None, description="Starting stationing"
+    )
+    stationierung_ende: Optional[int] = Field(
+        default=None, description="End stationing"
+    )
+    tst: Optional[LineFeature] = Field(
+        default=None, description="Geographic line feature"
+    )
+    geo_point_2d: Optional[GeoPoint2D] = Field(
+        default=None, description="Center point of the line"
+    )
 
 
 class RailwayLineResponse(BaseModel):
@@ -304,14 +324,18 @@ class RollingStockParams(BaseModel):
 
 
 class RollingStockResult(BaseModel):
-    fahrzeug_art_struktur: Optional[str] = Field(description="Vehicle structure type")
-    fahrzeug_typ: Optional[str] = Field(description="Vehicle type")
-    objekt: str = Field(description="Vehicle identifier")
-    baudatum_fahrzeug: Optional[str] = Field(description="Build date")
-    eigengewicht_tara: Optional[float] = Field(description="Tare weight")
-    lange_uber_puffer_lup: Optional[int] = Field(description="Length over buffers (mm)")
+    fahrzeug_art_struktur: Optional[str] = Field(
+        default=None, description="Vehicle structure type"
+    )
+    fahrzeug_typ: Optional[str] = Field(default=None, description="Vehicle type")
+    objekt: Optional[str] = Field(default=None, description="Vehicle identifier")
+    baudatum_fahrzeug: Optional[str] = Field(default=None, description="Build date")
+    eigengewicht_tara: Optional[float] = Field(default=None, description="Tare weight")
+    lange_uber_puffer_lup: Optional[int] = Field(
+        default=None, description="Length over buffers (mm)"
+    )
     vmax_betrieblich_zugelassen: Optional[int] = Field(
-        description="Maximum operational speed"
+        default=None, description="Maximum operational speed"
     )
     # Add other fields as needed, all as Optional since many can be null
 
@@ -380,6 +404,18 @@ async def main():
 
 
 if __name__ == "__main__":
-    import anyio
+    # anyio.run(main)
 
-    anyio.run(main)
+    # test the endpoints
+    print(
+        "Rail Traffic Info:",
+        fetch_rail_traffic_info(TrafficInfoParams(select="title,description", limit=1)),
+    )
+    print(
+        "Railway Lines:",
+        fetch_railway_lines(RailwayLineParams(select="linie,linienname", limit=1)),
+    )
+    print(
+        "Rolling Stock:",
+        fetch_rolling_stock(RollingStockParams(select="fahrzeug_typ,objekt", limit=1)),
+    )
