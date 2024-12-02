@@ -268,6 +268,99 @@ TOOLS.append(
 TOOLS_HANDLERS["railway-lines"] = handle_railway_lines
 
 ###################
+# Rolling Stock Information
+###################
+
+
+# 1. define models for the input / output
+class RollingStockParams(BaseModel):
+    select: Optional[str] = Field(
+        None,
+        description="Fields to select in the response. Examples: 'fahrzeug_typ,objekt' for basic info, 'vmax_betrieblich_zugelassen,lange_uber_puffer_lup' for technical details",
+    )
+    where: Optional[str] = Field(
+        None,
+        description="Filter conditions. Examples: 'fahrzeug_typ = \"X\"', 'vmax_betrieblich_zugelassen > 100'",
+    )
+    group_by: Optional[str] = Field(
+        None,
+        description="Group rolling stock by specific fields. Example: 'fahrzeug_typ' to group by vehicle type",
+    )
+    order_by: Optional[str] = Field(
+        None,
+        description="Sort rolling stock. Example: 'baudatum_fahrzeug ASC' for oldest first, 'vmax_betrieblich_zugelassen DESC' for fastest first",
+    )
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum number of rolling stock entries to return (1-100)",
+    )
+    offset: int = Field(
+        default=0,
+        ge=0,
+        description="Number of rolling stock entries to skip for pagination",
+    )
+
+
+class RollingStockResult(BaseModel):
+    fahrzeug_art_struktur: Optional[str] = Field(description="Vehicle structure type")
+    fahrzeug_typ: Optional[str] = Field(description="Vehicle type")
+    objekt: str = Field(description="Vehicle identifier")
+    baudatum_fahrzeug: Optional[str] = Field(description="Build date")
+    eigengewicht_tara: Optional[float] = Field(description="Tare weight")
+    lange_uber_puffer_lup: Optional[int] = Field(description="Length over buffers (mm)")
+    vmax_betrieblich_zugelassen: Optional[int] = Field(
+        description="Maximum operational speed"
+    )
+    # Add other fields as needed, all as Optional since many can be null
+
+
+class RollingStockResponse(BaseModel):
+    total_count: int = Field(description="Total number of results available")
+    results: List[RollingStockResult] = Field(description="List of rolling stock items")
+
+
+# 2. define the function to fetch the data
+def fetch_rolling_stock(params: RollingStockParams) -> RollingStockResponse:
+    """
+    Fetch rolling stock information based on the provided parameters.
+
+    Args:
+        params: RollingStockParams object containing all query parameters
+
+    Returns:
+        RollingStockResponse object containing the results
+    """
+    endpoint = f"{BASE_URL}/catalog/datasets/rollmaterial/records"
+    response = httpx.get(endpoint, params=params.model_dump(exclude_none=True))
+    response.raise_for_status()
+    return RollingStockResponse(**response.json())
+
+
+# 3. register the function to run when the tool is called
+async def handle_rolling_stock(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    try:
+        rolling_stock_response = fetch_rolling_stock(RollingStockParams(**arguments))
+        return [types.TextContent(type="text", text=str(rolling_stock_response))]
+    except Exception as e:
+        log.error(f"Error fetching rolling stock info: {e}")
+        raise
+
+
+# 4. register the tool
+TOOLS.append(
+    types.Tool(
+        name="rolling-stock",
+        description="Fetch rolling stock (vehicle) information",
+        inputSchema=RollingStockParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["rolling-stock"] = handle_rolling_stock
+
+###################
 # Other Endpoint Name
 ###################
 ...
