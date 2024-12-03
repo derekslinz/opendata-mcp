@@ -22,7 +22,7 @@
    </a>
 </p>
 
-## Connect any Open Data to LLMs in minutes!
+## See it in action
 
 https://github.com/user-attachments/assets/760e1a16-add6-49a1-bf71-dfbb335e893e
 
