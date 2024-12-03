@@ -1,16 +1,26 @@
 # Open Data Model Context Protocol
 
 ![vc3598_Hyper-realistic_Swiss_landscape_pristine_SBB_red_train_p_40803c2e-43f5-410e-89aa-f6bdcb4cd089](https://github.com/user-attachments/assets/80c823dd-0b26-4d06-98f9-5c6d7c9103de)
-
-
-[![PyPI version](https://badge.fury.io/py/odmcp.svg)](https://badge.fury.io/py/odmcp)
-[![CI](https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml&cache-control=no-cache)
-[![GitHub stars](https://img.shields.io/github/stars/OpenDataMCP/OpenDataMCP.svg)](https://github.com/OpenDataMCP/OpenDataMCP/stargazers&cache-control=no-cache)
-[![License](https://img.shields.io/github/license/OpenDataMCP/OpenDataMCP.svg)](https://github.com/OpenDataMCP/OpenDataMCP/blob/main/LICENSE)
-
-<!--
-[![Downloads](https://pepy.tech/badge/odmcp)](https://pepy.tech/project/odmcp)
--->
+<p align="center">
+    <em>Connect Open Data to LLMs in minutes!</em>
+</p>
+<p align="center">
+   <a href="https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml" target="_blank">
+    <img src="https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml/badge.svg" alt="CI">
+   </a>
+   <a href="https://pypi.org/project/odmcp" target="_blank">
+       <img src="https://img.shields.io/pypi/v/odmcp?color=%2334D058&label=pypi%20package" alt="Package version">
+   </a>
+   <a href="https://github.com/OpenDataMCP/OpenDataMCP/blob/main/LICENSE" target="_blank">
+      <img src="https://img.shields.io/github/license/OpenDataMCP/OpenDataMCP.svg" alt="License">
+   </a>
+   <a href="https://pepy.tech/badge/odmcp" target="_blank">
+      <img src="https://pepy.tech/badge/odmcp?cache-control=no-cache" alt="License">
+   </a>
+   <a href="https://github.com/OpenDataMCP/OpenDataMCP/stargazers" target="_blank">
+      <img src="https://img.shields.io/github/stars/OpenDataMCP/OpenDataMCP.svg?cache-control=no-cache" alt="Stars">
+   </a>
+</p>
 
 ## Connect any Open Data to LLMs in minutes!
 
