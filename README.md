@@ -185,7 +185,7 @@ For that we need your help!
 
 ### Discord
 
-We want to build a helping community around the challenge of bringing open data to LLM's. Join us on discord to start chatting: https://discord.gg/QPFFZWKW
+We want to build a helping community around the challenge of bringing open data to LLM's. Join us on discord to start chatting: [https://discord.gg/QPFFZWKW](https://discord.gg/hDg4ZExjGs)
 
 ### Our Core Guidelines
 
