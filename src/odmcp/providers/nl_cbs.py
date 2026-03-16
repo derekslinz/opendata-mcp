@@ -88,7 +88,7 @@ def fetch_cbs_data(params: CBSDataParams) -> dict:
 async def handle_cbs_data(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the cbs-get-data tool call."""
+    """Handle the cbs-get-typed-dataset tool call."""
     try:
         if not arguments or "table_id" not in arguments:
             raise ValueError("table_id is required")
@@ -103,12 +103,12 @@ async def handle_cbs_data(
 
 TOOLS.append(
     types.Tool(
-        name="cbs-get-data",
-        description="Fetch data from a specific CBS table ID. Use 'cbs-list-tables' to find relevant table IDs.",
+        name="cbs-get-typed-dataset",
+        description="Fetch data from a specific CBS table ID using the TypedDataSet endpoint. Use 'cbs-list-tables' to find relevant table IDs.",
         inputSchema=CBSDataParams.model_json_schema(),
     )
 )
-TOOLS_HANDLERS["cbs-get-data"] = handle_cbs_data
+TOOLS_HANDLERS["cbs-get-typed-dataset"] = handle_cbs_data
 
 ###################
 # CBS Metadata
@@ -211,7 +211,7 @@ async def main():
 
     # create the server
     server = create_mcp_server(
-        "nl.cbs", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
+        "nl-cbs", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
     )
 
     # run the server
