@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 # Constants
 BASE_URL = "https://opendata.cbs.nl/ODataFeed/odata"
-CATALOG_URL = "https://opendata.cbs.nl/ODataCatalog/OData/Tables"
+CATALOG_URL = "https://opendata.cbs.nl/ODataCatalog/Tables"
 
 # Registration Variables
 RESOURCES: List[Any] = []
