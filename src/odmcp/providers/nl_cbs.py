@@ -9,7 +9,7 @@ Features:
 - OData v4 compatible querying
 - Automatic JSON format handling
 - Metadata retrieval for data property descriptions
-- Support for table catalogs
+- Support for paginated table catalogs
 
 Usage:
     The module can be run directly to start a server handling API requests,
@@ -65,6 +65,15 @@ class CBSDataParams(BaseModel):
     )
 
 
+class CBSDataResponse(BaseModel):
+    """Response model for CBS table data."""
+
+    total_count: Optional[int] = Field(
+        None, description="Total number of records (if available)"
+    )
+    results: List[dict] = Field(..., description="The actual data records")
+
+
 def fetch_cbs_data(params: CBSDataParams) -> dict:
     """Fetch data from a specific CBS table."""
     endpoint = f"{BASE_URL}/{params.table_id}/{params.dataset_type}"
@@ -95,7 +104,11 @@ async def handle_cbs_data(
 
         params = CBSDataParams(**arguments)
         data = fetch_cbs_data(params)
-        return [types.TextContent(type="text", text=str(data))]
+        results = data.get("value", [])
+        # Some endpoints might support count but not all
+        total_count = data.get("odata.count")
+        response = CBSDataResponse(results=results, total_count=total_count)
+        return [types.TextContent(type="text", text=str(response.model_dump()))]
     except Exception as e:
         log.error(f"Error fetching CBS data: {e}")
         raise
@@ -166,11 +179,26 @@ class CBSListTablesParams(BaseModel):
         None, description="Keyword to search in table titles or summaries"
     )
     top: int = Field(default=10, description="Number of results to return")
+    skip: int = Field(default=0, description="Number of results to skip")
+
+
+class CBSListTablesResponse(BaseModel):
+    """Response model for CBS tables list."""
+
+    total_count: Optional[int] = Field(
+        None, description="Total number of available tables"
+    )
+    results: List[dict] = Field(..., description="The list of tables")
 
 
 def list_cbs_tables(params: CBSListTablesParams) -> dict:
     """Search or list available CBS tables."""
-    query_params = {"$format": "json", "$top": params.top}
+    query_params = {
+        "$format": "json",
+        "$top": params.top,
+        "$skip": params.skip,
+        "$inlinecount": "allpages",
+    }
     if params.search:
         # Simple OData filter for search
         query_params["$filter"] = (
@@ -188,8 +216,11 @@ async def handle_cbs_list_tables(
     """Handle the cbs-list-tables tool call."""
     try:
         params = CBSListTablesParams(**(arguments or {}))
-        tables = list_cbs_tables(params)
-        return [types.TextContent(type="text", text=str(tables))]
+        data = list_cbs_tables(params)
+        results = data.get("value", [])
+        total_count = data.get("odata.count")
+        response = CBSListTablesResponse(results=results, total_count=total_count)
+        return [types.TextContent(type="text", text=str(response.model_dump()))]
     except Exception as e:
         log.error(f"Error listing CBS tables: {e}")
         raise
@@ -206,7 +237,7 @@ TOOLS_HANDLERS["cbs-list-tables"] = handle_cbs_list_tables
 
 
 async def main():
-    from mcp.server import stdio_server
+    from mcp.server.stdio import stdio_server
     from odmcp.utils import create_mcp_server
 
     # create the server

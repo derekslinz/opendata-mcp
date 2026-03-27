@@ -19,7 +19,10 @@ def test_run_valid_provider(runner):
 def test_run_invalid_provider(runner):
     result = runner.invoke(cli, ["run", "nonexistent_provider"])
     assert result.exit_code == 1
-    assert "Provider 'nonexistent_provider' not found." in result.output
+    assert (
+        "Provider 'nonexistent_provider' not found or has missing dependencies."
+        in result.output
+    )
 
 
 def test_list_providers(runner):

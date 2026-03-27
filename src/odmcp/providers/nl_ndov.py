@@ -1,0 +1,129 @@
+"""
+NDOV Loket Data Provider
+
+This module provides an interface to browse and discover Dutch public transport
+open data from data.ndovloket.nl. Since the source is a file-based directory
+listing, this provider parses the HTML index pages to offer browsing capabilities.
+
+Features:
+- Directory browsing using ndov-list-path
+
+Usage:
+    The module can be run directly to start a server handling API requests,
+    or its components can be imported and used individually.
+"""
+
+import logging
+import re
+from typing import Any, List, Sequence
+from urllib.parse import urljoin
+
+import httpx
+import mcp.types as types
+from pydantic import BaseModel, Field
+
+# Initialize logging
+log = logging.getLogger(__name__)
+
+# Constants
+BASE_URL = "https://data.ndovloket.nl/"
+
+# Registration Variables
+RESOURCES: List[Any] = []
+RESOURCES_HANDLERS: dict[str, Any] = {}
+TOOLS: List[types.Tool] = []
+TOOLS_HANDLERS: dict[str, Any] = {}
+
+###################
+# NDOV Loket Browsing
+###################
+
+
+class NdovListPathParams(BaseModel):
+    """Parameters for listing contents of an NDOV Loket directory."""
+
+    path: str = Field(
+        default="/", description="Path to list (e.g., '/', '/haltes/', '/ns/')"
+    )
+
+
+def list_ndov_path(path: str) -> List[dict]:
+    """Fetch and parse the HTML directory listing from NDOV Loket."""
+    # Ensure path starts and ends correctly
+    if not path.startswith("/"):
+        path = "/" + path
+    if not path.endswith("/") and "." not in path.split("/")[-1]:
+        path = path + "/"
+
+    url = urljoin(BASE_URL, path.lstrip("/"))
+    response = httpx.get(url)
+    response.raise_for_status()
+
+    # Simple regex-based parsing of the directory listing
+    # Example line: <a href="haltes/">haltes/</a>
+    # We look for links that are not parent directories or sorting links
+    links = re.findall(r'<a href="([^"?]+)">([^<]+)</a>', response.text)
+
+    entries = []
+    for href, text in links:
+        if href == "../" or "order=" in href:
+            continue
+
+        is_dir = href.endswith("/")
+        entries.append(
+            {
+                "name": text.rstrip("/"),
+                "path": urljoin(path, href),
+                "type": "directory" if is_dir else "file",
+                "url": urljoin(BASE_URL, urljoin(path.lstrip("/"), href)),
+            }
+        )
+
+    return entries
+
+
+async def handle_ndov_list_path(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the ndov-list-path tool call."""
+    try:
+        params = NdovListPathParams(**(arguments or {}))
+        entries = list_ndov_path(params.path)
+        return [types.TextContent(type="text", text=str(entries))]
+    except Exception as e:
+        log.error(
+            f"Error listing NDOV path {arguments.get('path') if arguments else ''}: {e}"
+        )
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="ndov-list-path",
+        description="List files and subdirectories on data.ndovloket.nl for Dutch transit data.",
+        inputSchema=NdovListPathParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["ndov-list-path"] = handle_ndov_list_path
+
+
+async def main():
+    from mcp.server.stdio import stdio_server
+
+    from odmcp.utils import create_mcp_server
+
+    # create the server
+    server = create_mcp_server(
+        "nl-ndov", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
+    )
+
+    # run the server
+    async with stdio_server() as streams:
+        await server.run(streams[0], streams[1], server.create_initialization_options())
+
+
+# Server initialization
+if __name__ == "__main__":
+    import anyio
+
+    anyio.run(main)
