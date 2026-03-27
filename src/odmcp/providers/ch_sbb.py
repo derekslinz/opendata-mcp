@@ -21,7 +21,7 @@ from typing import Any, List, Optional, Sequence
 
 import httpx
 import mcp.types as types
-from mcp.server import stdio_server
+from mcp.server.stdio import stdio_server
 from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
