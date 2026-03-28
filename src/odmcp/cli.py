@@ -318,7 +318,7 @@ def setup_all():
             json.dump(config, f, indent=2)
 
         click.echo(
-            "\nSuccessfully configured 11 providers. Please restart Claude Desktop."
+            f"\nSuccessfully configured {len(providers)} providers. Please restart Claude Desktop."
         )
 
     except Exception as e:
