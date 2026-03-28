@@ -35,6 +35,26 @@ How do we do that?
 
 * **Access**: Setup our MCP servers in your LLM application in 2 clicks via our CLI tool (starting with Claude, see Roadmap for next steps).
 * **Publish**: Use provided templates and guidelines to quickly contribute and publish on Open Data MCP. Make your data easily discoverable!
+## Available Providers
+
+Currently, Open Data MCP supports the following open data sources:
+
+**Global/Regional**
+*   🌍 **Global Open Meteo** (`global_open_meteo`): Global weather data and forecasts
+*   🇪🇺 **EU Copernicus** (`eu_copernicus`): Earth observation and environmental data
+*   🇪🇺 **EU Eurostat** (`eu_eurostat`): European statistics and data
+
+**Country-Specific**
+*   🇨🇭 **Switzerland SBB** (`ch_sbb`): Public transport network data
+*   🇩🇪 **Germany DB** (`de_db`): Deutsche Bahn transport data 
+*   🇳🇱 **Netherlands CBS** (`nl_cbs`): Statistics Netherlands data
+*   🇳🇱 **Netherlands NDOV** (`nl_ndov`): Public transport data
+*   🇳🇱 **Netherlands Tweede Kamer** (`nl_tweedekamer`): Dutch Parliament open data
+*   🇺🇸 **US Data.gov** (`us_data_gov`): US Government open data
+*   🇺🇸 **US DOE ARM** (`us_doe_arm`): Atmospheric Radiation Measurement data
+*   🇺🇸 **US NASA** (`us_nasa`): Astronomy, space weather, and Near-Earth Objects
+
+More providers are being added continuously!
 
 ## Usage
 
@@ -94,27 +114,6 @@ uvx odmcp setup ch_sbb
 Restart Claude and you should see a new hammer icon at the bottom right of the chat.
 
 You can now ask questions to Claude about SBB train network disruption and it will answer based on data collected on `data.sbb.ch`.
-
-## Available Providers
-
-Currently, Open Data MCP supports the following open data sources:
-
-**Global/Regional**
-*   🌍 **Global Open Meteo** (`global_open_meteo`): Global weather data and forecasts
-*   🇪🇺 **EU Copernicus** (`eu_copernicus`): Earth observation and environmental data
-*   🇪🇺 **EU Eurostat** (`eu_eurostat`): European statistics and data
-
-**Country-Specific**
-*   🇨🇭 **Switzerland SBB** (`ch_sbb`): Public transport network data
-*   🇩🇪 **Germany DB** (`de_db`): Deutsche Bahn transport data 
-*   🇳🇱 **Netherlands CBS** (`nl_cbs`): Statistics Netherlands data
-*   🇳🇱 **Netherlands NDOV** (`nl_ndov`): Public transport data
-*   🇳🇱 **Netherlands Tweede Kamer** (`nl_tweedekamer`): Dutch Parliament open data
-*   🇺🇸 **US Data.gov** (`us_data_gov`): US Government open data
-*   🇺🇸 **US DOE ARM** (`us_doe_arm`): Atmospheric Radiation Measurement data
-*   🇺🇸 **US NASA** (`us_nasa`): Astronomy, space weather, and Near-Earth Objects
-
-More providers are being added continuously!
 
 ### <u>Publish</u>: Contribute by building and publishing public datasets
 
