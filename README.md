@@ -6,20 +6,20 @@
     <em>Connect Open Data to LLMs in minutes!</em>
 </p>
 <p align="center">
-   <a href="https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml" target="_blank">
-    <img src="https://github.com/OpenDataMCP/OpenDataMCP/actions/workflows/ci.yml/badge.svg" alt="CI">
+   <a href="https://github.com/derekslinz/opendata-mcp/actions/workflows/ci.yml" target="_blank">
+    <img src="https://github.com/derekslinz/opendata-mcp/actions/workflows/ci.yml/badge.svg" alt="CI">
    </a>
    <a href="https://pypi.org/project/odmcp" target="_blank">
        <img src="https://img.shields.io/pypi/v/odmcp?color=%2334D058&label=pypi%20package" alt="Package version">
    </a>
-   <a href="https://github.com/OpenDataMCP/OpenDataMCP/blob/main/LICENSE" target="_blank">
-      <img src="https://img.shields.io/github/license/OpenDataMCP/OpenDataMCP.svg" alt="License">
+   <a href="https://github.com/derekslinz/opendata-mcp/blob/main/LICENSE" target="_blank">
+      <img src="https://img.shields.io/github/license/derekslinz/opendata-mcp.svg" alt="License">
    </a>
    <a href="https://pepy.tech/badge/odmcp" target="_blank">
       <img src="https://pepy.tech/badge/odmcp?cache-control=no-cache" alt="License">
    </a>
-   <a href="https://github.com/OpenDataMCP/OpenDataMCP/stargazers" target="_blank">
-      <img src="https://img.shields.io/github/stars/OpenDataMCP/OpenDataMCP.svg?cache-control=no-cache" alt="Stars">
+   <a href="https://github.com/derekslinz/opendata-mcp/stargazers" target="_blank">
+      <img src="https://img.shields.io/github/stars/derekslinz/opendata-mcp.svg?cache-control=no-cache" alt="Stars">
    </a>
 </p>
 
@@ -78,34 +78,32 @@ brew install uv
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-#### Open Data MCP - CLI Tool
-
 ##### Overview
+
+For local development and testing, use **`uv run odmcp`**:
 
 ```bash
 # show available commands
-uvx odmcp 
+uv run odmcp 
 
 # show available providers
-uvx odmcp list
+uv run odmcp list
 
 # show info about a provider
-uvx odmcp info $PROVIDER_NAME
+uv run odmcp info $PROVIDER_NAME
 
 # setup a provider's MCP server on your Claude Desktop app
-uvx odmcp setup $PROVIDER_NAME
+uv run odmcp setup $PROVIDER_NAME
 
 # remove a provider's MCP server from your Claude Desktop app
-uvx odmcp remove $PROVIDER_NAME
+uv run odmcp remove $PROVIDER_NAME
 ```
-
-##### Example
 
 Quickstart for the Switzerland SBB (train company) provider:
 
 ```bash
 # make sure claude is installed
-uvx odmcp setup ch_sbb
+uv run odmcp setup ch_sbb
 ```
 
 Restart Claude and you should see a new hammer icon at the bottom right of the chat.
@@ -132,8 +130,8 @@ You can now ask questions to Claude about SBB train network disruption and it wi
 
    ```bash
    # Clone the repository
-   git clone https://github.com/OpenDataMCP/OpenDataMCP.git
-   cd OpenDataMCP
+   git clone https://github.com/derekslinz/opendata-mcp.git
+   cd opendata-mcp
 
    # Create and activate virtual environment
    uv venv
@@ -158,7 +156,7 @@ You can now ask questions to Claude about SBB train network disruption and it wi
    * Each data source needs its own python module.
    * Create a new Python module in `src/odmcp/providers/`.
    * Use a descriptive name following the pattern: `{country_code}_{organization}.py` (e.g., `ch_sbb.py`).
-   * Start with our [template file](https://github.com/OpenDataMCP/OpenDataMCP/blob/main/src/odmcp/providers/__template__.py) as your base.
+   * Start with our [template file](https://github.com/derekslinz/opendata-mcp/blob/main/src/odmcp/providers/__template__.py) as your base.
 2. **Implement Required Components**
 
    * Define your Tools & Resources following the template structure
@@ -241,7 +239,8 @@ Because of our target scale we want to keep things simple and pragmatic at first
 * [X] Initialize repository with guidelines, testing framework, and contribution workflow
 * [X] Implement CI/CD pipeline with automated PyPI releases
 * [X] Develop provider template and first reference implementation
-* [ ] **Integrate additional open datasets (actively seeking contributors)**
+* [X] **Implement and harden NASA, Copernicus, and DB providers**
+* [ ] Integrate additional open datasets (actively seeking contributors)
 * [ ] Establish clear guidelines for choosing between Resources and Tools
 * [ ] Develop scalable repository architecture for long-term growth
 * [ ] Expand MCP SDK parameter support (authentication, rate limiting, etc.)
@@ -277,7 +276,8 @@ As Anthropic's MCP evolves we will adapt and upgrade Open Data MCP.
 
 ## References
 
-* Kudos to [Anthropic&#39;s open source MCP](https://spec.modelcontextprotocol.io/) release enabling initiative like this one.
+* This project was originally conceived by [grll](https://github.com/grll).
+* Kudos to [Anthropic's open source MCP](https://spec.modelcontextprotocol.io/) release enabling initiative like this one.
 
 ## License
 
