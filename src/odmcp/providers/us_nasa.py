@@ -53,7 +53,9 @@ def fetch_apod(params: APODParams) -> dict:
     if params.date:
         query_params["date"] = params.date
 
-    response = httpx.get(f"{BASE_URL}/planetary/apod", params=query_params)
+    response = httpx.get(
+        f"{BASE_URL}/planetary/apod", params=query_params, timeout=10.0
+    )
     response.raise_for_status()
     return response.json()
 
@@ -66,9 +68,16 @@ async def handle_get_apod(
         params = APODParams(**(arguments or {}))
         data = fetch_apod(params)
         return [types.TextContent(type="text", text=str(data))]
+    except httpx.HTTPError as e:
+        log.error(f"HTTP error fetching NASA APOD: {e}")
+        return [
+            types.TextContent(type="text", text=f"Error reaching NASA APOD API: {e}")
+        ]
     except Exception as e:
         log.error(f"Error fetching NASA APOD: {e}")
-        raise
+        return [
+            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
+        ]
 
 
 TOOLS.append(
@@ -101,7 +110,9 @@ def fetch_neows(params: NeoWsParams) -> dict:
         "start_date": params.start_date,
         "end_date": params.end_date,
     }
-    response = httpx.get(f"{BASE_URL}/neo/rest/v1/feed", params=query_params)
+    response = httpx.get(
+        f"{BASE_URL}/neo/rest/v1/feed", params=query_params, timeout=10.0
+    )
     response.raise_for_status()
     return response.json()
 
@@ -116,9 +127,16 @@ async def handle_get_asteroids(
         params = NeoWsParams(**arguments)
         data = fetch_neows(params)
         return [types.TextContent(type="text", text=str(data))]
+    except httpx.HTTPError as e:
+        log.error(f"HTTP error fetching NASA Asteroids: {e}")
+        return [
+            types.TextContent(type="text", text=f"Error reaching NASA NeoWs API: {e}")
+        ]
     except Exception as e:
         log.error(f"Error fetching NASA Asteroids: {e}")
-        raise
+        return [
+            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
+        ]
 
 
 TOOLS.append(
@@ -158,6 +176,7 @@ def fetch_mars_photos(params: MarsRoverParams) -> dict:
     response = httpx.get(
         f"{BASE_URL}/mars-photos/api/v1/rovers/{params.rover}/photos",
         params=query_params,
+        timeout=10.0,
     )
     response.raise_for_status()
     return response.json()
@@ -173,9 +192,18 @@ async def handle_get_mars_photos(
         params = MarsRoverParams(**arguments)
         data = fetch_mars_photos(params)
         return [types.TextContent(type="text", text=str(data))]
+    except httpx.HTTPError as e:
+        log.error(f"HTTP error fetching Mars photos: {e}")
+        return [
+            types.TextContent(
+                type="text", text=f"Error reaching NASA Mars Rover API: {e}"
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching Mars photos: {e}")
-        raise
+        return [
+            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
+        ]
 
 
 TOOLS.append(
@@ -204,7 +232,7 @@ def fetch_ace_data(params: ACESolarWindParams) -> list:
     Note: Real-time API only provides the last 7 days of data.
     """
     url = "https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"
-    response = httpx.get(url)
+    response = httpx.get(url, timeout=10.0)
     response.raise_for_status()
     data = response.json()
 
@@ -251,9 +279,18 @@ async def handle_get_ace_data(
             ]
 
         return [types.TextContent(type="text", text=str(data))]
+    except httpx.HTTPError as e:
+        log.error(f"HTTP error fetching ACE data: {e}")
+        return [
+            types.TextContent(
+                type="text", text=f"Error reaching NOAA Space Weather API: {e}"
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching ACE data: {e}")
-        raise
+        return [
+            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
+        ]
 
 
 TOOLS.append(

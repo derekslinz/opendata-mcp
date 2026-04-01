@@ -10,7 +10,8 @@ Tracking the evolution of OpenDataMCP.
 
 ## Phase 2: Expanding Data Ecosystem (In Progress)
 - [x] **Copernicus (EU Satellite Data)**: Integrated via STAC/OData <!-- id: 10 -->
-- [ ] NASA Data Integration (LANCE/CMR)
+- [x] NASA Data Integration (APOD, NeoWs, Mars Rovers, ACE Solar Wind)
+- [x] Deutsche Bahn Integration (Station Data, Timetables)
 - [ ] World Bank API Integration
 - [ ] OpenStreetMap Overpass API Integration
 
