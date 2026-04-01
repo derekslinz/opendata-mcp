@@ -159,18 +159,13 @@ def setup(provider: str):
             config["mcpServers"] = {}
 
         config["mcpServers"][f"odmcp-{provider.replace('_', '-')}"] = {
-            "command": "uv",
+            "command": sys.executable,
             "args": [
-                "run",
-                "--python",
-                "3.12",
-                "python",
-                str(Path(__file__).resolve()),
+                "-m",
+                "odmcp.cli",
                 "run",
                 provider,
             ],
-            "cwd": str(Path(__file__).resolve().parent.parent.parent),
-            "env": {"PYTHONPATH": str(Path(__file__).resolve().parent.parent)},
         }
 
         # Write updated config
