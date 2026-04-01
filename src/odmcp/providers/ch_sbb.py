@@ -136,10 +136,10 @@ def fetch_rail_traffic_info(params: TrafficInfoParams) -> TrafficInfoResponse:
     Returns:
         TrafficInfoResponse object containing the results
     """
-    # Implementation here
-    ...
     endpoint = f"{BASE_URL}/catalog/datasets/rail-traffic-information/records"
-    response = httpx.get(endpoint, params=params.model_dump(exclude_none=True))
+    response = httpx.get(
+        endpoint, params=params.model_dump(exclude_none=True), timeout=10.0
+    )
 
     response.raise_for_status()
 
@@ -151,7 +151,9 @@ async def handle_rail_traffic_info(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     try:
-        traffic_info_response = fetch_rail_traffic_info(TrafficInfoParams(**arguments))
+        traffic_info_response = fetch_rail_traffic_info(
+            TrafficInfoParams(**(arguments or {}))
+        )
         return [types.TextContent(type="text", text=str(traffic_info_response))]
     except Exception as e:
         log.error(f"Error fetching rail traffic info: {e}")
@@ -260,7 +262,9 @@ def fetch_railway_lines(params: RailwayLineParams) -> RailwayLineResponse:
         RailwayLineResponse object containing the results
     """
     endpoint = f"{BASE_URL}/catalog/datasets/linie/records"
-    response = httpx.get(endpoint, params=params.model_dump(exclude_none=True))
+    response = httpx.get(
+        endpoint, params=params.model_dump(exclude_none=True), timeout=10.0
+    )
     response.raise_for_status()
     return RailwayLineResponse(**response.json())
 
@@ -270,7 +274,9 @@ async def handle_railway_lines(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     try:
-        railway_lines_response = fetch_railway_lines(RailwayLineParams(**arguments))
+        railway_lines_response = fetch_railway_lines(
+            RailwayLineParams(**(arguments or {}))
+        )
         return [types.TextContent(type="text", text=str(railway_lines_response))]
     except Exception as e:
         log.error(f"Error fetching railway lines: {e}")
@@ -357,7 +363,9 @@ def fetch_rolling_stock(params: RollingStockParams) -> RollingStockResponse:
         RollingStockResponse object containing the results
     """
     endpoint = f"{BASE_URL}/catalog/datasets/rollmaterial/records"
-    response = httpx.get(endpoint, params=params.model_dump(exclude_none=True))
+    response = httpx.get(
+        endpoint, params=params.model_dump(exclude_none=True), timeout=10.0
+    )
     response.raise_for_status()
     return RollingStockResponse(**response.json())
 
@@ -367,7 +375,9 @@ async def handle_rolling_stock(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     try:
-        rolling_stock_response = fetch_rolling_stock(RollingStockParams(**arguments))
+        rolling_stock_response = fetch_rolling_stock(
+            RollingStockParams(**(arguments or {}))
+        )
         return [types.TextContent(type="text", text=str(rolling_stock_response))]
     except Exception as e:
         log.error(f"Error fetching rolling stock info: {e}")

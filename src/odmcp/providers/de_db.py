@@ -64,18 +64,9 @@ async def handle_list_stations(
         params = DBStationParams(**arguments)
         data = fetch_db_stations(params)
         return [types.TextContent(type="text", text=str(data))]
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error listing DB stations: {e}")
-        return [
-            types.TextContent(
-                type="text", text=f"Error: Unable to reach DB public API. {e}"
-            )
-        ]
     except Exception as e:
         log.error(f"Error listing DB stations: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(

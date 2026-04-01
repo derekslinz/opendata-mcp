@@ -49,14 +49,25 @@ class NdovListPathParams(BaseModel):
 
 def list_ndov_path(path: str) -> List[dict]:
     """Fetch and parse the HTML directory listing from NDOV Loket."""
+    from urllib.parse import urlparse
+
     # Ensure path starts and ends correctly
     if not path.startswith("/"):
         path = "/" + path
-    if not path.endswith("/") and "." not in path.split("/")[-1]:
+    last_segment = path.split("/")[-1]
+    if not path.endswith("/") and "." not in last_segment:
         path = path + "/"
 
     url = urljoin(BASE_URL, path.lstrip("/"))
-    response = httpx.get(url)
+
+    # Guard against SSRF: ensure the resolved URL stays on the expected host
+    parsed = urlparse(url)
+    expected = urlparse(BASE_URL)
+    if parsed.netloc != expected.netloc or parsed.scheme != expected.scheme:
+        raise ValueError(
+            f"Resolved URL '{url}' is outside the allowed host '{BASE_URL}'"
+        )
+    response = httpx.get(url, timeout=10.0)
     response.raise_for_status()
 
     # Simple regex-based parsing of the directory listing

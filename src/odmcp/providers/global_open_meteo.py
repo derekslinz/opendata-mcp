@@ -44,8 +44,12 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 class WeatherForecastParams(BaseModel):
     """Parameters for getting a weather forecast."""
 
-    latitude: float = Field(..., description="Latitude of the location")
-    longitude: float = Field(..., description="Longitude of the location")
+    latitude: float = Field(
+        ..., ge=-90.0, le=90.0, description="Latitude of the location"
+    )
+    longitude: float = Field(
+        ..., ge=-180.0, le=180.0, description="Longitude of the location"
+    )
     hourly: str = Field(
         default="temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m",
         description="Comma-separated hourly variables to return",
@@ -69,7 +73,7 @@ def fetch_weather_forecast(params: WeatherForecastParams) -> dict:
         "forecast_days": params.forecast_days,
         "timezone": "auto",
     }
-    response = httpx.get(FORECAST_URL, params=query_params)
+    response = httpx.get(FORECAST_URL, params=query_params, timeout=10.0)
     response.raise_for_status()
     return response.json()
 
@@ -104,8 +108,12 @@ TOOLS_HANDLERS["weather-get-forecast"] = handle_get_forecast
 class HistoricalWeatherParams(BaseModel):
     """Parameters for getting historical weather data."""
 
-    latitude: float = Field(..., description="Latitude of the location")
-    longitude: float = Field(..., description="Longitude of the location")
+    latitude: float = Field(
+        ..., ge=-90.0, le=90.0, description="Latitude of the location"
+    )
+    longitude: float = Field(
+        ..., ge=-180.0, le=180.0, description="Longitude of the location"
+    )
     start_date: str = Field(..., description="Start date (YYYY-MM-DD)")
     end_date: str = Field(..., description="End date (YYYY-MM-DD)")
     daily: str = Field(
@@ -124,7 +132,7 @@ def fetch_historical_weather(params: HistoricalWeatherParams) -> dict:
         "daily": params.daily,
         "timezone": "auto",
     }
-    response = httpx.get(ARCHIVE_URL, params=query_params)
+    response = httpx.get(ARCHIVE_URL, params=query_params, timeout=10.0)
     response.raise_for_status()
     return response.json()
 
@@ -159,8 +167,12 @@ TOOLS_HANDLERS["weather-get-historical"] = handle_get_historical_weather
 class AirQualityParams(BaseModel):
     """Parameters for getting air quality data."""
 
-    latitude: float = Field(..., description="Latitude of the location")
-    longitude: float = Field(..., description="Longitude of the location")
+    latitude: float = Field(
+        ..., ge=-90.0, le=90.0, description="Latitude of the location"
+    )
+    longitude: float = Field(
+        ..., ge=-180.0, le=180.0, description="Longitude of the location"
+    )
     hourly: str = Field(
         default="pm2_5,pm10,nitrogen_dioxide,ozone,dust",
         description="Comma-separated hourly variables to return",
@@ -175,7 +187,7 @@ def fetch_air_quality(params: AirQualityParams) -> dict:
         "hourly": params.hourly,
         "timezone": "auto",
     }
-    response = httpx.get(AIR_QUALITY_URL, params=query_params)
+    response = httpx.get(AIR_QUALITY_URL, params=query_params, timeout=10.0)
     response.raise_for_status()
     return response.json()
 

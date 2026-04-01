@@ -16,7 +16,6 @@ import logging
 from typing import Any, List, Optional, Sequence
 
 import httpx
-
 import mcp.types as types
 from pydantic import BaseModel, Field
 
