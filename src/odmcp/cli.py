@@ -209,13 +209,16 @@ def remove(provider: str):
         with open(config_path, "r") as f:
             config = json.load(f)
 
+        # Normalize key to match setup() format
+        server_key = f"odmcp-{provider.replace('_', '-')}"
+
         # Check if mcpServers exists and provider is configured
-        if "mcpServers" not in config or provider not in config["mcpServers"]:
+        if "mcpServers" not in config or server_key not in config["mcpServers"]:
             click.echo(f"Provider '{provider}' is not configured")
             return
 
         # Remove the provider
-        del config["mcpServers"][provider]
+        del config["mcpServers"][server_key]
 
         # Remove mcpServers if it's empty
         if not config["mcpServers"]:
