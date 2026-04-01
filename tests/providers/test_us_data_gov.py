@@ -63,6 +63,11 @@ def test_list_datagov_datasets(mock_search_response):
         result = list_datagov_datasets(params)
         assert result["count"] == 1
         assert result["results"][0]["name"] == "consumer-complaint-database"
+        mock_get.assert_called_once_with(
+            "https://catalog.data.gov/api/3/action/package_search",
+            params={"q": "complaints", "rows": 20, "start": 0},
+            timeout=10.0,
+        )
 
 
 @pytest.mark.anyio

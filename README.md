@@ -190,7 +190,7 @@ You can now ask questions to Claude about SBB train network disruption and it wi
      - Error handling
 
 5. **Validation**
-   * Test your MCP server using our experimental client: `uv run src/odmcp/providers/client.py`
+   * Test your MCP server using our experimental client: `uv run src/odmcp/client.py`
    * Verify all endpoints respond correctly
    * Ensure error messages are helpful
    * Check performance with typical query loads
