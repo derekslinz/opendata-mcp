@@ -126,7 +126,7 @@ def fetch_datagov_dataset(params: DataGovGetDatasetParams) -> dict:
     """Fetch full metadata for a specific US Data.gov dataset using CKAN package_show."""
     query_params = {"id": params.dataset_id}
 
-    response = httpx.get(SHOW_URL, params=query_params)
+    response = httpx.get(SHOW_URL, params=query_params, timeout=10.0)
     response.raise_for_status()
     data = response.json()
 
