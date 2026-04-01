@@ -7,8 +7,9 @@ name = "odmcp"
 dynamic = ["version"]
 description = "Python MCP servers exposing Open Data to compatible LLM clients."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
+    "click>=8.1.7",
     "httpx>=0.28.0",
     "mcp>=1.0.0",
 ]
@@ -24,7 +25,7 @@ line-length = 88
 target-version = "py312"
 
 [tool.pyright]
-include = ["src/mcp", "tests"]
+include = ["src/odmcp", "tests"]
 venvPath = "."
 venv = ".venv"
 
