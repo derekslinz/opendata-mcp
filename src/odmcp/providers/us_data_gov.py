@@ -58,7 +58,7 @@ def list_datagov_datasets(params: DataGovListDatasetsParams) -> dict:
         "start": params.start,
     }
 
-    response = httpx.get(SEARCH_URL, params=query_params)
+    response = httpx.get(SEARCH_URL, params=query_params, timeout=10.0)
     response.raise_for_status()
     data = response.json()
 
