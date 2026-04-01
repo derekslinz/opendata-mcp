@@ -71,7 +71,7 @@ server_params = StdioServerParameters(
         "-c",
         (
             "import anyio, sys; "
-            f"sys.path[:0] = {[str(ROOT / 'src'), str(Path(__file__).parent)]}; "
+            f"sys.path[:0] = {[str(ROOT), str(Path(__file__).parent)]}; "
             "from test_utils import main; "
             "anyio.run(main, backend='asyncio')"
         ),
