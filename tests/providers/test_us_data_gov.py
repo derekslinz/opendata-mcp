@@ -90,6 +90,11 @@ def test_fetch_datagov_dataset(mock_show_response):
         result = fetch_datagov_dataset(params)
         assert result["title"] == "Consumer Complaint Database"
         assert len(result["resources"]) == 1
+        mock_get.assert_called_once_with(
+            "https://catalog.data.gov/api/3/action/package_show",
+            params={"id": "consumer-complaint-database"},
+            timeout=10.0,
+        )
 
 
 @pytest.mark.anyio
