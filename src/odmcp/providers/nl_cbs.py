@@ -6,7 +6,7 @@ It allows querying various Dutch statistical datasets, including economic,
 geographic, and social data.
 
 Features:
-- OData v4 compatible querying
+- OData-style querying against CBS legacy OData endpoints (v2/v3 semantics)
 - Automatic JSON format handling
 - Metadata retrieval for data property descriptions
 - Support for paginated table catalogs
