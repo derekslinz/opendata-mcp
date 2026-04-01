@@ -28,13 +28,10 @@ def run(provider: str):
         module = importlib.import_module(f"odmcp.providers.{provider}")
         anyio.run(module.main)
     except ImportError as e:
-        import traceback
-
         click.echo(
             f"Provider '{provider}' not found or has missing dependencies.", err=True
         )
         click.echo(f"Error: {e}", err=True)
-        # Optional: traceback.print_exc()
         sys.exit(1)
     except Exception as e:
         import traceback
