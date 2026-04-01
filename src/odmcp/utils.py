@@ -10,16 +10,17 @@ log = logging.getLogger(__name__)
 
 def create_mcp_server(
     server_name: str,
-    resources: list[types.Resource] = [],
-    resources_handlers: dict[AnyUrl, Callable[[AnyUrl], str | bytes]] = {},
-    tools: list[types.Tool] = [],
+    resources: list[types.Resource] | None = None,
+    resources_handlers: dict[AnyUrl, Callable[[AnyUrl], str | bytes]] | None = None,
+    tools: list[types.Tool] | None = None,
     tools_handlers: dict[
         str,
         Callable[
             [dict[str, Any] | None],
             Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource],
         ],
-    ] = {},
+    ]
+    | None = None,
 ) -> Server:
     """
     Create a MCP server with the given tools and handlers.
@@ -32,40 +33,45 @@ def create_mcp_server(
     Returns:
         The created MCP server.
     """
+    _resources = resources or []
+    _resources_handlers = resources_handlers or {}
+    _tools = tools or []
+    _tools_handlers = tools_handlers or {}
+
     # instantiate the server
     server = Server(server_name)
 
     # register resources
     @server.list_resources()
     async def handle_list_resources() -> list[types.Resource]:
-        return resources
+        return _resources
 
     # register resources handlers
     # TODO: handle better the resource handler we probably dont want to have a handler per URI...
     @server.read_resource()
     async def handle_read_resource(resource_uri: AnyUrl) -> str | bytes:
-        if resource_uri not in resources_handlers:
+        if resource_uri not in _resources_handlers:
             log.error(f"Resource {resource_uri} not found")
             raise AttributeError(f"Resource {resource_uri} not found")
 
-        return resources_handlers[resource_uri]()
+        return _resources_handlers[resource_uri]()
 
     # register the tools
     @server.list_tools()
     async def handle_list_tools() -> list[types.Tool]:
-        return tools
+        return _tools
 
     # register the tools handlers
     @server.call_tool()
     async def handle_call_tool(
         name: str, arguments: dict[str, Any] | None = None
     ) -> Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-        if name not in tools_handlers:
+        if name not in _tools_handlers:
             log.error(f"Tool {name} not found")
             raise AttributeError(f"Tool {name} not found")
 
         try:
-            return await tools_handlers[name](arguments)
+            return await _tools_handlers[name](arguments)
         except Exception as e:
             log.error(f"Error calling tool {name}: {e}")
             raise

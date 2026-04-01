@@ -84,12 +84,12 @@ def fetch_cbs_data(params: CBSDataParams) -> dict:
         query_params["$select"] = params.select
     if params.filter:
         query_params["$filter"] = params.filter
-    if params.top:
+    if params.top is not None:
         query_params["$top"] = params.top
-    if params.skip:
+    if params.skip is not None:
         query_params["$skip"] = params.skip
 
-    response = httpx.get(endpoint, params=query_params)
+    response = httpx.get(endpoint, params=query_params, timeout=10.0)
     response.raise_for_status()
     return response.json()
 
@@ -200,9 +200,10 @@ def list_cbs_tables(params: CBSListTablesParams) -> dict:
         "$inlinecount": "allpages",
     }
     if params.search:
-        # Simple OData filter for search
+        # Escape single quotes for OData string literals (OData spec: double them)
+        safe_search = params.search.replace("'", "''")
         query_params["$filter"] = (
-            f"substringof('{params.search}', ShortTitle) or substringof('{params.search}', Title)"
+            f"substringof('{safe_search}', ShortTitle) or substringof('{safe_search}', Title)"
         )
 
     response = httpx.get(CATALOG_URL, params=query_params)

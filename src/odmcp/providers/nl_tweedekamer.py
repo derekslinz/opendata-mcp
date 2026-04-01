@@ -110,6 +110,12 @@ class TkQueryEntityParams(BaseModel):
 
 def query_tk_entity(params: TkQueryEntityParams) -> dict:
     """Execute an OData v4 query against the Tweedekamer API."""
+    # Validate entity against the known whitelist to prevent URL path traversal
+    known_entities = set(list_tk_entities())
+    if params.entity not in known_entities:
+        raise ValueError(
+            f"Unknown entity '{params.entity}'. Valid entities: {sorted(known_entities)}"
+        )
     url = f"{BASE_URL}/{params.entity}"
     query_params = {
         "$top": params.top,
@@ -123,7 +129,7 @@ def query_tk_entity(params: TkQueryEntityParams) -> dict:
         query_params["$expand"] = params.expand
 
     headers = {"Accept": "application/json"}
-    response = httpx.get(url, params=query_params, headers=headers)
+    response = httpx.get(url, params=query_params, headers=headers, timeout=10.0)
     response.raise_for_status()
     return response.json()
 

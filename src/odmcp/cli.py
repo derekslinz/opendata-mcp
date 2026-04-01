@@ -123,7 +123,9 @@ def setup(provider: str):
             / "Library/Application Support/Claude/claude_desktop_config.json"
         )
     else:  # Windows
-        config_path = Path(os.getenv("APPDATA")) / "Claude/claude_desktop_config.json"
+        config_path = (
+            Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
+        )
 
     # Check if config directory exists
     if not config_path.parent.exists():
@@ -195,7 +197,9 @@ def remove(provider: str):
             / "Library/Application Support/Claude/claude_desktop_config.json"
         )
     else:  # Windows
-        config_path = Path(os.getenv("APPDATA")) / "Claude/claude_desktop_config.json"
+        config_path = (
+            Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
+        )
 
     # Check if config file exists
     if not config_path.exists():
@@ -264,7 +268,7 @@ def setup_all():
             )
         elif system == "Windows":
             config_path = (
-                Path(os.getenv("APPDATA")) / "Claude/claude_desktop_config.json"
+                Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
             )
         else:
             click.echo("Only Windows and macOS are supported.")
@@ -294,18 +298,13 @@ def setup_all():
 
         for provider in providers:
             config["mcpServers"][f"odmcp-{provider.replace('_', '-')}"] = {
-                "command": "uv",
+                "command": sys.executable,
                 "args": [
-                    "run",
-                    "--python",
-                    "3.12",
-                    "python",
-                    str(Path(__file__).resolve()),
+                    "-m",
+                    "odmcp.cli",
                     "run",
                     provider,
                 ],
-                "cwd": str(Path(__file__).resolve().parent.parent.parent),
-                "env": {"PYTHONPATH": str(Path(__file__).resolve().parent.parent)},
             }
             click.echo(f"Registered {provider}")
 

@@ -69,7 +69,7 @@ def list_eurostat_datasets(
     params: EurostatListDatasetsParams,
 ) -> List[EurostatDatasetInfo]:
     """Search or list available Eurostat datasets from the TOC XML."""
-    response = httpx.get(TOC_URL)
+    response = httpx.get(TOC_URL, timeout=30.0)
     response.raise_for_status()
 
     root = ET.fromstring(response.content)
@@ -157,7 +157,7 @@ def fetch_eurostat_data(params: EurostatDataParams) -> dict:
     endpoint = f"{DATA_URL}/{params.dataset_code}"
     query_params = {"format": "JSON", "lang": params.lang}
 
-    response = httpx.get(endpoint, params=query_params)
+    response = httpx.get(endpoint, params=query_params, timeout=30.0)
     response.raise_for_status()
     return response.json()
 
@@ -202,17 +202,27 @@ class EurostatMetadataParams(BaseModel):
 
 
 def fetch_eurostat_metadata(params: EurostatMetadataParams) -> dict:
-    """Fetch metadata for a specific Eurostat dataset.
+    """Fetch dimension/label metadata for a specific Eurostat dataset.
 
-    Note: Using the data endpoint as it provides full structural metadata
-    in JSON-stat format and is more reliable than the dedicated metadata endpoint.
+    Returns only the 'dimension' and 'label' keys from the JSON-stat response,
+    which contain the dataset structure (variables, categories, labels) without
+    the full data values.
     """
     endpoint = f"{DATA_URL}/{params.dataset_code}"
     query_params = {"format": "JSON", "lang": params.lang}
 
-    response = httpx.get(endpoint, params=query_params)
+    response = httpx.get(endpoint, params=query_params, timeout=30.0)
     response.raise_for_status()
-    return response.json()
+    data = response.json()
+    # Return only structural metadata, not the full data values
+    return {
+        "id": data.get("id"),
+        "size": data.get("size"),
+        "dimension": data.get("dimension"),
+        "label": data.get("label"),
+        "updated": data.get("updated"),
+        "source": data.get("source"),
+    }
 
 
 async def handle_eurostat_get_metadata(
