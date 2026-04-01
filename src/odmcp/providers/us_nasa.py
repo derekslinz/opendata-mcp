@@ -199,21 +199,33 @@ class ACESolarWindParams(BaseModel):
     end_date: str = Field(..., description="End date (YYYY-MM-DD)")
 
 
-def fetch_ace_data(params: ACESolarWindParams) -> dict:
-    """Fetch ACE Solar Wind data from NASA CDAWeb.
-    Note: We use the CDF-JSON interface if available, or simplified text representation.
-    For this implementation, we use the HTTP API for data retrieval.
+def fetch_ace_data(params: ACESolarWindParams) -> list:
+    """Fetch ACE/DSCOVR Solar Wind data from NOAA SWPC.
+    Note: Real-time API only provides the last 7 days of data.
     """
-    # Simplified access to ACE H1 (High-resolution) solar wind parameters
-    # This is a simplified proxy - real CDAWeb API is more complex.
-    # We use a known open endpoint for solar wind counts.
-    # url = "https://cdaweb.gsfc.nasa.gov/pub/software/cdawlib/0JSON/ace/swics/h1/swi_h1_20240101_v01.json"
-    # Note: In a real implementation, we would build the URL dynamically.
-    # For now, we point to the general CDAWeb JSON explorer.
-    return {
-        "info": "NASA Specialized Science Data (ACE Solar Wind) is available at CDAWeb.",
-        "url": "https://cdaweb.gsfc.nasa.gov/cgi-bin/eval2.cgi?dataset=AC_H1_SWE&index=sp_phys",
-    }
+    url = "https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"
+    response = httpx.get(url)
+    response.raise_for_status()
+    data = response.json()
+
+    if not data or len(data) < 2:
+        return []
+
+    headers = data[0]
+    results = []
+
+    start_str = params.start_date
+    end_str = params.end_date
+
+    for row in data[1:]:
+        time_tag = row[0]
+        # time_tag format is "YYYY-MM-DD HH:MM:SS.SSS"
+        if time_tag:
+            date_part = time_tag.split(" ")[0]
+            if start_str <= date_part <= end_str:
+                results.append(dict(zip(headers, row)))
+
+    return results
 
 
 async def handle_get_ace_data(
@@ -221,12 +233,24 @@ async def handle_get_ace_data(
 ) -> Sequence[types.TextContent]:
     """Handle the nasa-get-ace-data tool call."""
     try:
-        return [
-            types.TextContent(
-                type="text",
-                text="ACE Solar Wind data can be explored at https://cdaweb.gsfc.nasa.gov/",
-            )
-        ]
+        if (
+            not arguments
+            or "start_date" not in arguments
+            or "end_date" not in arguments
+        ):
+            raise ValueError("start_date and end_date are required")
+        params = ACESolarWindParams(**arguments)
+        data = fetch_ace_data(params)
+
+        if not data:
+            return [
+                types.TextContent(
+                    type="text",
+                    text="No data found for the requested date range. Note: Only the last 7 days of data are available from the real-time data API.",
+                )
+            ]
+
+        return [types.TextContent(type="text", text=str(data))]
     except Exception as e:
         log.error(f"Error fetching ACE data: {e}")
         raise
