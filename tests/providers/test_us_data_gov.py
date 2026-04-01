@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from odmcp.providers.us_data_gov import (
+from opendata_mcp.providers.us_data_gov import (
     list_datagov_datasets,
     DataGovListDatasetsParams,
     handle_datagov_list_datasets,

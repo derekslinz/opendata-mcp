@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from odmcp.providers.nl_tweedekamer import (
+from opendata_mcp.providers.nl_tweedekamer import (
     list_tk_entities,
     query_tk_entity,
     TkQueryEntityParams,

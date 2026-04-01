@@ -15,17 +15,17 @@ dependencies = [
 ]
 
 [tool.hatch.version]
-path = "src/odmcp/__init__.py"
+path = "src/opendata_mcp/__init__.py"
 
 [project.scripts]
-opendata-mcp = "odmcp.cli:main"
+opendata-mcp = "opendata_mcp.cli:main"
 
 [tool.ruff]
 line-length = 88
 target-version = "py312"
 
 [tool.pyright]
-include = ["src/odmcp", "tests"]
+include = ["src/opendata_mcp", "tests"]
 venvPath = "."
 venv = ".venv"
 
@@ -49,4 +49,4 @@ log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/odmcp"]
+packages = ["src/opendata_mcp"]

@@ -1,5 +1,5 @@
 import pytest
-from odmcp.providers.us_doe_arm import handle_search_lasso
+from opendata_mcp.providers.us_doe_arm import handle_search_lasso
 
 
 @pytest.fixture

@@ -155,7 +155,7 @@ TOOLS_HANDLERS["db-get-timetable"] = handle_get_timetable
 
 async def main():
     from mcp.server.stdio import stdio_server
-    from odmcp.utils import create_mcp_server
+    from opendata_mcp.utils import create_mcp_server
 
     # create the server
     server = create_mcp_server(

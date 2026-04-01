@@ -132,7 +132,7 @@ TOOLS_HANDLERS["endpoint-name"] = handle_endpoint
 async def main():
     from mcp.server.stdio import stdio_server
 
-    from odmcp.utils import create_mcp_server
+    from opendata_mcp.utils import create_mcp_server
 
     server = create_mcp_server(
         "service.name", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS

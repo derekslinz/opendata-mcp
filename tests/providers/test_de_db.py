@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
 import httpx
-from odmcp.providers.de_db import handle_list_stations, handle_get_timetable
+from opendata_mcp.providers.de_db import handle_list_stations, handle_get_timetable
 
 
 @pytest.fixture

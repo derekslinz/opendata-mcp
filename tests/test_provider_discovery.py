@@ -1,5 +1,5 @@
 import pkgutil
-import odmcp.providers as providers
+import opendata_mcp.providers as providers
 
 
 def test_real_provider_discovery():
@@ -33,6 +33,6 @@ def test_provider_docs_present():
     ]
 
     for name in expected_new_providers:
-        module = importlib.import_module(f"odmcp.providers.{name}")
+        module = importlib.import_module(f"opendata_mcp.providers.{name}")
         assert module.__doc__ is not None, f"Provider {name} is missing a docstring"
         assert len(module.__doc__.strip()) > 0
