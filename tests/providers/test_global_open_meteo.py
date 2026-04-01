@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from odmcp.providers.global_open_meteo import (
+from opendata_mcp.providers.global_open_meteo import (
     fetch_weather_forecast,
     WeatherForecastParams,
     handle_get_forecast,

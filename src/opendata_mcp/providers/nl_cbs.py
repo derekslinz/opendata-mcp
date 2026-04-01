@@ -239,7 +239,7 @@ TOOLS_HANDLERS["cbs-list-tables"] = handle_cbs_list_tables
 
 async def main():
     from mcp.server.stdio import stdio_server
-    from odmcp.utils import create_mcp_server
+    from opendata_mcp.utils import create_mcp_server
 
     # create the server
     server = create_mcp_server(

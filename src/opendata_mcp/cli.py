@@ -12,7 +12,7 @@ if src_path not in sys.path:
 
 import anyio  # noqa: E402
 import click  # noqa: E402
-from odmcp import __version__  # noqa: E402
+from opendata_mcp import __version__  # noqa: E402
 
 LIB_NAME = "opendata-mcp"
 SERVER_PREFIX = "opendata-mcp-"
@@ -25,7 +25,7 @@ def cli():
 
 
 def _import_provider_module(provider: str):
-    return importlib.import_module(f"odmcp.providers.{provider}")
+    return importlib.import_module(f"opendata_mcp.providers.{provider}")
 
 
 @cli.command()
@@ -55,7 +55,7 @@ def list():
     try:
         import pkgutil
 
-        import odmcp.providers as providers_pkg
+        import opendata_mcp.providers as providers_pkg
 
         # Get all modules in the providers package
         providers = [
@@ -90,7 +90,7 @@ def info(provider: str):
             click.echo(f"Supported types: {', '.join(module.SUPPORTED_TYPES)}")
     except ImportError:
         click.echo(f"Provider '{provider}' not found. Make sure it's installed with:")
-        click.echo(f"uv pip install 'odmcp[{provider}]'")
+        click.echo(f"uv pip install 'opendata_mcp[{provider}]'")
         sys.exit(1)
     except Exception as e:
         click.echo(f"Error getting provider info: {e}")
@@ -283,7 +283,7 @@ def setup_all(local: bool, force: bool):
     """Setup all MCP servers for use with Claude Desktop"""
     try:
         import pkgutil
-        import odmcp.providers as providers_pkg
+        import opendata_mcp.providers as providers_pkg
 
         providers = [
             name

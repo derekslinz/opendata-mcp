@@ -9,7 +9,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server.stdio import stdio_server
 
-from odmcp.utils import create_mcp_server
+from opendata_mcp.utils import create_mcp_server
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[2]
@@ -71,9 +71,9 @@ server_params = StdioServerParameters(
         "-c",
         (
             "import anyio, sys; "
-            f"sys.path[:0] = {[str(ROOT / 'src'), str(ROOT / 'tests/providers')]}; "
+            f"sys.path[:0] = {[str(ROOT / 'src'), str(Path(__file__).parent)]}; "
             "from test_utils import main; "
-            "anyio.run(main)"
+            "anyio.run(main, backend='asyncio')"
         ),
     ],
 )

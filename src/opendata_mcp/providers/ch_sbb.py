@@ -401,7 +401,7 @@ TOOLS_HANDLERS["rolling-stock"] = handle_rolling_stock
 
 
 async def main():
-    from odmcp.utils import create_mcp_server
+    from opendata_mcp.utils import create_mcp_server
 
     # create the server
     server = create_mcp_server(

@@ -165,7 +165,7 @@ TOOLS_HANDLERS["us-datagov-get-dataset"] = handle_datagov_get_dataset
 async def main():
     from mcp.server.stdio import stdio_server
 
-    from odmcp.utils import create_mcp_server
+    from opendata_mcp.utils import create_mcp_server
 
     # create the server
     server = create_mcp_server(

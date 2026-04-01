@@ -215,7 +215,7 @@ TOOLS_HANDLERS["copernicus-get-product-metadata"] = handle_get_product_metadata
 
 async def main():
     from mcp.server.stdio import stdio_server
-    from odmcp.utils import create_mcp_server
+    from opendata_mcp.utils import create_mcp_server
 
     # create the server
     server = create_mcp_server(
