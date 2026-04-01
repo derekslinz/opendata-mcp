@@ -118,10 +118,39 @@ def test_list_cbs_tables(mock_cbs_catalog_response):
 
 @pytest.mark.anyio
 async def test_handle_cbs_list_tables(mock_cbs_catalog_response):
+    # Add odata.count to mock response
+    mock_response = mock_cbs_catalog_response.copy()
+    mock_response["odata.count"] = 100
+
     with patch("httpx.get") as mock_get:
-        mock_get.return_value.json.return_value = mock_cbs_catalog_response
+        mock_get.return_value.json.return_value = mock_response
         mock_get.return_value.raise_for_status = Mock()
 
+        # Test with search
         result = await handle_cbs_list_tables({"search": "Fuel"})
-
         assert "80416ENG" in result[0].text
+        assert "'total_count': 100" in result[0].text
+        args, kwargs = mock_get.call_args
+        assert kwargs["params"]["$top"] == 10
+        assert kwargs["params"]["$skip"] == 0
+        assert kwargs["params"]["$inlinecount"] == "allpages"
+
+        # Test with pagination
+        result = await handle_cbs_list_tables({"top": 5, "skip": 10})
+        args, kwargs = mock_get.call_args
+        assert kwargs["params"]["$top"] == 5
+        assert kwargs["params"]["$skip"] == 10
+
+
+@pytest.mark.anyio
+async def test_handle_cbs_data_pagination(mock_cbs_data_response):
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = mock_cbs_data_response
+        mock_get.return_value.raise_for_status = Mock()
+
+        # Test with top and skip
+        result = await handle_cbs_data({"table_id": "80416ENG", "top": 5, "skip": 10})
+        assert "2023MM01" in result[0].text
+        args, kwargs = mock_get.call_args
+        assert kwargs["params"]["$top"] == 5
+        assert kwargs["params"]["$skip"] == 10
