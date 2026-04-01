@@ -9,14 +9,14 @@
    <a href="https://github.com/derekslinz/opendata-mcp/actions/workflows/ci.yml" target="_blank">
     <img src="https://github.com/derekslinz/opendata-mcp/actions/workflows/ci.yml/badge.svg" alt="CI">
    </a>
-   <a href="https://pypi.org/project/odmcp" target="_blank">
-       <img src="https://img.shields.io/pypi/v/odmcp?color=%2334D058&label=pypi%20package" alt="Package version">
+   <a href="https://pypi.org/project/opendata-mcp" target="_blank">
+       <img src="https://img.shields.io/pypi/v/opendata-mcp?color=%2334D058&label=pypi%20package" alt="Package version">
    </a>
    <a href="https://github.com/derekslinz/opendata-mcp/blob/main/LICENSE" target="_blank">
       <img src="https://img.shields.io/github/license/derekslinz/opendata-mcp.svg" alt="License">
    </a>
-   <a href="https://pepy.tech/badge/odmcp" target="_blank">
-      <img src="https://pepy.tech/badge/odmcp?cache-control=no-cache" alt="License">
+   <a href="https://pepy.tech/badge/opendata-mcp" target="_blank">
+      <img src="https://pepy.tech/badge/opendata-mcp?cache-control=no-cache" alt="License">
    </a>
    <a href="https://github.com/derekslinz/opendata-mcp/stargazers" target="_blank">
       <img src="https://img.shields.io/github/stars/derekslinz/opendata-mcp.svg?cache-control=no-cache" alt="Stars">
@@ -80,30 +80,30 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ##### Overview
 
-For local development and testing, use **`uv run odmcp`**:
+For local development and testing, use **`uv run opendata-mcp`**:
 
 ```bash
 # show available commands
-uv run odmcp 
+uv run opendata-mcp 
 
 # show available providers
-uv run odmcp list
+uv run opendata-mcp list
 
 # show info about a provider
-uv run odmcp info $PROVIDER_NAME
+uv run opendata-mcp info $PROVIDER_NAME
 
 # setup a provider's MCP server on your Claude Desktop app
-uv run odmcp setup $PROVIDER_NAME
+uv run opendata-mcp setup $PROVIDER_NAME
 
 # remove a provider's MCP server from your Claude Desktop app
-uv run odmcp remove $PROVIDER_NAME
+uv run opendata-mcp remove $PROVIDER_NAME
 ```
 
 Quickstart for the Switzerland SBB (train company) provider:
 
 ```bash
 # make sure claude is installed
-uv run odmcp setup ch_sbb
+uv run opendata-mcp setup ch_sbb
 ```
 
 Restart Claude and you should see a new hammer icon at the bottom right of the chat.
@@ -154,9 +154,9 @@ You can now ask questions to Claude about SBB train network disruption and it wi
 1. **Create a New Provider Module**
 
    * Each data source needs its own python module.
-   * Create a new Python module in `src/odmcp/providers/`.
+   * Create a new Python module in `opendata_mcp/providers/`.
    * Use a descriptive name following the pattern: `{country_code}_{organization}.py` (e.g., `ch_sbb.py`).
-   * Start with our [template file](https://github.com/derekslinz/opendata-mcp/blob/main/src/odmcp/providers/__template__.py) as your base.
+   * Start with our [template file](https://github.com/derekslinz/opendata-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
 2. **Implement Required Components**
 
    * Define your Tools & Resources following the template structure
@@ -187,12 +187,12 @@ You can now ask questions to Claude about SBB train network disruption and it wi
      - Error handling
 5. **Validation**
 
-   * Test your MCP server using our experimental client: `uv run src/odmcp/providers/client.py`
+   * Test your MCP server using our experimental client: `uv run opendata_mcp/client.py`
    * Verify all endpoints respond correctly
    * Ensure error messages are helpful
    * Check performance with typical query loads
 
-For other examples, check our existing providers in the `src/odmcp/providers/` directory.
+For other examples, check our existing providers in the `opendata_mcp/providers/` directory.
 
 ## Contributing
 
