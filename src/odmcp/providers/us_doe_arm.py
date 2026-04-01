@@ -15,6 +15,8 @@ Usage:
 import logging
 from typing import Any, List, Optional, Sequence
 
+import httpx
+
 import mcp.types as types
 from pydantic import BaseModel, Field
 
@@ -52,13 +54,17 @@ def fetch_lasso_metadata(params: LassoBundleParams) -> dict:
     Note: Real-time data ordering often requires a user account.
     We provide metadata discovery for LASSO products.
     """
-    # For this implementation, we provide the metadata discovery structure.
-    # The ARM Metadata API uses a POST or GET with specific query fields.
+    # Note: In a production hardening pass, we would hit the ARM_METADATA_URL
+    # For now, we provide the discovery structure.
+    # Example placeholder for real call:
+    # async with httpx.AsyncClient(timeout=10.0) as client:
+    #     response = await client.get(ARM_METADATA_URL, params=params.model_dump())
+    #     response.raise_for_status()
     return {
         "info": "DOE ARM LASSO data bundles can be discovered via the ARM Data Center.",
         "url": "https://adc.arm.gov/lasso/",
         "lasso_campaigns": ["SGP (Shallow Cumulus)", "CACTI (Deep Convection)"],
-        "discovery_note": "Use 'lasso-bundle-search' to find specific datasets.",
+        "discovery_note": "Use 'arm-search-lasso' to find specific datasets.",
     }
 
 
@@ -70,9 +76,14 @@ async def handle_search_lasso(
         params = LassoBundleParams(**(arguments or {}))
         data = fetch_lasso_metadata(params)
         return [types.TextContent(type="text", text=str(data))]
+    except httpx.HTTPError as e:
+        log.error(f"HTTP error searching ARM LASSO: {e}")
+        return [types.TextContent(type="text", text=f"Error reaching DOE ARM API: {e}")]
     except Exception as e:
         log.error(f"Error searching ARM LASSO: {e}")
-        raise
+        return [
+            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
+        ]
 
 
 TOOLS.append(

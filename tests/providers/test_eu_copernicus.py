@@ -1,5 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
+import httpx
+
 from odmcp.providers.eu_copernicus import (
     list_copernicus_collections,
     ListCollectionsParams,
@@ -127,3 +129,27 @@ async def test_handle_get_product_metadata(mock_odata_product):
         assert len(result) == 1
         assert "uuid-1234" in result[0].text
         assert "S2A_MSIL2A_20230101" in result[0].text
+
+
+@pytest.mark.anyio
+async def test_handle_list_collections_error():
+    with patch("httpx.get") as mock_get:
+        mock_get.side_effect = httpx.HTTPError("STAC API is down")
+        result = await handle_list_collections({})
+        assert "Error: Unable to reach Copernicus STAC API" in result[0].text
+
+
+@pytest.mark.anyio
+async def test_handle_search_products_error():
+    with patch("httpx.post") as mock_post:
+        mock_post.side_effect = httpx.HTTPError("STAC Search failed")
+        result = await handle_search_products({"collection": "sentinel-2a-l2a"})
+        assert "Error searching Copernicus products" in result[0].text
+
+
+@pytest.mark.anyio
+async def test_handle_get_product_metadata_error():
+    with patch("httpx.get") as mock_get:
+        mock_get.side_effect = httpx.HTTPError("OData timeout")
+        result = await handle_get_product_metadata({"product_id": "uuid-1234"})
+        assert "Error fetching product metadata" in result[0].text

@@ -12,15 +12,15 @@ created: 2026-03-21
 # Plan: NASA & DB Integration
 
 ## NASA Provider (`us_nasa.py`)
-- [ ] Implement APOD tool.
-- [ ] Implement NeoWs (Asteroid) tool.
-- [ ] Implement Mars Rover Photos tool.
-- [ ] Implement Space Weather (ACE Solar Wind) tool.
+- [x] Implement APOD tool.
+- [x] Implement NeoWs (Asteroid) tool.
+- [x] Implement Mars Rover Photos tool.
+- [x] Implement Space Weather (ACE Solar Wind) tool.
 
 ## DB Transit Provider (`de_db.py`)
-- [ ] Implement Station Search tool.
-- [ ] Implement Arrivals/Departures tool.
+- [x] Implement Station Search tool.
+- [x] Implement Arrivals/Departures tool.
 
 ## Verification
-- Unit tests for both.
-- CLI discovery verification.
+- [x] Unit tests for both.
+- [x] CLI discovery verification.

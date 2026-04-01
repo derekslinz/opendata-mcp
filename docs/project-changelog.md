@@ -19,12 +19,16 @@ All notable changes to this project will be documented in this file.
   - `nasa-get-apod`: Astronomy Picture of the Day.
   - `nasa-get-asteroids`: NeoWs asteroid tracking.
   - `nasa-get-mars-photos`: Photos from Curiosity, Opportunity, and Spirit.
-  - `nasa-get-ace-data`: ACE Solar Wind science data.
-- **Deutsche Bahn (DB) Transit Provider**: German rail connectivity.
-  - `db-list-stations`: Station search and details.
+  - `nasa-get-ace-data`: ACE/DSCOVR Solar Wind real-time data.
+  - *Hardened with explicit timeouts and error handling.*
+- **Deutsche Bahn (DB) Transit Provider**: German rail connectivity using public API.
+  - `db-list-stations`: Live station search and details.
+  - `db-get-timetable`: Real-time departures and arrivals.
 - **DOE ARM Provider (LASSO)**: Atmospheric science simulations.
   - `arm-search-lasso`: Discover LASSO data bundles.
-- **Verification**: New unit test suite in `tests/providers/test_new_scientific_providers.py`.
+- **Verification**: Dedicated unit test suite per provider in `tests/providers/`.
+  - Added `test_de_db.py`, `test_us_nasa.py`, `test_us_doe_arm.py`.
+  - Hardened `test_eu_copernicus.py`.
 
 ## [1.0.0] - 2024-11-20
 
