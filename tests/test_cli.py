@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from click.testing import CliRunner
@@ -12,8 +12,14 @@ def runner():
 
 
 def test_run_valid_provider(runner):
-    # TODO: Implement this test
-    pass
+    mock_module = type("Module", (), {"main": AsyncMock()})
+
+    with patch("odmcp.cli._import_provider_module", return_value=mock_module):
+        with patch("odmcp.cli.anyio.run") as mock_run:
+            result = runner.invoke(cli, ["run", "test_provider"])
+
+    assert result.exit_code == 0
+    mock_run.assert_called_once_with(mock_module.main)
 
 
 def test_run_invalid_provider(runner):
@@ -73,10 +79,25 @@ def test_info_invalid_provider(runner):
 
 
 def test_version_command(runner):
-    with patch("importlib.metadata.version") as mock_version:
-        mock_version.return_value = "1.0.0"
-
+    with patch("odmcp.cli.__version__", "1.0.0"):
         result = runner.invoke(cli, ["version"])
 
-        assert result.exit_code == 0
-        assert "odmcp version: 1.0.0" in result.output
+    assert result.exit_code == 0
+    assert "odmcp version: 1.0.0" in result.output
+
+
+def test_setup_invalid_provider_does_not_write_config(runner, tmp_path):
+    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
+    claude_dir.mkdir(parents=True)
+    config_path = claude_dir / "claude_desktop_config.json"
+
+    with patch("odmcp.cli.platform.system", return_value="Darwin"):
+        with patch("odmcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "nonexistent_provider"])
+
+    assert result.exit_code == 1
+    assert (
+        "Provider 'nonexistent_provider' not found or has missing dependencies."
+        in result.output
+    )
+    assert not config_path.exists()

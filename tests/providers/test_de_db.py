@@ -29,8 +29,8 @@ async def test_db_list_stations_error():
     with patch("httpx.get") as mock_get:
         mock_get.side_effect = httpx.HTTPError("Connection failed")
 
-        result = await handle_list_stations({"search": "Berlin"})
-        assert "Error: Unable to reach DB public API" in result[0].text
+        with pytest.raises(httpx.HTTPError):
+            await handle_list_stations({"search": "Berlin"})
 
 
 @pytest.mark.anyio
@@ -58,5 +58,5 @@ async def test_db_get_timetable_error():
     with patch("httpx.get") as mock_get:
         mock_get.side_effect = httpx.HTTPError("Timeout")
 
-        result = await handle_get_timetable({"station_id": "8011160"})
-        assert "Error reaching DB public timetable API" in result[0].text
+        with pytest.raises(httpx.HTTPError):
+            await handle_get_timetable({"station_id": "8011160"})

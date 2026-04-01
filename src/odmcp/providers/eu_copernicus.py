@@ -86,21 +86,10 @@ async def handle_list_collections(
         params = ListCollectionsParams(**(arguments or {}))
         collections = list_copernicus_collections(params)
         text = str([c.model_dump() for c in collections])
-        return [
-            types.TextContent(type="text", text=text[:10000])
-        ]  # Truncate if too long
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error listing Copernicus collections: {e}")
-        return [
-            types.TextContent(
-                type="text", text=f"Error: Unable to reach Copernicus STAC API. {e}"
-            )
-        ]
+        return [types.TextContent(type="text", text=text[:10000])]
     except Exception as e:
         log.error(f"Error listing Copernicus collections: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(
@@ -168,18 +157,9 @@ async def handle_search_products(
                 }
             )
         return [types.TextContent(type="text", text=str(summary)[:10000])]
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error searching Copernicus products: {e}")
-        return [
-            types.TextContent(
-                type="text", text=f"Error searching Copernicus products: {e}"
-            )
-        ]
     except Exception as e:
         log.error(f"Error searching Copernicus products: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(
@@ -218,16 +198,9 @@ async def handle_get_product_metadata(
         params = ProductMetadataParams(**(arguments or {}))
         data = fetch_product_metadata(params)
         return [types.TextContent(type="text", text=str(data)[:15000])]
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error fetching Copernicus product metadata: {e}")
-        return [
-            types.TextContent(type="text", text=f"Error fetching product metadata: {e}")
-        ]
     except Exception as e:
         log.error(f"Error fetching Copernicus product metadata: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(

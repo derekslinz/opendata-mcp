@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 def create_mcp_server(
     server_name: str,
     resources: list[types.Resource] | None = None,
-    resources_handlers: dict[AnyUrl, Callable[[AnyUrl], str | bytes]] | None = None,
+    resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]] | None = None,
     tools: list[types.Tool] | None = None,
     tools_handlers: dict[
         str,
@@ -50,11 +50,13 @@ def create_mcp_server(
     # TODO: handle better the resource handler we probably dont want to have a handler per URI...
     @server.read_resource()
     async def handle_read_resource(resource_uri: AnyUrl) -> str | bytes:
-        if resource_uri not in _resources_handlers:
+        resource_key = str(resource_uri)
+
+        if resource_key not in _resources_handlers:
             log.error(f"Resource {resource_uri} not found")
             raise AttributeError(f"Resource {resource_uri} not found")
 
-        return _resources_handlers[resource_uri]()
+        return _resources_handlers[resource_key](resource_uri)
 
     # register the tools
     @server.list_tools()

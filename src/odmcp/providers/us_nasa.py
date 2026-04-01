@@ -68,22 +68,15 @@ async def handle_get_apod(
         params = APODParams(**(arguments or {}))
         data = fetch_apod(params)
         return [types.TextContent(type="text", text=str(data))]
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error fetching NASA APOD: {e}")
-        return [
-            types.TextContent(type="text", text=f"Error reaching NASA APOD API: {e}")
-        ]
     except Exception as e:
         log.error(f"Error fetching NASA APOD: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(
     types.Tool(
         name="nasa-get-apod",
-        description="Get NASA's Astronomy Picture of the Day with its explanation.",
+        description="Get NASA's Astronomy Picture of the Day with its explanation. Uses DEMO_KEY (30 req/hr limit). Set NASA_API_KEY env var to use a personal key.",
         inputSchema=APODParams.model_json_schema(),
     )
 )
@@ -98,9 +91,15 @@ class NeoWsParams(BaseModel):
     """Parameters for getting Near Earth Objects."""
 
     start_date: str = Field(
-        ..., description="Start date for asteroid search (YYYY-MM-DD)"
+        ...,
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="Start date for asteroid search (YYYY-MM-DD)",
     )
-    end_date: str = Field(..., description="End date for asteroid search (YYYY-MM-DD)")
+    end_date: str = Field(
+        ...,
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="End date for asteroid search (YYYY-MM-DD)",
+    )
 
 
 def fetch_neows(params: NeoWsParams) -> dict:
@@ -127,16 +126,9 @@ async def handle_get_asteroids(
         params = NeoWsParams(**arguments)
         data = fetch_neows(params)
         return [types.TextContent(type="text", text=str(data))]
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error fetching NASA Asteroids: {e}")
-        return [
-            types.TextContent(type="text", text=f"Error reaching NASA NeoWs API: {e}")
-        ]
     except Exception as e:
         log.error(f"Error fetching NASA Asteroids: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(
@@ -160,7 +152,9 @@ class MarsRoverParams(BaseModel):
         ..., description="The rover name (curiosity, opportunity, spirit)"
     )
     earth_date: str = Field(
-        ..., description="The Earth date the photo was taken (YYYY-MM-DD)"
+        ...,
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="The Earth date the photo was taken (YYYY-MM-DD)",
     )
     camera: Optional[str] = Field(
         None, description="The camera abbreviation (e.g., FHAZ, RHAZ, MAST)"
@@ -192,18 +186,9 @@ async def handle_get_mars_photos(
         params = MarsRoverParams(**arguments)
         data = fetch_mars_photos(params)
         return [types.TextContent(type="text", text=str(data))]
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error fetching Mars photos: {e}")
-        return [
-            types.TextContent(
-                type="text", text=f"Error reaching NASA Mars Rover API: {e}"
-            )
-        ]
     except Exception as e:
         log.error(f"Error fetching Mars photos: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(
@@ -223,8 +208,12 @@ TOOLS_HANDLERS["nasa-get-mars-photos"] = handle_get_mars_photos
 class ACESolarWindParams(BaseModel):
     """Parameters for fetching ACE Solar Wind data."""
 
-    start_date: str = Field(..., description="Start date (YYYY-MM-DD)")
-    end_date: str = Field(..., description="End date (YYYY-MM-DD)")
+    start_date: str = Field(
+        ..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="Start date (YYYY-MM-DD)"
+    )
+    end_date: str = Field(
+        ..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="End date (YYYY-MM-DD)"
+    )
 
 
 def fetch_ace_data(params: ACESolarWindParams) -> list:
@@ -274,29 +263,20 @@ async def handle_get_ace_data(
             return [
                 types.TextContent(
                     type="text",
-                    text="No data found for the requested date range. Note: Only the last 7 days of data are available from the real-time data API.",
+                    text="No data found for the requested date range. Note: Only the last 7 days of data are available from the real-time NOAA Space Weather API.",
                 )
             ]
 
         return [types.TextContent(type="text", text=str(data))]
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error fetching ACE data: {e}")
-        return [
-            types.TextContent(
-                type="text", text=f"Error reaching NOAA Space Weather API: {e}"
-            )
-        ]
     except Exception as e:
         log.error(f"Error fetching ACE data: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(
     types.Tool(
         name="nasa-get-ace-data",
-        description="Get information about the ACE (Advanced Composition Explorer) Solar Wind data.",
+        description="Get Solar Wind plasma data from NOAA Space Weather (last 7 days only). Dates outside that window return no results.",
         inputSchema=ACESolarWindParams.model_json_schema(),
     )
 )

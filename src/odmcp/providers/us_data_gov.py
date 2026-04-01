@@ -93,7 +93,7 @@ async def handle_datagov_list_datasets(
 
         output = {"count": result.get("count"), "datasets": simplified_results}
 
-        return [types.TextContent(type="text", text=str(output))]
+        return [types.TextContent(type="text", text=str(output)[:20000])]
     except Exception as e:
         log.error(f"Error listing Data.gov datasets: {e}")
         raise

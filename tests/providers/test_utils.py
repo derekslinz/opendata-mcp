@@ -1,4 +1,6 @@
 import logging
+import sys
+from pathlib import Path
 from typing import Any, Sequence
 
 import mcp.types as types
@@ -10,9 +12,24 @@ from mcp.server.stdio import stdio_server
 from odmcp.utils import create_mcp_server
 
 log = logging.getLogger(__name__)
+ROOT = Path(__file__).resolve().parents[2]
+RESOURCE_URI = "test://resource"
 
-RESOURCES = []
-RESOURCES_HANDLERS = {}
+RESOURCES = [
+    types.Resource(
+        name="test-resource",
+        uri=RESOURCE_URI,
+        description="Test resource",
+        mimeType="text/plain",
+    )
+]
+
+
+def handle_test_resource(resource_uri: str) -> str:
+    return f"Resource for {resource_uri}"
+
+
+RESOURCES_HANDLERS = {RESOURCE_URI: handle_test_resource}
 TOOLS = [
     types.Tool(
         name="test-tool",
@@ -49,10 +66,15 @@ async def main():
 
 # Set up server parameters
 server_params = StdioServerParameters(
-    command="python",
+    command=sys.executable,
     args=[
         "-c",
-        "import anyio;from tests.providers.test_utils import main; anyio.run(main)",
+        (
+            "import anyio, sys; "
+            f"sys.path[:0] = {[str(ROOT / 'src'), str(ROOT / 'tests/providers')]}; "
+            "from test_utils import main; "
+            "anyio.run(main)"
+        ),
     ],
 )
 
@@ -73,6 +95,14 @@ async def test_client_server_interaction():
             tools = await session.list_tools()
             assert tools.tools[0].name == "test-tool"
             assert tools.tools[0].description == "Test tool"
+
+            resources = await session.list_resources()
+            assert len(resources.resources) == 1
+            assert str(resources.resources[0].uri) == RESOURCE_URI
+
+            resource = await session.read_resource(RESOURCE_URI)
+            assert len(resource.contents) == 1
+            assert resource.contents[0].text == f"Resource for {RESOURCE_URI}"
 
             # Test calling the tool
             log.info("Calling tool")
