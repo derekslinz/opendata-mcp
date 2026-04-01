@@ -18,7 +18,7 @@ dependencies = [
 path = "src/odmcp/__init__.py"
 
 [project.scripts]
-odmcp = "odmcp.cli:main"
+opendata-mcp = "odmcp.cli:main"
 
 [tool.ruff]
 line-length = 88

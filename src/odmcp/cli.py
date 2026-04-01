@@ -14,10 +14,13 @@ import anyio  # noqa: E402
 import click  # noqa: E402
 from odmcp import __version__  # noqa: E402
 
+LIB_NAME = "opendata-mcp"
+SERVER_PREFIX = "opendata-mcp-"
+
 
 @click.group()
 def cli():
-    """OpenDataMCP CLI tool"""
+    """OpenDataMCP CLI tool - Build and use open data MCP servers."""
     pass
 
 
@@ -96,17 +99,21 @@ def info(provider: str):
 
 @cli.command()
 def version():
-    """Show the odmcp version"""
+    """Show the version of opendata-mcp"""
     try:
-        click.echo(f"odmcp version: {__version__}")
+        click.echo(f"opendata-mcp version: {__version__}")
     except Exception as e:
-        click.echo(f"Error getting odmcp version: {e}")
+        click.echo(f"Error getting version: {e}")
         sys.exit(1)
 
 
 @cli.command()
 @click.argument("provider")
-def setup(provider: str):
+@click.option(
+    "--local", is_flag=True, help="Force local development mode using absolute paths."
+)
+@click.option("--force", is_flag=True, help="Overwrite existing configuration.")
+def setup(provider: str, local: bool, force: bool):
     """Setup the MCP server for use with Claude Desktop"""
     try:
         _import_provider_module(provider)
@@ -134,53 +141,73 @@ def setup(provider: str):
             Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
         )
 
-    # Check if config directory exists
     if not config_path.parent.exists():
         click.echo(
-            f"Couldn't find Claude configuration directory at {config_path.parent}. Have you installed the Claude Desktop app?"
+            f"Couldn't find Claude configuration directory at {config_path.parent}"
         )
         sys.exit(1)
 
-    # Create config file if it doesn't exist
-    if not config_path.exists():
-        with open(config_path, "w") as f:
-            json.dump({}, f, indent=2)
-
-    try:
-        # Read existing config
-        with open(config_path, "r") as f:
-            config = json.load(f)
-
-        # Get the package version
+    # Load or create config
+    if config_path.exists():
         try:
-            from importlib.metadata import version as get_version
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        except json.JSONDecodeError:
+            click.echo(
+                f"Error: {config_path} contains invalid JSON. Please fix it manually."
+            )
+            sys.exit(1)
+    else:
+        config = {}
 
-            get_version("odmcp")
-        except importlib.metadata.PackageNotFoundError:
-            # Fallback to reading version from __init__.py
-            pass
+    if "mcpServers" not in config:
+        config["mcpServers"] = {}
 
-        # Add or update mcpServers entry
-        if "mcpServers" not in config:
-            config["mcpServers"] = {}
+    server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+    if server_key in config["mcpServers"] and not force:
+        click.confirm(
+            f"Server '{server_key}' is already configured. Overwrite?", abort=True
+        )
 
-        config["mcpServers"][f"odmcp-{provider.replace('_', '-')}"] = {
+    # Detection logic for local mode
+    repo_root = Path(__file__).parent.parent.parent.resolve()
+    is_local_repo = (repo_root / "pyproject.toml").exists()
+
+    if is_local_repo or local:
+        # Use local execution via uv run
+        config["mcpServers"][server_key] = {
+            "command": "uv",
+            "args": [
+                "--directory",
+                str(repo_root),
+                "run",
+                "opendata-mcp",
+                "run",
+                provider,
+            ],
+            "env": {
+                "OTEL_SDK_DISABLED": "true"  # Optional: disable OTEL for cleaner logs if needed
+            },
+        }
+        click.echo(f"Configuring in LOCAL mode pointing to {repo_root}")
+    else:
+        # Use global uvx
+        config["mcpServers"][server_key] = {
             "command": "uvx",
             "args": [
-                "odmcp",
+                LIB_NAME,
                 "run",
                 provider,
             ],
         }
+        click.echo(f"Configuring in GLOBAL mode using 'uvx {LIB_NAME}'")
 
-        # Write updated config
+    try:
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-
         click.echo(
-            f"Successfully configured MCP server for provider '{provider}'. You can now restart Claude Desktop."
+            f"Successfully configured '{server_key}'. Please restart Claude Desktop."
         )
-
     except Exception as e:
         click.echo(f"Error updating config file: {e}")
         sys.exit(1)
@@ -220,7 +247,7 @@ def remove(provider: str):
             config = json.load(f)
 
         # Normalize key to match setup() format
-        server_key = f"odmcp-{provider.replace('_', '-')}"
+        server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
 
         # Check if mcpServers exists and provider is configured
         if "mcpServers" not in config or server_key not in config["mcpServers"]:
@@ -248,13 +275,16 @@ def remove(provider: str):
 
 
 @cli.command()
-def setup_all():
+@click.option(
+    "--local", is_flag=True, help="Force local development mode using absolute paths."
+)
+@click.option("--force", is_flag=True, help="Overwrite existing configurations.")
+def setup_all(local: bool, force: bool):
     """Setup all MCP servers for use with Claude Desktop"""
     try:
         import pkgutil
         import odmcp.providers as providers_pkg
 
-        # Get all providers
         providers = [
             name
             for finder, name, ispkg in pkgutil.iter_modules(providers_pkg.__path__)
@@ -265,7 +295,7 @@ def setup_all():
             click.echo("No providers available to setup.")
             return
 
-        # Check platform and config path
+        # Check platform
         system = platform.system()
         if system == "Darwin":
             config_path = (
@@ -284,34 +314,54 @@ def setup_all():
             click.echo(f"Claude directory not found at {config_path.parent}")
             sys.exit(1)
 
-        # Build config
+        # Load config
         if config_path.exists():
-            with open(config_path, "r") as f:
-                config = json.load(f)
+            try:
+                with open(config_path, "r") as f:
+                    config = json.load(f)
+            except json.JSONDecodeError:
+                click.echo(f"Error: {config_path} contains invalid JSON.")
+                sys.exit(1)
         else:
             config = {}
 
         if "mcpServers" not in config:
             config["mcpServers"] = {}
 
-        # Get version
-        try:
-            from importlib.metadata import version as get_version
+        repo_root = Path(__file__).parent.parent.parent.resolve()
+        is_local_repo = (repo_root / "pyproject.toml").exists()
 
-            get_version("odmcp")
-        except Exception:
-            pass
+        for provider in sorted(providers):
+            server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+            if server_key in config["mcpServers"] and not force:
+                click.echo(
+                    f"Skipping '{server_key}' (already exists). Use --force to overwrite."
+                )
+                continue
 
-        for provider in providers:
-            config["mcpServers"][f"odmcp-{provider.replace('_', '-')}"] = {
-                "command": "uvx",
-                "args": [
-                    "odmcp",
-                    "run",
-                    provider,
-                ],
-            }
-            click.echo(f"Registered {provider}")
+            if is_local_repo or local:
+                config["mcpServers"][server_key] = {
+                    "command": "uv",
+                    "args": [
+                        "--directory",
+                        str(repo_root),
+                        "run",
+                        "opendata-mcp",
+                        "run",
+                        provider,
+                    ],
+                }
+                click.echo(f"Registered {provider} (LOCAL)")
+            else:
+                config["mcpServers"][server_key] = {
+                    "command": "uvx",
+                    "args": [
+                        LIB_NAME,
+                        "run",
+                        provider,
+                    ],
+                }
+                click.echo(f"Registered {provider} (GLOBAL)")
 
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)

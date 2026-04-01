@@ -335,7 +335,7 @@ wheels = [
 ]
 
 [[package]]
-name = "odmcp"
+name = "opendata-mcp"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
