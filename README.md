@@ -37,6 +37,22 @@ How do we do that?
 * **Access**: Setup our MCP servers in your LLM application in 2 clicks via our CLI tool (starting with Claude, see Roadmap for next steps).
 * **Publish**: Use provided templates and guidelines to quickly contribute and publish on Open Data MCP. Make your data easily discoverable!
 
+## Available Providers
+
+| Provider | Name | Description |
+|---|---|---|
+| `ch_sbb` | Swiss Federal Railways (SBB) | Train network disruptions and service data |
+| `de_db` | Deutsche Bahn (DB) | German railway open data |
+| `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
+| `eu_eurostat` | Eurostat | European Union statistics |
+| `global_open_meteo` | Open-Meteo | Global open-source weather forecast data |
+| `nl_cbs` | Statistics Netherlands (CBS) | Dutch statistical datasets (OData v2/v3) |
+| `nl_ndov` | NDOV Loket | Dutch public transport data |
+| `nl_tweedekamer` | Tweede Kamer | Dutch Parliament open data |
+| `us_data_gov` | Data.gov | US federal government open datasets |
+| `us_doe_arm` | DOE ARM | US Dept of Energy atmospheric radiation data |
+| `us_nasa` | NASA | Astronomy, near-Earth objects, Mars rover photos |
+
 ## Usage
 
 ### Access: Access Open Data using Open Data MCP CLI Tool
