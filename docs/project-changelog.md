@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0a0] - 2026-04-01
+
+### Added
+- Initial v2 alpha release of OpenDataMCP.
+- Major version bump and preparatory changes for the 2.x line.
+- See provider and API documentation for full details of v2 changes.
 ## [1.1.0] - 2026-03-21
 
 ### Added
