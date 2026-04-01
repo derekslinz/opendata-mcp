@@ -165,10 +165,9 @@ def setup(provider: str):
             config["mcpServers"] = {}
 
         config["mcpServers"][f"odmcp-{provider.replace('_', '-')}"] = {
-            "command": sys.executable,
+            "command": "uvx",
             "args": [
-                "-m",
-                "odmcp.cli",
+                "odmcp",
                 "run",
                 provider,
             ],
@@ -305,10 +304,9 @@ def setup_all():
 
         for provider in providers:
             config["mcpServers"][f"odmcp-{provider.replace('_', '-')}"] = {
-                "command": sys.executable,
+                "command": "uvx",
                 "args": [
-                    "-m",
-                    "odmcp.cli",
+                    "odmcp",
                     "run",
                     provider,
                 ],

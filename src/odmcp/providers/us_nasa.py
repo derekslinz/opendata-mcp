@@ -2,7 +2,9 @@
 NASA Open Data Provider
 
 This module provides interfaces to access NASA's public APIs.
-It uses the public DEMO_KEY which has rate limits (30 req/hr).
+It uses the public DEMO_KEY by default (30 req/hr limit). Set the
+NASA_API_KEY environment variable to use a personal API key with
+higher rate limits.
 
 Features:
 - APOD: Astronomy Picture of the Day
@@ -15,6 +17,7 @@ Usage:
 """
 
 import logging
+import os
 from typing import Any, List, Optional, Sequence
 
 import httpx
@@ -27,6 +30,8 @@ log = logging.getLogger(__name__)
 # Constants
 BASE_URL = "https://api.nasa.gov"
 DEMO_KEY = "DEMO_KEY"
+# Use NASA_API_KEY env var if set, otherwise fall back to the public DEMO_KEY
+_API_KEY = os.getenv("NASA_API_KEY", DEMO_KEY)
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -49,7 +54,7 @@ class APODParams(BaseModel):
 
 def fetch_apod(params: APODParams) -> dict:
     """Fetch APOD data from NASA API."""
-    query_params = {"api_key": DEMO_KEY}
+    query_params = {"api_key": _API_KEY}
     if params.date:
         query_params["date"] = params.date
 
@@ -76,7 +81,7 @@ async def handle_get_apod(
 TOOLS.append(
     types.Tool(
         name="nasa-get-apod",
-        description="Get NASA's Astronomy Picture of the Day with its explanation. Uses DEMO_KEY (30 req/hr limit). Set NASA_API_KEY env var to use a personal key.",
+        description="Get NASA's Astronomy Picture of the Day with its explanation. Uses DEMO_KEY (30 req/hr limit) unless NASA_API_KEY env var is set.",
         inputSchema=APODParams.model_json_schema(),
     )
 )
@@ -105,7 +110,7 @@ class NeoWsParams(BaseModel):
 def fetch_neows(params: NeoWsParams) -> dict:
     """Fetch NEO data from NASA API."""
     query_params = {
-        "api_key": DEMO_KEY,
+        "api_key": _API_KEY,
         "start_date": params.start_date,
         "end_date": params.end_date,
     }
@@ -163,7 +168,7 @@ class MarsRoverParams(BaseModel):
 
 def fetch_mars_photos(params: MarsRoverParams) -> dict:
     """Fetch Mars rover photos from NASA API."""
-    query_params = {"api_key": DEMO_KEY, "earth_date": params.earth_date}
+    query_params = {"api_key": _API_KEY, "earth_date": params.earth_date}
     if params.camera:
         query_params["camera"] = params.camera
 
