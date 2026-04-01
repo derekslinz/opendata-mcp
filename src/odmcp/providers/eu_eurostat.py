@@ -172,7 +172,7 @@ async def handle_eurostat_get_dataset(
 
         params = EurostatDataParams(**arguments)
         data = fetch_eurostat_data(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=str(data)[:20000])]
     except Exception as e:
         log.error(f"Error fetching Eurostat data: {e}")
         raise

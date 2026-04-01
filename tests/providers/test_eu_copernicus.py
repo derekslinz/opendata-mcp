@@ -135,21 +135,21 @@ async def test_handle_get_product_metadata(mock_odata_product):
 async def test_handle_list_collections_error():
     with patch("httpx.get") as mock_get:
         mock_get.side_effect = httpx.HTTPError("STAC API is down")
-        result = await handle_list_collections({})
-        assert "Error: Unable to reach Copernicus STAC API" in result[0].text
+        with pytest.raises(httpx.HTTPError):
+            await handle_list_collections({})
 
 
 @pytest.mark.anyio
 async def test_handle_search_products_error():
     with patch("httpx.post") as mock_post:
         mock_post.side_effect = httpx.HTTPError("STAC Search failed")
-        result = await handle_search_products({"collection": "sentinel-2a-l2a"})
-        assert "Error searching Copernicus products" in result[0].text
+        with pytest.raises(httpx.HTTPError):
+            await handle_search_products({"collection": "sentinel-2a-l2a"})
 
 
 @pytest.mark.anyio
 async def test_handle_get_product_metadata_error():
     with patch("httpx.get") as mock_get:
         mock_get.side_effect = httpx.HTTPError("OData timeout")
-        result = await handle_get_product_metadata({"product_id": "uuid-1234"})
-        assert "Error fetching product metadata" in result[0].text
+        with pytest.raises(httpx.HTTPError):
+            await handle_get_product_metadata({"product_id": "uuid-1234"})

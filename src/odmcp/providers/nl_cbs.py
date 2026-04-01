@@ -108,7 +108,7 @@ async def handle_cbs_data(
         # Some endpoints might support count but not all
         total_count = data.get("odata.count")
         response = CBSDataResponse(results=results, total_count=total_count)
-        return [types.TextContent(type="text", text=str(response.model_dump()))]
+        return [types.TextContent(type="text", text=str(response.model_dump())[:20000])]
     except Exception as e:
         log.error(f"Error fetching CBS data: {e}")
         raise

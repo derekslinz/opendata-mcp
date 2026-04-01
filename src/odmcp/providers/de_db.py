@@ -138,18 +138,9 @@ async def handle_get_timetable(
             )
 
         return [types.TextContent(type="text", text=str(summary))]
-    except httpx.HTTPError as e:
-        log.error(f"HTTP error fetching DB timetable: {e}")
-        return [
-            types.TextContent(
-                type="text", text=f"Error reaching DB public timetable API: {e}"
-            )
-        ]
     except Exception as e:
         log.error(f"Error fetching DB timetable: {e}")
-        return [
-            types.TextContent(type="text", text=f"An unexpected error occurred: {e}")
-        ]
+        raise
 
 
 TOOLS.append(

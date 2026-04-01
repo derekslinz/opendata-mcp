@@ -12,6 +12,7 @@ if src_path not in sys.path:
 
 import anyio  # noqa: E402
 import click  # noqa: E402
+from odmcp import __version__  # noqa: E402
 
 
 @click.group()
@@ -20,12 +21,16 @@ def cli():
     pass
 
 
+def _import_provider_module(provider: str):
+    return importlib.import_module(f"odmcp.providers.{provider}")
+
+
 @cli.command()
 @click.argument("provider")
 def run(provider: str):
     """Run a specific provider MCP server."""
     try:
-        module = importlib.import_module(f"odmcp.providers.{provider}")
+        module = _import_provider_module(provider)
         anyio.run(module.main)
     except ImportError as e:
         click.echo(
@@ -73,7 +78,7 @@ def list():
 def info(provider: str):
     """Show detailed information about a provider"""
     try:
-        module = importlib.import_module(f"odmcp.providers.{provider}")
+        module = _import_provider_module(provider)
 
         click.echo(f"Provider: {provider}")
         if hasattr(module, "__doc__") and module.__doc__:
@@ -93,14 +98,7 @@ def info(provider: str):
 def version():
     """Show the odmcp version"""
     try:
-        from importlib.metadata import version as get_version
-
-        try:
-            ver = get_version("odmcp")
-        except importlib.metadata.PackageNotFoundError:
-            # Fallback to reading version from __init__.py
-            from odmcp import __version__ as ver
-        click.echo(f"odmcp version: {ver}")
+        click.echo(f"odmcp version: {__version__}")
     except Exception as e:
         click.echo(f"Error getting odmcp version: {e}")
         sys.exit(1)
@@ -110,6 +108,15 @@ def version():
 @click.argument("provider")
 def setup(provider: str):
     """Setup the MCP server for use with Claude Desktop"""
+    try:
+        _import_provider_module(provider)
+    except ImportError as e:
+        click.echo(
+            f"Provider '{provider}' not found or has missing dependencies.", err=True
+        )
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
     # Check platform
     system = platform.system()
     if system not in ["Darwin", "Windows"]:

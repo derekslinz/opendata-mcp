@@ -144,7 +144,7 @@ async def handle_tk_query(
 
         params = TkQueryEntityParams(**arguments)
         result = query_tk_entity(params)
-        return [types.TextContent(type="text", text=str(result))]
+        return [types.TextContent(type="text", text=str(result)[:20000])]
     except Exception as e:
         log.error(
             f"Error querying TK entity {arguments.get('entity') if arguments else ''}: {e}"

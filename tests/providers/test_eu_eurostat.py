@@ -52,7 +52,7 @@ def mock_eurostat_metadata_response():
     return {
         "id": "nama_10_gdp",
         "label": "GDP and main components",
-        "dimensions": {
+        "dimension": {
             "geo": {"label": "Geopolitical entity"},
             "time": {"label": "Time"},
         },
@@ -119,7 +119,7 @@ def test_fetch_eurostat_metadata(mock_eurostat_metadata_response):
         params = EurostatMetadataParams(dataset_code="nama_10_gdp")
         response = fetch_eurostat_metadata(params)
         assert response["id"] == "nama_10_gdp"
-        assert "geo" in response["dimensions"]
+        assert "geo" in response["dimension"]
 
 
 @pytest.mark.anyio

@@ -34,8 +34,8 @@ async def test_nasa_get_apod_error():
     with patch("httpx.get") as mock_get:
         mock_get.side_effect = httpx.HTTPError("Network down")
 
-        result = await handle_get_apod()
-        assert "Error reaching NASA APOD API" in result[0].text
+        with pytest.raises(httpx.HTTPError):
+            await handle_get_apod()
 
 
 @pytest.mark.anyio

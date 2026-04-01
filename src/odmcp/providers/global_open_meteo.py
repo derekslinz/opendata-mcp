@@ -114,8 +114,12 @@ class HistoricalWeatherParams(BaseModel):
     longitude: float = Field(
         ..., ge=-180.0, le=180.0, description="Longitude of the location"
     )
-    start_date: str = Field(..., description="Start date (YYYY-MM-DD)")
-    end_date: str = Field(..., description="End date (YYYY-MM-DD)")
+    start_date: str = Field(
+        ..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="Start date (YYYY-MM-DD)"
+    )
+    end_date: str = Field(
+        ..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="End date (YYYY-MM-DD)"
+    )
     daily: str = Field(
         default="temperature_2m_max,temperature_2m_min,precipitation_sum",
         description="Comma-separated daily variables to return",
