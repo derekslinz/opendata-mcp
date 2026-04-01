@@ -39,7 +39,7 @@ How do we do that?
 
 ## Usage
 
-### `<u>`Access`</u>`: Access Open Data using Open Data MCP CLI Tool
+### Access: Access Open Data using Open Data MCP CLI Tool
 
 #### Prerequisites
 
