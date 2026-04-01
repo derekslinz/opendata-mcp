@@ -31,7 +31,7 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
           restore-keys: |
             ${{ runner.os }}-uv-
 
@@ -39,7 +39,7 @@ jobs:
         run: |
           uv venv
           source .venv/bin/activate
-          uv sync
+          uv sync --locked
 
       - name: Run tests
         run: |
@@ -67,7 +67,7 @@ jobs:
           path: |
             ~/.cache/uv
             .venv
-          key: ${{ runner.os }}-uv-lint-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-uv-lint-${{ hashFiles('pyproject.toml', 'uv.lock') }}
           restore-keys: |
             ${{ runner.os }}-uv-lint-
 
@@ -75,7 +75,7 @@ jobs:
         run: |
           uv venv
           source .venv/bin/activate
-          uv sync --only-dev
+          uv sync --locked --only-dev
 
       - name: Run linters
         run: |
@@ -83,8 +83,31 @@ jobs:
           ruff check .
           ruff format --check .
 
+      - name: Compile Python sources
+        run: |
+          source .venv/bin/activate
+          python -m compileall src tests
+
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Check lockfile
+        run: uv lock --check
+
   build:
-    needs: [test, lint]
+    needs: [test, lint, lockfile]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +126,7 @@ jobs:
         run: |
           uv venv
           source .venv/bin/activate
-          uv sync --no-dev
+          uv sync --locked --no-dev
           uv build
 
       - name: Upload artifact
