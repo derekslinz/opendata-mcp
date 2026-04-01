@@ -128,12 +128,22 @@ TOOLS_HANDLERS["endpoint-name"] = handle_endpoint
 ###################
 ...
 
+
+async def main():
+    from mcp.server.stdio import stdio_server
+
+    from odmcp.utils import create_mcp_server
+
+    server = create_mcp_server(
+        "service.name", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
+    )
+
+    async with stdio_server() as streams:
+        await server.run(streams[0], streams[1], server.create_initialization_options())
+
+
 # Server initialization (if module is run directly)
 if __name__ == "__main__":
     import anyio
 
-    from odmcp.utils import run_server
-
-    anyio.run(
-        run_server, "service.name", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
-    )
+    anyio.run(main)
