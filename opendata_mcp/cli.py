@@ -170,7 +170,7 @@ def setup(provider: str, local: bool, force: bool):
         )
 
     # Detection logic for local mode
-    repo_root = Path(__file__).parent.parent.parent.resolve()
+    repo_root = Path(__file__).parent.parent.resolve()
     is_local_repo = (repo_root / "pyproject.toml").exists()
 
     if is_local_repo or local:
@@ -328,7 +328,7 @@ def setup_all(local: bool, force: bool):
         if "mcpServers" not in config:
             config["mcpServers"] = {}
 
-        repo_root = Path(__file__).parent.parent.parent.resolve()
+        repo_root = Path(__file__).parent.parent.resolve()
         is_local_repo = (repo_root / "pyproject.toml").exists()
 
         for provider in sorted(providers):
