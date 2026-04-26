@@ -15,9 +15,9 @@ def test_real_provider_discovery():
     ]
 
     for provider in expected_new_providers:
-        assert (
-            provider in discovered
-        ), f"Provider {provider} not found in discovered modules"
+        assert provider in discovered, (
+            f"Provider {provider} not found in discovered modules"
+        )
 
 
 def test_provider_docs_present():
