@@ -394,11 +394,6 @@ TOOLS.append(
 )
 TOOLS_HANDLERS["rolling-stock"] = handle_rolling_stock
 
-###################
-# Other Endpoint Name
-###################
-...
-
 
 async def main():
     from opendata_mcp.utils import create_mcp_server
