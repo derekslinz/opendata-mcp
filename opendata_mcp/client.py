@@ -14,7 +14,7 @@ PROVIDER = "ch_sbb"
 # Create server parameters for stdio connection
 server_params = StdioServerParameters(
     command="uv",
-    args=["run", "opendata_mcp", "run", PROVIDER],  # Optional command line arguments
+    args=["run", "opendata-mcp", "run", PROVIDER],  # Optional command line arguments
     env=None,  # Optional environment variables
 )
 
