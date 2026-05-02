@@ -18,39 +18,42 @@ def anyio_backend():
 @pytest.fixture
 def mock_search_response():
     return {
-        "success": True,
-        "result": {
-            "count": 1,
-            "results": [
-                {
-                    "id": "consumer-complaint-database",
-                    "name": "consumer-complaint-database",
-                    "title": "Consumer Complaint Database",
-                    "organization": {"title": "Consumer Financial Protection Bureau"},
-                    "notes": "A collection of complaints received by the CFPB.",
-                }
-            ],
-        },
+        "after": "next-cursor",
+        "results": [
+            {
+                "identifier": "CCDB",
+                "slug": "consumer-complaint-database",
+                "title": "Consumer Complaint Database",
+                "publisher": "Consumer Financial Protection Bureau",
+                "organization": {"name": "Consumer Financial Protection Bureau"},
+                "description": "A collection of complaints received by the CFPB.",
+                "harvest_record": "https://catalog.data.gov/harvest_record/abc",
+            }
+        ],
     }
 
 
 @pytest.fixture
 def mock_show_response():
     return {
-        "success": True,
-        "result": {
-            "id": "consumer-complaint-database",
-            "name": "consumer-complaint-database",
-            "title": "Consumer Complaint Database",
-            "resources": [
-                {
-                    "id": "resource-123",
-                    "name": "CSV Data",
-                    "format": "CSV",
-                    "url": "https://example.com/data.csv",
-                }
-            ],
-        },
+        "results": [
+            {
+                "identifier": "CCDB",
+                "slug": "consumer-complaint-database",
+                "title": "Consumer Complaint Database",
+                "dcat": {
+                    "identifier": "CCDB",
+                    "title": "Consumer Complaint Database",
+                    "distribution": [
+                        {
+                            "title": "CSV Data",
+                            "format": "CSV",
+                            "accessURL": "https://example.com/data.csv",
+                        }
+                    ],
+                },
+            }
+        ],
     }
 
 
@@ -61,11 +64,11 @@ def test_list_datagov_datasets(mock_search_response):
 
         params = DataGovListDatasetsParams(search="complaints")
         result = list_datagov_datasets(params)
-        assert result["count"] == 1
-        assert result["results"][0]["name"] == "consumer-complaint-database"
+        assert result["after"] == "next-cursor"
+        assert result["results"][0]["slug"] == "consumer-complaint-database"
         mock_get.assert_called_once_with(
-            "https://catalog.data.gov/api/3/action/package_search",
-            params={"q": "complaints", "rows": 20, "start": 0},
+            "https://catalog.data.gov/search",
+            params={"q": "complaints", "per_page": 20},
             timeout=10.0,
         )
 
@@ -89,10 +92,10 @@ def test_fetch_datagov_dataset(mock_show_response):
         params = DataGovGetDatasetParams(dataset_id="consumer-complaint-database")
         result = fetch_datagov_dataset(params)
         assert result["title"] == "Consumer Complaint Database"
-        assert len(result["resources"]) == 1
+        assert len(result["dcat"]["distribution"]) == 1
         mock_get.assert_called_once_with(
-            "https://catalog.data.gov/api/3/action/package_show",
-            params={"id": "consumer-complaint-database"},
+            "https://catalog.data.gov/search",
+            params={"q": "consumer-complaint-database", "per_page": 25},
             timeout=10.0,
         )
 
@@ -112,12 +115,9 @@ async def test_handle_datagov_get_dataset(mock_show_response):
 
 def test_api_error_handling():
     with patch("httpx.get") as mock_get:
-        mock_get.return_value.json.return_value = {
-            "success": False,
-            "error": "Not Found",
-        }
+        mock_get.return_value.json.return_value = {"results": []}
         mock_get.return_value.raise_for_status = Mock()
 
         params = DataGovGetDatasetParams(dataset_id="invalid")
-        with pytest.raises(ValueError, match="API Error: Not Found"):
+        with pytest.raises(ValueError, match="API Error: dataset not found: invalid"):
             fetch_datagov_dataset(params)

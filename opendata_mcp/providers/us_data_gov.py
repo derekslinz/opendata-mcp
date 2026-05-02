@@ -1,12 +1,12 @@
 """
-US Data.gov (CKAN) API Client
+US Data.gov Catalog API Client
 
 This module provides interfaces to access the US Federal Government's open data catalog
-via its CKAN-based API (catalog.data.gov).
+via the current catalog.data.gov API.
 
 Features:
-- Dataset discovery through CKAN package_search
-- Detailed dataset metadata retrieval through CKAN package_show
+- Dataset discovery through the catalog search endpoint
+- Detailed dataset metadata retrieval from exact search matches
 
 Usage:
     The module can be run directly to start a server handling API requests,
@@ -24,9 +24,8 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 
 # Constants
-BASE_URL = "https://catalog.data.gov/api/3/action"
-SEARCH_URL = f"{BASE_URL}/package_search"
-SHOW_URL = f"{BASE_URL}/package_show"
+BASE_URL = "https://catalog.data.gov"
+SEARCH_URL = f"{BASE_URL}/search"
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -44,28 +43,33 @@ class DataGovListDatasetsParams(BaseModel):
 
     search: Optional[str] = Field(
         None,
-        description="Search term for dataset titles or descriptions (CKAN 'q' param)",
+        description="Search term for dataset titles or descriptions",
     )
-    rows: int = Field(default=20, description="Number of results to return (max 1000)")
-    start: int = Field(default=0, description="Offset for pagination")
+    rows: int = Field(default=20, description="Number of results to return")
+    after: Optional[str] = Field(
+        None,
+        description="Pagination cursor returned by a previous Data.gov search",
+    )
+    org_slug: Optional[str] = Field(
+        None,
+        description="Optional organization slug filter, e.g. 'nasa'",
+    )
 
 
 def list_datagov_datasets(params: DataGovListDatasetsParams) -> dict:
-    """Search for available US Data.gov datasets using CKAN package_search."""
+    """Search for available US Data.gov datasets using the catalog API."""
     query_params = {
-        "q": params.search if params.search else "*:*",
-        "rows": params.rows,
-        "start": params.start,
+        "q": params.search or "",
+        "per_page": params.rows,
     }
+    if params.after:
+        query_params["after"] = params.after
+    if params.org_slug:
+        query_params["org_slug"] = params.org_slug
 
     response = httpx.get(SEARCH_URL, params=query_params, timeout=10.0)
     response.raise_for_status()
-    data = response.json()
-
-    if not data.get("success"):
-        raise ValueError(f"API Error: {data.get('error', 'Unknown Error')}")
-
-    return data["result"]
+    return response.json()
 
 
 async def handle_datagov_list_datasets(
@@ -81,17 +85,23 @@ async def handle_datagov_list_datasets(
         for pkg in result.get("results", []):
             simplified_results.append(
                 {
-                    "id": pkg.get("id"),
-                    "name": pkg.get("name"),
+                    "identifier": pkg.get("identifier"),
+                    "slug": pkg.get("slug"),
                     "title": pkg.get("title"),
-                    "organization": pkg.get("organization", {}).get("title"),
-                    "notes": pkg.get("notes", "")[:200] + "..."
-                    if pkg.get("notes") and len(pkg.get("notes")) > 200
-                    else pkg.get("notes"),
+                    "publisher": pkg.get("publisher"),
+                    "organization": pkg.get("organization", {}).get("name"),
+                    "description": pkg.get("description", "")[:200] + "..."
+                    if pkg.get("description") and len(pkg.get("description")) > 200
+                    else pkg.get("description"),
+                    "harvest_record": pkg.get("harvest_record"),
                 }
             )
 
-        output = {"count": result.get("count"), "datasets": simplified_results}
+        output = {
+            "count": len(simplified_results),
+            "after": result.get("after"),
+            "datasets": simplified_results,
+        }
 
         return [types.TextContent(type="text", text=str(output)[:20000])]
     except Exception as e:
@@ -118,22 +128,40 @@ class DataGovGetDatasetParams(BaseModel):
 
     dataset_id: str = Field(
         ...,
-        description="The ID or name of the dataset (e.g., 'consumer-complaint-database')",
+        description="The slug, identifier, or title of the dataset",
     )
 
 
-def fetch_datagov_dataset(params: DataGovGetDatasetParams) -> dict:
-    """Fetch full metadata for a specific US Data.gov dataset using CKAN package_show."""
-    query_params = {"id": params.dataset_id}
+def _normalize_dataset_key(value: str | None) -> str:
+    return (value or "").strip().casefold()
 
-    response = httpx.get(SHOW_URL, params=query_params, timeout=10.0)
+
+def fetch_datagov_dataset(params: DataGovGetDatasetParams) -> dict:
+    """Fetch full metadata for a specific US Data.gov dataset using catalog search."""
+    dataset_id = params.dataset_id.strip()
+    query_params = {"q": dataset_id, "per_page": 25}
+
+    response = httpx.get(SEARCH_URL, params=query_params, timeout=10.0)
     response.raise_for_status()
     data = response.json()
 
-    if not data.get("success"):
-        raise ValueError(f"API Error: {data.get('error', 'Unknown Error')}")
+    target = _normalize_dataset_key(dataset_id)
+    results = data.get("results", [])
+    for result in results:
+        candidates = [
+            result.get("slug"),
+            result.get("identifier"),
+            result.get("title"),
+            result.get("dcat", {}).get("identifier"),
+            result.get("dcat", {}).get("title"),
+        ]
+        if any(_normalize_dataset_key(candidate) == target for candidate in candidates):
+            return result
 
-    return data["result"]
+    if results:
+        return results[0]
+
+    raise ValueError(f"API Error: dataset not found: {dataset_id}")
 
 
 async def handle_datagov_get_dataset(
