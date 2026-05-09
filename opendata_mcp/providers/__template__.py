@@ -108,7 +108,9 @@ async def handle_endpoint(
     """
     try:
         response = fetch_endpoint_data(EndpointParams(**(arguments or {})))
-        return [types.TextContent(type="text", text=to_json_text(response.model_dump()))]
+        return [
+            types.TextContent(type="text", text=to_json_text(response.model_dump()))
+        ]
     except Exception as e:
         log.error(f"Error handling endpoint: {e}")
         raise

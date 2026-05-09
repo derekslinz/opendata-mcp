@@ -227,7 +227,9 @@ async def handle_cbs_list_tables(
         results = data.get("value", [])
         total_count = data.get("odata.count")
         response = CBSListTablesResponse(results=results, total_count=total_count)
-        return [types.TextContent(type="text", text=to_json_text(response.model_dump()))]
+        return [
+            types.TextContent(type="text", text=to_json_text(response.model_dump()))
+        ]
     except Exception as e:
         log.error(f"Error listing CBS tables: {e}")
         raise
