@@ -20,6 +20,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import to_json_text
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -68,7 +70,7 @@ async def handle_tk_list_entities(
     """Handle the tk-list-entities tool call."""
     try:
         entities = list_tk_entities()
-        return [types.TextContent(type="text", text=str(entities))]
+        return [types.TextContent(type="text", text=to_json_text(entities))]
     except Exception as e:
         log.error(f"Error listing TK entities: {e}")
         raise
@@ -144,7 +146,7 @@ async def handle_tk_query(
 
         params = TkQueryEntityParams(**arguments)
         result = query_tk_entity(params)
-        return [types.TextContent(type="text", text=str(result)[:20000])]
+        return [types.TextContent(type="text", text=to_json_text(result, max_chars=20000))]
     except Exception as e:
         log.error(
             f"Error querying TK entity {arguments.get('entity') if arguments else ''}: {e}"
