@@ -121,7 +121,11 @@ async def handle_eurostat_list_datasets(
     try:
         params = EurostatListDatasetsParams(**(arguments or {}))
         datasets = list_eurostat_datasets(params)
-        return [types.TextContent(type="text", text=to_json_text([d.model_dump() for d in datasets]))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text([d.model_dump() for d in datasets])
+            )
+        ]
     except Exception as e:
         log.error(f"Error listing Eurostat datasets: {e}")
         raise
@@ -172,7 +176,9 @@ async def handle_eurostat_get_dataset(
 
         params = EurostatDataParams(**arguments)
         data = fetch_eurostat_data(params)
-        return [types.TextContent(type="text", text=to_json_text(data, max_chars=20000))]
+        return [
+            types.TextContent(type="text", text=to_json_text(data, max_chars=20000))
+        ]
     except Exception as e:
         log.error(f"Error fetching Eurostat data: {e}")
         raise
