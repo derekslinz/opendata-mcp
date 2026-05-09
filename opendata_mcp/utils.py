@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, Callable, Sequence
 
@@ -6,6 +7,14 @@ from mcp.server import Server
 from pydantic import AnyUrl
 
 log = logging.getLogger(__name__)
+
+
+def to_json_text(payload: Any, max_chars: int | None = None) -> str:
+    """Serialize data to stable JSON text for MCP responses."""
+    text = json.dumps(payload, ensure_ascii=False, default=str)
+    if max_chars is not None:
+        return text[:max_chars]
+    return text
 
 
 def create_mcp_server(

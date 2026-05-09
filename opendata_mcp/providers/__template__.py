@@ -26,6 +26,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import to_json_text
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -106,7 +108,7 @@ async def handle_endpoint(
     """
     try:
         response = fetch_endpoint_data(EndpointParams(**(arguments or {})))
-        return [types.TextContent(type="text", text=str(response))]
+        return [types.TextContent(type="text", text=to_json_text(response.model_dump()))]
     except Exception as e:
         log.error(f"Error handling endpoint: {e}")
         raise

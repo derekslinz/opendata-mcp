@@ -19,6 +19,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import to_json_text
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -63,7 +65,7 @@ async def handle_list_stations(
             raise ValueError("search term is required")
         params = DBStationParams(**arguments)
         data = fetch_db_stations(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=to_json_text(data))]
     except Exception as e:
         log.error(f"Error listing DB stations: {e}")
         raise
@@ -137,7 +139,7 @@ async def handle_get_timetable(
                 }
             )
 
-        return [types.TextContent(type="text", text=str(summary))]
+        return [types.TextContent(type="text", text=to_json_text(summary))]
     except Exception as e:
         log.error(f"Error fetching DB timetable: {e}")
         raise

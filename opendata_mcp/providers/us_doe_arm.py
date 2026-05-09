@@ -19,6 +19,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import to_json_text
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -74,7 +76,7 @@ async def handle_search_lasso(
     try:
         params = LassoBundleParams(**(arguments or {}))
         data = fetch_lasso_metadata(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=to_json_text(data))]
     except httpx.HTTPError as e:
         log.error(f"HTTP error searching ARM LASSO: {e}")
         return [types.TextContent(type="text", text=f"Error reaching DOE ARM API: {e}")]
