@@ -22,6 +22,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import to_json_text
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -100,7 +102,7 @@ async def handle_ndov_list_path(
     try:
         params = NdovListPathParams(**(arguments or {}))
         entries = list_ndov_path(params.path)
-        return [types.TextContent(type="text", text=str(entries))]
+        return [types.TextContent(type="text", text=to_json_text(entries))]
     except Exception as e:
         log.error(
             f"Error listing NDOV path {arguments.get('path') if arguments else ''}: {e}"
