@@ -76,7 +76,6 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 |---|---|---|
 | `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
 | `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
-
 | `us_noaa_ncei` | NOAA NCEI | Climate data access services (key-less) |
 | `us_noaa_tides` | NOAA Tides & Currents | Water levels, tides, currents |
 | `us_usgs_earthquake` | USGS Earthquakes | Real-time and historical seismic events |
