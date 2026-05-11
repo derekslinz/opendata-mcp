@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -12,14 +12,19 @@ def runner():
 
 
 def test_run_valid_provider(runner):
-    mock_module = type("Module", (), {"main": AsyncMock()})
+    # Create a mock module where main accepts transport, port, and host
+    async def mock_main(transport="sse", port=8000, host="127.0.0.1"):
+        pass
+
+    mock_module = type("Module", (), {"main": mock_main})
 
     with patch("opendata_mcp.cli._import_provider_module", return_value=mock_module):
         with patch("opendata_mcp.cli.anyio.run") as mock_run:
             result = runner.invoke(cli, ["run", "test_provider"])
 
     assert result.exit_code == 0
-    mock_run.assert_called_once_with(mock_module.main, "stdio", 8000)
+    # The default transport is now sse, port 8000, host 127.0.0.1
+    mock_run.assert_called_once_with(mock_module.main, "sse", 8000, "127.0.0.1")
 
 
 def test_run_invalid_provider(runner):
