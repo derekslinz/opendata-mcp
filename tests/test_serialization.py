@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 import json
 
+import pytest
+
 from opendata_mcp.utils import to_json_text
 
 
@@ -37,3 +39,8 @@ def test_to_json_text_truncation_remains_valid_json():
     payload = json.loads(text)
     assert payload["truncated"] is True
     assert payload["preview"].startswith("{")
+
+
+def test_to_json_text_rejects_too_small_max_chars():
+    with pytest.raises(ValueError, match="max_chars must be >= 2"):
+        to_json_text({"value": "abcdef"}, max_chars=1)
