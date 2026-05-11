@@ -4,7 +4,17 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 
 ## Available Providers
 
-59 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
+> [!IMPORTANT]
+> **Start Here: The Meta Provider (`opendata_mcp_meta`)**
+>
+> With 56 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
+>
+> It acts as a search engine and discovery gateway, equipped with pre-populated Prompts and specialized Tools (`find-providers`, `list-domains`) that allow your LLM to dynamically discover the exact dataset it needs and instruct you on how to install it.
+>
+> **Install it now:**
+> ```bash
+> uv run opendata-mcp setup opendata_mcp_meta
+> ```
 
 ### Meta / Discovery
 
@@ -162,16 +172,18 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 #### The "Install Meta + Run Everything" Pattern
 
-With over 55 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
+With 56 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
 
 1. **Install Meta**: Set up the meta-aggregator provider FIRST.
    ```bash
    uv run opendata-mcp setup opendata_mcp_meta
    ```
-2. **Restart Client**: Restart your Claude Desktop app so it can access the meta tools shown in the client (`opendata-find-providers`, `opendata-describe-provider`, etc.).
-3. **Run Everything**: Ask Claude your data question! If Claude needs another provider, it will use those meta tools to discover it, and then instruct you to run `uv run opendata-mcp setup <provider_name>` to install the specific dataset you need. 
+2. **Restart Client**: Restart your Claude Desktop app so it can access the meta tools and prompts shown in the client.
+3. **Use the Prompts**: In the Claude Desktop app, click the attachment/prompt icon and select one of the pre-populated **Meta Prompts** (like "Financial & Economic Research" or "Climate & Environment Dashboard"). This will automatically inject the perfect instructions for Claude to discover the best datasets for your use-case.
+4. **Run Everything**: If Claude needs another provider to complete your request, it will use the meta tools (`opendata-find-providers`) to discover it, and then instruct you to run `uv run opendata-mcp setup <provider_name>`. 
 
-*(For developers: Check out `system_prompt.md` for a prompt you can give to your agent to enforce this pattern.)*
+> [!TIP]
+> **For developers building multi-agent systems:** Check out the `system_prompt.md` file for a highly optimized system prompt you can give to your orchestrator agent to enforce this exact pattern.
 
 ##### Overview
 
