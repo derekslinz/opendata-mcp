@@ -337,6 +337,59 @@ async def handle_discover_providers(arguments: dict[str, str] | None) -> types.G
 
 PROMPTS_HANDLERS["discover-providers"] = handle_discover_providers
 
+# Predefined Use Cases
+USE_CASES = {
+    "usecase-financial-research": {
+        "title": "Financial & Economic Research",
+        "description": "Analyze economic indicators, exchange rates, and financial markets.",
+        "text": "I am building a financial research tool. Please suggest 3-5 providers from the registry that deal with economics, finance, exchange rates, or central banks (e.g., FRED, ECB, World Bank, DBnomics). Explain what data each provides and how they can be correlated."
+    },
+    "usecase-climate-dashboard": {
+        "title": "Climate & Environment Dashboard",
+        "description": "Build tools to track weather, climate change, and environmental data.",
+        "text": "I am building a climate and environment dashboard. Please suggest 3-5 providers from the registry that deal with weather, climate, emissions, or earth science (e.g., NOAA, Copernicus, OpenMeteo). Explain what data each provides and how to combine them for a comprehensive view."
+    },
+    "usecase-healthcare-analytics": {
+        "title": "Healthcare & Epidemiology Analytics",
+        "description": "Track diseases, clinical trials, and public health data.",
+        "text": "I am building a healthcare analytics platform. Please suggest 3-5 providers from the registry that deal with public health, epidemiology, or clinical trials (e.g., CDC, FDA, WHO, Disease.sh). Explain what datasets they offer and how they might be used together."
+    },
+    "usecase-academic-literature": {
+        "title": "Academic Literature Review",
+        "description": "Search for scholarly articles, preprints, and citations.",
+        "text": "I am conducting an academic literature review. Please suggest 3-5 providers from the registry that offer access to scholarly publications, metadata, and citations (e.g., ArXiv, CrossRef, EuropePMC, OpenAlex). Explain how to use them together for a comprehensive literature search."
+    }
+}
+
+for prompt_id, case_info in USE_CASES.items():
+    PROMPTS.append(
+        types.Prompt(
+            name=prompt_id,
+            description=case_info["description"],
+            arguments=[]
+        )
+    )
+
+    # Need a factory function to capture the correct text in the closure
+    def make_handler(text: str, title: str):
+        async def handler(arguments: dict[str, str] | None) -> types.GetPromptResult:
+            return types.GetPromptResult(
+                description=f"Recommendations for: {title}",
+                messages=[
+                    types.PromptMessage(
+                        role="user",
+                        content=types.TextContent(
+                            type="text",
+                            text=text
+                        )
+                    )
+                ]
+            )
+        return handler
+
+    PROMPTS_HANDLERS[prompt_id] = make_handler(case_info["text"], case_info["title"])
+
+
 
 async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
     from opendata_mcp.utils import create_mcp_server, run_server
