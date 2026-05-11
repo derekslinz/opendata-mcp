@@ -11,6 +11,11 @@ def test_real_provider_discovery():
         "us_nasa",
         "de_db",
         "global_open_meteo",
+        "global_dbnomics",
+        "global_pubchem",
+        "global_rcsb_pdb",
+        "us_noaa_awc",
+        "nl_rechtspraak",
     ]
 
     for provider in expected_new_providers:
@@ -28,6 +33,10 @@ def test_provider_docs_present():
         "us_nasa",
         "de_db",
         "global_open_meteo",
+        "global_dbnomics",
+        "global_pubchem",
+        "global_rcsb_pdb",
+        "us_noaa_awc",
     ]
 
     for name in expected_new_providers:

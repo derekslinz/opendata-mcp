@@ -4,7 +4,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 
 ## Available Providers
 
-54 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
+59 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
 
 ### Meta / Discovery
 
@@ -30,6 +30,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 |---|---|---|
 | `eu_eurostat` | Eurostat | European Union statistics |
 | `global_imf` | International Monetary Fund | IMF SDMX 2.1 statistical data |
+| `global_dbnomics` | DBnomics | Global economic data aggregator (IMF, World Bank, etc.) |
 | `global_oecd` | OECD | OECD economic & social statistics (SDMX) |
 | `global_world_bank` | World Bank | Development indicators by country |
 | `nl_cbs` | Statistics Netherlands (CBS) | Dutch statistical datasets (OData v2/v3) |
@@ -46,11 +47,13 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 | `us_sec_edgar` | SEC EDGAR | Public company filings, XBRL financials |
 | `us_treasury_fiscal` | US Treasury Fiscal Data | Federal debt, daily Treasury statement, FX rates |
 
-### Health
+### Health & Life Sciences
 
 | Provider | Name | Description |
 |---|---|---|
 | `global_disease_sh` | disease.sh | COVID-19, influenza, vaccine aggregator |
+| `global_pubchem` | NCBI PubChem | Chemical compounds and substances |
+| `global_rcsb_pdb` | RCSB PDB | 3D protein and macromolecular structures |
 | `global_who_gho` | WHO GHO | WHO Global Health Observatory (OData) |
 | `us_cdc_socrata` | US CDC | CDC open data via Socrata |
 | `us_clinicaltrials` | ClinicalTrials.gov | NIH/NLM clinical trials registry v2 |
@@ -95,6 +98,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 | `de_db` | Deutsche Bahn | German railway open data |
 | `nl_ndov` | NDOV Loket | Dutch public transport data |
 | `us_faa_nasstatus` | FAA NAS Status | US airspace status, delays, ground stops (XML) |
+| `us_noaa_awc` | NOAA Aviation Weather | METAR, TAF, and station weather data |
 
 ### Scholarly Literature
 
@@ -117,6 +121,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 
 | Provider | Name | Description |
 |---|---|---|
+| `nl_rechtspraak` | Dutch Rechtspraak | Dutch court rulings and case law (ECLI) |
 | `uk_legislation` | UK legislation.gov.uk | UK Acts, statutory instruments (XML/Atom) |
 | `us_courtlistener` | CourtListener | US court opinions, dockets, judges (Free Law Project) |
 | `us_federal_register` | US Federal Register | Daily rules, notices, executive orders |
@@ -203,11 +208,20 @@ Restart Claude and you should see a new hammer icon at the bottom right of the c
 
 #### Alternative Transports (SSE)
 
-By default, providers run using the `stdio` transport. You can also run providers as an HTTP Server-Sent Events (SSE) server. This is useful for remote setups or web clients.
+By default, the `run` command uses the **SSE (HTTP)** transport. This launches an HTTP server suitable for remote connections or browser-based tools like the MCP Inspector.
 
 ```bash
-# start the server using SSE transport on port 8000
-uv run opendata-mcp run ch_sbb --transport sse --port 8000
+# start the server using default SSE transport on port 8000
+uv run opendata-mcp run ch_sbb
+
+# specify host and port
+uv run opendata-mcp run ch_sbb --host 0.0.0.0 --port 3001
+```
+
+If you need to run a provider via **stdio** (standard input/output), use the `--transport stdio` flag:
+
+```bash
+uv run opendata-mcp run ch_sbb --transport stdio
 ```
 
 You can now ask questions to Claude about SBB train network disruption and it will answer based on data collected on `data.sbb.ch`.
