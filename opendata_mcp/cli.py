@@ -30,8 +30,15 @@ def _import_provider_module(provider: str):
 
 @cli.command()
 @click.argument("provider")
-@click.option("--transport", default="stdio", type=click.Choice(["stdio", "sse"]), help="Transport protocol to use (stdio or sse)")
-@click.option("--port", default=8000, type=int, help="Port to listen on for SSE transport")
+@click.option(
+    "--transport",
+    default="stdio",
+    type=click.Choice(["stdio", "sse"]),
+    help="Transport protocol to use (stdio or sse)",
+)
+@click.option(
+    "--port", default=8000, type=int, help="Port to listen on for SSE transport"
+)
 def run(provider: str, transport: str, port: int):
     """Run a specific provider MCP server."""
     try:
