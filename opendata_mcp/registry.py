@@ -348,7 +348,6 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         keywords=("weather", "forecast", "temperature", "precipitation", "air quality"),
         homepage="https://open-meteo.com/",
     ),
-
     ProviderEntry(
         id="global_opensky",
         server_name="global-opensky",
@@ -414,7 +413,6 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         keywords=("protein", "structure", "dna", "rna", "biology", "macromolecules"),
         homepage="https://www.rcsb.org/",
     ),
-
     ProviderEntry(
         id="global_who_gho",
         server_name="global-who-gho",
@@ -666,7 +664,6 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         ),
         homepage="https://www.federalregister.gov/",
     ),
-
     ProviderEntry(
         id="us_nasa",
         server_name="us-nasa",
