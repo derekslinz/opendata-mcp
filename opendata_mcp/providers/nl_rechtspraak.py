@@ -36,12 +36,17 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 # Rechtspraak Search
 ###################
 
+
 class RechtspraakSearchParams(BaseModel):
     """Parameters for searching Dutch court rulings."""
+
     query: str = Field(..., description="Search query (e.g. 'arbeidsrecht')")
-    max_results: int = Field(default=10, description="Maximum number of results to return (max 1000)")
+    max_results: int = Field(
+        default=10, description="Maximum number of results to return (max 1000)"
+    )
     date_from: Optional[str] = Field(None, description="Start date (YYYY-MM-DD)")
     date_to: Optional[str] = Field(None, description="End date (YYYY-MM-DD)")
+
 
 def search_rechtspraak(params: RechtspraakSearchParams) -> List[dict]:
     """Search for rulings via the Rechtspraak OpenSearch API."""
@@ -52,20 +57,25 @@ def search_rechtspraak(params: RechtspraakSearchParams) -> List[dict]:
     if params.date_from:
         query_params["date"] = params.date_from
     # Note: The API support for date ranges is specific, but simple 'date' filter is common.
-    
+
     response = http_get(f"{BASE_URL}/zoeken", params=query_params)
     root = ET.fromstring(response.content)
-    
+
     results = []
     for entry in root.findall("atom:entry", ATOM_NS):
-        results.append({
-            "ecli": entry.findtext("atom:id", "", ATOM_NS),
-            "title": entry.findtext("atom:title", "", ATOM_NS),
-            "summary": entry.findtext("atom:summary", "", ATOM_NS),
-            "updated": entry.findtext("atom:updated", "", ATOM_NS),
-            "link": entry.find("atom:link", ATOM_NS).get("href") if entry.find("atom:link", ATOM_NS) is not None else ""
-        })
+        results.append(
+            {
+                "ecli": entry.findtext("atom:id", "", ATOM_NS),
+                "title": entry.findtext("atom:title", "", ATOM_NS),
+                "summary": entry.findtext("atom:summary", "", ATOM_NS),
+                "updated": entry.findtext("atom:updated", "", ATOM_NS),
+                "link": entry.find("atom:link", ATOM_NS).get("href")
+                if entry.find("atom:link", ATOM_NS) is not None
+                else "",
+            }
+        )
     return results
+
 
 async def handle_rechtspraak_search(
     arguments: dict[str, Any] | None = None,
@@ -78,6 +88,7 @@ async def handle_rechtspraak_search(
     except Exception as e:
         log.error(f"Error searching Rechtspraak: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -92,9 +103,14 @@ TOOLS_HANDLERS["rechtspraak-search"] = handle_rechtspraak_search
 # Rechtspraak Content
 ###################
 
+
 class RechtspraakContentParams(BaseModel):
     """Parameters for fetching a specific Dutch ruling."""
-    ecli: str = Field(..., description="The ECLI identifier (e.g. 'ECLI:NL:HR:2020:1234')")
+
+    ecli: str = Field(
+        ..., description="The ECLI identifier (e.g. 'ECLI:NL:HR:2020:1234')"
+    )
+
 
 def fetch_rechtspraak_content(params: RechtspraakContentParams) -> str:
     """Fetch the full content of a ruling from Rechtspraak."""
@@ -102,6 +118,7 @@ def fetch_rechtspraak_content(params: RechtspraakContentParams) -> str:
     response = http_get(f"{BASE_URL}/content", params=query_params)
     # Return raw XML as it contains structured legal data
     return response.text
+
 
 async def handle_rechtspraak_content(
     arguments: dict[str, Any] | None = None,
@@ -114,6 +131,7 @@ async def handle_rechtspraak_content(
     except Exception as e:
         log.error(f"Error fetching Rechtspraak content: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -133,6 +151,8 @@ async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.
 
     await run_server(server, transport, port, host)
 
+
 if __name__ == "__main__":
     import anyio
+
     anyio.run(main)

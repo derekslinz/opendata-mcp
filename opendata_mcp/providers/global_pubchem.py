@@ -11,7 +11,7 @@ API Documentation: https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest
 """
 
 import logging
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Sequence
 
 import mcp.types as types
 from pydantic import BaseModel, Field
@@ -34,15 +34,23 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 # PubChem Compound
 ###################
 
+
 class PubChemCompoundParams(BaseModel):
     """Parameters for fetching PubChem compound data."""
+
     identifier: str = Field(..., description="Compound name, CID, SMILES, or InChI")
-    namespace: str = Field(default="name", description="Type of identifier (name, cid, smiles, inchi)")
+    namespace: str = Field(
+        default="name", description="Type of identifier (name, cid, smiles, inchi)"
+    )
+
 
 def fetch_pubchem_compound(params: PubChemCompoundParams) -> Any:
     """Fetch compound data from PubChem."""
-    response = http_get(f"{BASE_URL}/compound/{params.namespace}/{params.identifier}/JSON")
+    response = http_get(
+        f"{BASE_URL}/compound/{params.namespace}/{params.identifier}/JSON"
+    )
     return response.json()
+
 
 async def handle_pubchem_compound(
     arguments: dict[str, Any] | None = None,
@@ -55,6 +63,7 @@ async def handle_pubchem_compound(
     except Exception as e:
         log.error(f"Error fetching PubChem compound: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -69,14 +78,18 @@ TOOLS_HANDLERS["pubchem-compound"] = handle_pubchem_compound
 # PubChem Substance
 ###################
 
+
 class PubChemSubstanceParams(BaseModel):
     """Parameters for fetching PubChem substance data."""
+
     sid: int = Field(..., description="PubChem Substance ID (SID)")
+
 
 def fetch_pubchem_substance(params: PubChemSubstanceParams) -> Any:
     """Fetch substance data from PubChem."""
     response = http_get(f"{BASE_URL}/substance/sid/{params.sid}/JSON")
     return response.json()
+
 
 async def handle_pubchem_substance(
     arguments: dict[str, Any] | None = None,
@@ -89,6 +102,7 @@ async def handle_pubchem_substance(
     except Exception as e:
         log.error(f"Error fetching PubChem substance: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -108,6 +122,8 @@ async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.
 
     await run_server(server, transport, port, host)
 
+
 if __name__ == "__main__":
     import anyio
+
     anyio.run(main)
