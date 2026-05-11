@@ -39,9 +39,7 @@ def _import_provider_module(provider: str):
 @click.option(
     "--port", default=8000, type=int, help="Port to listen on for SSE transport"
 )
-@click.option(
-    "--host", default="127.0.0.1", help="Host to listen on for SSE transport"
-)
+@click.option("--host", default="127.0.0.1", help="Host to listen on for SSE transport")
 def run(provider: str, transport: str, port: int, host: str):
     """Run a specific provider MCP server."""
     try:
