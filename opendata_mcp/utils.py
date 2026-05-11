@@ -12,9 +12,43 @@ log = logging.getLogger(__name__)
 def to_json_text(payload: Any, max_chars: int | None = None) -> str:
     """Serialize data to stable JSON text for MCP responses."""
     text = json.dumps(payload, ensure_ascii=False, default=str)
-    if max_chars is not None:
-        return text[:max_chars]
-    return text
+    if max_chars is None or len(text) <= max_chars:
+        return text
+
+    truncated_payload = {
+        "truncated": True,
+        "original_length": len(text),
+        "max_chars": max_chars,
+        "preview": text,
+    }
+    truncated_text = json.dumps(
+        truncated_payload, ensure_ascii=False, default=str
+    )
+    if len(truncated_text) <= max_chars:
+        return truncated_text
+
+    preview = text
+    while preview:
+        truncated_payload["preview"] = preview
+        truncated_text = json.dumps(
+            truncated_payload, ensure_ascii=False, default=str
+        )
+        if len(truncated_text) <= max_chars:
+            return truncated_text
+        preview = preview[:-1]
+
+    minimal_truncated_payload = {
+        "truncated": True,
+        "original_length": len(text),
+        "max_chars": max_chars,
+    }
+    minimal_truncated_text = json.dumps(
+        minimal_truncated_payload, ensure_ascii=False, default=str
+    )
+    if len(minimal_truncated_text) <= max_chars:
+        return minimal_truncated_text
+
+    return json.dumps({"truncated": True}, ensure_ascii=False, default=str)
 
 
 def create_mcp_server(
