@@ -23,6 +23,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import to_json_text
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -108,7 +110,11 @@ async def handle_cbs_data(
         # Some endpoints might support count but not all
         total_count = data.get("odata.count")
         response = CBSDataResponse(results=results, total_count=total_count)
-        return [types.TextContent(type="text", text=str(response.model_dump())[:20000])]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(response.model_dump(), max_chars=20000)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching CBS data: {e}")
         raise
@@ -137,7 +143,7 @@ class CBSMetadataParams(BaseModel):
 def fetch_cbs_metadata(params: CBSMetadataParams) -> dict:
     """Fetch metadata (DataProperties) for a specific CBS table."""
     endpoint = f"{BASE_URL}/{params.table_id}/DataProperties"
-    response = httpx.get(endpoint, params={"$format": "json"})
+    response = httpx.get(endpoint, params={"$format": "json"}, timeout=10.0)
     response.raise_for_status()
     return response.json()
 
@@ -152,7 +158,7 @@ async def handle_cbs_metadata(
 
         params = CBSMetadataParams(**arguments)
         metadata = fetch_cbs_metadata(params)
-        return [types.TextContent(type="text", text=str(metadata))]
+        return [types.TextContent(type="text", text=to_json_text(metadata))]
     except Exception as e:
         log.error(f"Error fetching CBS metadata: {e}")
         raise
@@ -206,7 +212,7 @@ def list_cbs_tables(params: CBSListTablesParams) -> dict:
             f"substringof('{safe_search}', ShortTitle) or substringof('{safe_search}', Title)"
         )
 
-    response = httpx.get(CATALOG_URL, params=query_params)
+    response = httpx.get(CATALOG_URL, params=query_params, timeout=10.0)
     response.raise_for_status()
     return response.json()
 
@@ -221,7 +227,9 @@ async def handle_cbs_list_tables(
         results = data.get("value", [])
         total_count = data.get("odata.count")
         response = CBSListTablesResponse(results=results, total_count=total_count)
-        return [types.TextContent(type="text", text=str(response.model_dump()))]
+        return [
+            types.TextContent(type="text", text=to_json_text(response.model_dump()))
+        ]
     except Exception as e:
         log.error(f"Error listing CBS tables: {e}")
         raise

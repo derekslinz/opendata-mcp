@@ -21,7 +21,7 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import MAX_RESPONSE_CHARS, serialize_for_llm
+from opendata_mcp.utils import to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -87,8 +87,14 @@ async def handle_list_collections(
     try:
         params = ListCollectionsParams(**(arguments or {}))
         collections = list_copernicus_collections(params)
-        text = str([c.model_dump() for c in collections])
-        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
+        return [
+            types.TextContent(
+                type="text",
+                text=to_json_text(
+                    [c.model_dump() for c in collections], max_chars=10000
+                ),
+            )
+        ]
     except Exception as e:
         log.error(f"Error listing Copernicus collections: {e}")
         raise
@@ -158,7 +164,9 @@ async def handle_search_products(
                     "bbox": feat.get("bbox"),
                 }
             )
-        return [types.TextContent(type="text", text=str(summary)[:10000])]
+        return [
+            types.TextContent(type="text", text=to_json_text(summary, max_chars=10000))
+        ]
     except Exception as e:
         log.error(f"Error searching Copernicus products: {e}")
         raise
@@ -199,7 +207,9 @@ async def handle_get_product_metadata(
     try:
         params = ProductMetadataParams(**(arguments or {}))
         data = fetch_product_metadata(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(type="text", text=to_json_text(data, max_chars=15000))
+        ]
     except Exception as e:
         log.error(f"Error fetching Copernicus product metadata: {e}")
         raise
