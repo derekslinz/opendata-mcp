@@ -61,7 +61,7 @@ async def test_find_providers_combined_filters():
 @pytest.mark.anyio
 async def test_find_providers_no_match_returns_empty():
     result = await handle_find_providers({"query": "zzzzzzzz_no_such_topic"})
-    assert "'count': 0" in result[0].text
+    assert '"count": 0' in result[0].text
 
 
 @pytest.mark.anyio
@@ -106,8 +106,8 @@ async def test_describe_provider_requires_id():
 async def test_list_providers_pagination():
     result = await handle_list_providers({"limit": 3, "offset": 0})
     text = result[0].text
-    assert "'total'" in text
-    assert "'limit': 3" in text
+    assert '"total"' in text
+    assert '"limit": 3' in text
 
 
 @pytest.mark.anyio

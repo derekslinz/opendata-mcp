@@ -28,7 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ async def handle_usgs_eq_query(
     try:
         params = USGSEqQueryParams(**(arguments or {}))
         data = fetch_usgs_eq_query(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error querying USGS earthquake catalog: {e}")
         raise
@@ -159,7 +159,7 @@ async def handle_usgs_eq_count(
     try:
         params = USGSEqCountParams(**(arguments or {}))
         data = fetch_usgs_eq_count(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error counting USGS earthquake events: {e}")
         raise
@@ -219,7 +219,7 @@ async def handle_usgs_eq_feed_significant_day(
     try:
         params = USGSEqFeedParams(**(arguments or {}))
         data = fetch_usgs_eq_feed_significant_day(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching USGS significant_day feed: {e}")
         raise
@@ -232,7 +232,7 @@ async def handle_usgs_eq_feed_significant_week(
     try:
         params = USGSEqFeedParams(**(arguments or {}))
         data = fetch_usgs_eq_feed_significant_week(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching USGS significant_week feed: {e}")
         raise
@@ -245,7 +245,7 @@ async def handle_usgs_eq_feed_all_day(
     try:
         params = USGSEqFeedParams(**(arguments or {}))
         data = fetch_usgs_eq_feed_all_day(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching USGS all_day feed: {e}")
         raise
@@ -258,7 +258,7 @@ async def handle_usgs_eq_feed_all_week(
     try:
         params = USGSEqFeedParams(**(arguments or {}))
         data = fetch_usgs_eq_feed_all_week(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching USGS all_week feed: {e}")
         raise
@@ -271,7 +271,7 @@ async def handle_usgs_eq_feed_m45_week(
     try:
         params = USGSEqFeedParams(**(arguments or {}))
         data = fetch_usgs_eq_feed_m45_week(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching USGS 4.5_week feed: {e}")
         raise
@@ -347,7 +347,7 @@ async def handle_usgs_eq_application_version(
     try:
         params = USGSEqVersionParams(**(arguments or {}))
         data = fetch_usgs_eq_application_version(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching USGS earthquake catalog version: {e}")
         raise

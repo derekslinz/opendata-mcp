@@ -29,7 +29,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ async def handle_ca_opengov_search_datasets(
     try:
         params = CAOpenGovSearchDatasetsParams(**(arguments or {}))
         data = fetch_ca_opengov_search_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching open.canada.ca datasets: {e}")
         raise
@@ -126,7 +126,7 @@ async def handle_ca_opengov_get_dataset(
             raise ValueError("id is required")
         params = CAOpenGovGetDatasetParams(**arguments)
         data = fetch_ca_opengov_get_dataset(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching open.canada.ca dataset: {e}")
         raise
@@ -175,7 +175,7 @@ async def handle_ca_opengov_list_organizations(
     try:
         params = CAOpenGovListOrganizationsParams(**(arguments or {}))
         data = fetch_ca_opengov_list_organizations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing open.canada.ca organisations: {e}")
         raise
@@ -217,7 +217,7 @@ async def handle_ca_opengov_get_organization(
             raise ValueError("id is required")
         params = CAOpenGovGetOrganizationParams(**arguments)
         data = fetch_ca_opengov_get_organization(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching open.canada.ca organisation: {e}")
         raise
@@ -263,7 +263,7 @@ async def handle_ca_opengov_list_groups(
     try:
         params = CAOpenGovListGroupsParams(**(arguments or {}))
         data = fetch_ca_opengov_list_groups(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing open.canada.ca groups: {e}")
         raise
@@ -309,7 +309,7 @@ async def handle_ca_opengov_list_tags(
     try:
         params = CAOpenGovListTagsParams(**(arguments or {}))
         data = fetch_ca_opengov_list_tags(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing open.canada.ca tags: {e}")
         raise
@@ -349,7 +349,7 @@ async def handle_ca_opengov_list_licenses(
     try:
         params = CAOpenGovListLicensesParams(**(arguments or {}))
         data = fetch_ca_opengov_list_licenses(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing open.canada.ca licences: {e}")
         raise

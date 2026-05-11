@@ -30,7 +30,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ async def handle_openlibrary_search_books(
     try:
         params = OpenLibrarySearchBooksParams(**(arguments or {}))
         data = fetch_open_library_search_books(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Open Library books: {e}")
         raise
@@ -134,7 +134,7 @@ async def handle_openlibrary_search_authors(
             raise ValueError("q is required")
         params = OpenLibrarySearchAuthorsParams(**arguments)
         data = fetch_open_library_search_authors(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Open Library authors: {e}")
         raise
@@ -176,7 +176,7 @@ async def handle_openlibrary_get_work(
             raise ValueError("work_id is required")
         params = OpenLibraryGetWorkParams(**arguments)
         data = fetch_open_library_get_work(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Open Library work: {e}")
         raise
@@ -220,7 +220,7 @@ async def handle_openlibrary_get_edition(
             raise ValueError("edition_id is required")
         params = OpenLibraryGetEditionParams(**arguments)
         data = fetch_open_library_get_edition(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Open Library edition: {e}")
         raise
@@ -262,7 +262,7 @@ async def handle_openlibrary_get_author(
             raise ValueError("author_id is required")
         params = OpenLibraryGetAuthorParams(**arguments)
         data = fetch_open_library_get_author(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Open Library author: {e}")
         raise
@@ -306,7 +306,7 @@ async def handle_openlibrary_isbn_lookup(
             raise ValueError("isbn is required")
         params = OpenLibraryISBNLookupParams(**arguments)
         data = fetch_open_library_isbn_lookup(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error performing ISBN lookup: {e}")
         raise
@@ -356,7 +356,7 @@ async def handle_openlibrary_subject(
             raise ValueError("subject is required")
         params = OpenLibrarySubjectParams(**arguments)
         data = fetch_open_library_subject(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Open Library subject: {e}")
         raise

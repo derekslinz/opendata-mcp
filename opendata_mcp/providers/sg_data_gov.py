@@ -28,7 +28,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ async def handle_sg_datagov_list_datasets(
     try:
         params = SGDataGovListDatasetsParams(**(arguments or {}))
         data = fetch_sg_datagov_list_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gov.sg datasets: {e}")
         raise
@@ -123,7 +123,7 @@ async def handle_sg_datagov_get_dataset(
             raise ValueError("datasetId is required")
         params = SGDataGovGetDatasetParams(**arguments)
         data = fetch_sg_datagov_get_dataset(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching data.gov.sg dataset metadata: {e}")
         raise
@@ -167,7 +167,7 @@ async def handle_sg_datagov_list_collections(
     try:
         params = SGDataGovListCollectionsParams(**(arguments or {}))
         data = fetch_sg_datagov_list_collections(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gov.sg collections: {e}")
         raise
@@ -212,7 +212,7 @@ async def handle_sg_datagov_get_collection(
             raise ValueError("collectionId is required")
         params = SGDataGovGetCollectionParams(**arguments)
         data = fetch_sg_datagov_get_collection(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching data.gov.sg collection metadata: {e}")
         raise
@@ -262,7 +262,7 @@ async def handle_sg_datagov_poll_download(
             raise ValueError("datasetId is required")
         params = SGDataGovPollDownloadParams(**arguments)
         data = fetch_sg_datagov_poll_download(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error polling data.gov.sg download status: {e}")
         raise

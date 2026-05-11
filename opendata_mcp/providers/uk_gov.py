@@ -30,7 +30,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ async def handle_uk_gov_search_datasets(
     try:
         params = UKGovSearchDatasetsParams(**(arguments or {}))
         data = fetch_uk_gov_search_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching data.gov.uk datasets: {e}")
         raise
@@ -127,7 +127,7 @@ async def handle_uk_gov_get_dataset(
             raise ValueError("id is required")
         params = UKGovGetDatasetParams(**arguments)
         data = fetch_uk_gov_get_dataset(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching data.gov.uk dataset: {e}")
         raise
@@ -174,7 +174,7 @@ async def handle_uk_gov_list_organizations(
     try:
         params = UKGovListOrganizationsParams(**(arguments or {}))
         data = fetch_uk_gov_list_organizations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gov.uk organisations: {e}")
         raise
@@ -216,7 +216,7 @@ async def handle_uk_gov_get_organization(
             raise ValueError("id is required")
         params = UKGovGetOrganizationParams(**arguments)
         data = fetch_uk_gov_get_organization(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching data.gov.uk organisation: {e}")
         raise
@@ -262,7 +262,7 @@ async def handle_uk_gov_list_groups(
     try:
         params = UKGovListGroupsParams(**(arguments or {}))
         data = fetch_uk_gov_list_groups(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gov.uk groups: {e}")
         raise
@@ -308,7 +308,7 @@ async def handle_uk_gov_list_tags(
     try:
         params = UKGovListTagsParams(**(arguments or {}))
         data = fetch_uk_gov_list_tags(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gov.uk tags: {e}")
         raise
@@ -357,7 +357,7 @@ async def handle_uk_gov_list_recently_changed(
     try:
         params = UKGovListRecentlyChangedParams(**(arguments or {}))
         data = fetch_uk_gov_list_recently_changed(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing recently changed data.gov.uk packages: {e}")
         raise

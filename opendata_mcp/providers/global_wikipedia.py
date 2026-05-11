@@ -34,7 +34,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ async def handle_wikipedia_get_summary(
             raise ValueError("title is required")
         params = WikipediaSummaryParams(**arguments)
         data = fetch_wikipedia_summary(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikipedia summary: {e}")
         raise
@@ -184,7 +184,7 @@ async def handle_wikipedia_get_mobile_sections(
             raise ValueError("title is required")
         params = WikipediaMobileSectionsParams(**arguments)
         data = fetch_wikipedia_mobile_sections(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikipedia mobile sections: {e}")
         raise
@@ -228,7 +228,7 @@ async def handle_wikipedia_get_related(
             raise ValueError("title is required")
         params = WikipediaRelatedParams(**arguments)
         data = fetch_wikipedia_related(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikipedia related pages: {e}")
         raise
@@ -272,7 +272,7 @@ async def handle_wikipedia_get_media_list(
             raise ValueError("title is required")
         params = WikipediaMediaListParams(**arguments)
         data = fetch_wikipedia_media_list(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikipedia media list: {e}")
         raise
@@ -322,7 +322,7 @@ async def handle_wikipedia_search_title(
             raise ValueError("search is required")
         params = WikipediaSearchTitleParams(**arguments)
         data = fetch_wikipedia_search_title(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Wikipedia titles: {e}")
         raise
@@ -380,7 +380,7 @@ async def handle_wikipedia_get_page_views(
             raise ValueError("title, start, and end are required")
         params = WikipediaPageViewsParams(**arguments)
         data = fetch_wikipedia_page_views(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikipedia page views: {e}")
         raise
@@ -432,7 +432,7 @@ async def handle_wikipedia_get_on_this_day(
             raise ValueError("month and day are required")
         params = WikipediaOnThisDayParams(**arguments)
         data = fetch_wikipedia_on_this_day(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikipedia on-this-day feed: {e}")
         raise

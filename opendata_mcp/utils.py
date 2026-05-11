@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from typing import Any, Callable, Sequence
@@ -10,6 +11,9 @@ from pydantic import AnyUrl
 from opendata_mcp import __version__
 
 log = logging.getLogger(__name__)
+
+# Maximum character length for tool/resource text responses.
+MAX_RESPONSE_CHARS = 20_000
 
 
 def _default_user_agent() -> str:
@@ -56,6 +60,18 @@ def http_get(
     response = httpx.get(url, params=params, timeout=timeout, headers=merged_headers)
     response.raise_for_status()
     return response
+
+
+def serialize_for_llm(data: Any) -> str:
+    """Serialize ``data`` to a JSON string truncated to ``MAX_RESPONSE_CHARS``.
+
+    Uses ``json.dumps`` so that LLMs receive valid JSON (``true``/``false``,
+    ``null``, double-quoted keys) instead of Python's ``repr`` output.
+
+    ``default=str`` is used as a fallback serializer for types that are not
+    natively JSON-serializable (e.g. ``datetime``, ``UUID``).
+    """
+    return json.dumps(data, default=str, ensure_ascii=False)[:MAX_RESPONSE_CHARS]
 
 
 def create_mcp_server(

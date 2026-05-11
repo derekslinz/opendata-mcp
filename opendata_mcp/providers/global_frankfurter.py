@@ -28,7 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ async def handle_frankfurter_latest(
     try:
         params = FrankfurterLatestParams(**(arguments or {}))
         data = fetch_frankfurter_latest(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Frankfurter latest rates: {e}")
         raise
@@ -134,7 +134,7 @@ async def handle_frankfurter_historical(
             raise ValueError("date is required")
         params = FrankfurterHistoricalParams(**arguments)
         data = fetch_frankfurter_historical(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Frankfurter historical rates: {e}")
         raise
@@ -196,7 +196,7 @@ async def handle_frankfurter_time_series(
             raise ValueError("start and end are required")
         params = FrankfurterTimeSeriesParams(**arguments)
         data = fetch_frankfurter_time_series(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Frankfurter time series: {e}")
         raise
@@ -234,7 +234,7 @@ async def handle_frankfurter_currencies(
     try:
         params = FrankfurterCurrenciesParams(**(arguments or {}))
         data = fetch_frankfurter_currencies(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Frankfurter currencies: {e}")
         raise
@@ -297,7 +297,7 @@ async def handle_frankfurter_convert(
             raise ValueError("amount, base, and target are required")
         params = FrankfurterConvertParams(**arguments)
         data = fetch_frankfurter_convert(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error performing Frankfurter conversion: {e}")
         raise

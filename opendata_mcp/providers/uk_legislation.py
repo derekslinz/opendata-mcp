@@ -37,7 +37,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, MAX_RESPONSE_CHARS
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ async def handle_uk_legislation_search(
     try:
         params = UkLegislationSearchParams(**(arguments or {}))
         text = fetch_uk_legislation_search(params)
-        return [types.TextContent(type="text", text=text[:20000])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error searching UK legislation: {e}")
         raise
@@ -161,7 +161,7 @@ async def handle_uk_legislation_list_by_year(
             raise ValueError("type and year are required")
         params = UkLegislationListByYearParams(**arguments)
         text = fetch_uk_legislation_list_by_year(params)
-        return [types.TextContent(type="text", text=text[:20000])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error listing UK legislation by year: {e}")
         raise
@@ -218,7 +218,7 @@ async def handle_uk_legislation_get_document_xml(
             raise ValueError("type, year, and number are required")
         params = UkLegislationGetDocumentXmlParams(**arguments)
         text = fetch_uk_legislation_document_xml(params)
-        return [types.TextContent(type="text", text=text[:20000])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error fetching UK legislation XML: {e}")
         raise
@@ -277,7 +277,7 @@ async def handle_uk_legislation_get_document_html(
             raise ValueError("type, year, and number are required")
         params = UkLegislationGetDocumentHtmlParams(**arguments)
         text = fetch_uk_legislation_document_html(params)
-        return [types.TextContent(type="text", text=text[:20000])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error fetching UK legislation HTML: {e}")
         raise
@@ -317,7 +317,7 @@ async def handle_uk_legislation_list_types(
     try:
         params = UkLegislationListTypesParams(**(arguments or {}))
         text = fetch_uk_legislation_list_types(params)
-        return [types.TextContent(type="text", text=text[:20000])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error fetching UK legislation browse hub: {e}")
         raise
@@ -372,7 +372,7 @@ async def handle_uk_legislation_changes_feed(
             raise ValueError("type, year, and number are required")
         params = UkLegislationChangesFeedParams(**arguments)
         text = fetch_uk_legislation_changes_feed(params)
-        return [types.TextContent(type="text", text=text[:20000])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error fetching UK legislation changes feed: {e}")
         raise

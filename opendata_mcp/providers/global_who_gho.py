@@ -33,7 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ async def handle_list_indicators(
     try:
         params = WhoGhoListIndicatorsParams(**(arguments or {}))
         data = fetch_list_indicators(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing WHO GHO indicators: {e}")
         raise
@@ -155,7 +155,7 @@ async def handle_get_indicator_data(
             raise ValueError("indicator_code is required")
         params = WhoGhoGetIndicatorDataParams(**arguments)
         data = fetch_get_indicator_data(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching WHO GHO indicator data: {e}")
         raise
@@ -198,7 +198,7 @@ async def handle_list_dimensions(
     try:
         params = WhoGhoListDimensionsParams(**(arguments or {}))
         data = fetch_list_dimensions(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing WHO GHO dimensions: {e}")
         raise
@@ -246,7 +246,7 @@ async def handle_list_dimension_values(
             raise ValueError("dim is required")
         params = WhoGhoListDimensionValuesParams(**arguments)
         data = fetch_list_dimension_values(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing WHO GHO dimension values: {e}")
         raise
@@ -291,7 +291,7 @@ async def handle_list_countries(
     try:
         params = WhoGhoListCountriesParams(**(arguments or {}))
         data = fetch_list_countries(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing WHO GHO countries: {e}")
         raise

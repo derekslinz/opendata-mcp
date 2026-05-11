@@ -33,7 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ async def handle_get_states_all(
     try:
         params = OpenSkyStatesAllParams(**(arguments or {}))
         data = fetch_states_all(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenSky all states: {e}")
         raise
@@ -149,7 +149,7 @@ async def handle_get_states_by_aircraft(
             raise ValueError("icao24 is required")
         params = OpenSkyStatesByAircraftParams(**arguments)
         data = fetch_states_by_aircraft(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenSky states by aircraft: {e}")
         raise
@@ -205,7 +205,7 @@ async def handle_get_flights_aircraft(
             raise ValueError("icao24, begin, and end are required")
         params = OpenSkyFlightsAircraftParams(**arguments)
         data = fetch_flights_aircraft(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenSky flights for aircraft: {e}")
         raise
@@ -261,7 +261,7 @@ async def handle_get_flights_arrival(
             raise ValueError("airport, begin, and end are required")
         params = OpenSkyFlightsArrivalParams(**arguments)
         data = fetch_flights_arrival(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenSky arrivals: {e}")
         raise
@@ -317,7 +317,7 @@ async def handle_get_flights_departure(
             raise ValueError("airport, begin, and end are required")
         params = OpenSkyFlightsDepartureParams(**arguments)
         data = fetch_flights_departure(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenSky departures: {e}")
         raise

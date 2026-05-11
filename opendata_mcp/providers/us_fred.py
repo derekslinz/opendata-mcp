@@ -29,7 +29,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ async def handle_search_series(
             raise ValueError("search_text is required")
         params = FREDSearchSeriesParams(**arguments)
         data = fetch_search_series(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching FRED series: {e}")
         raise
@@ -147,7 +147,7 @@ async def handle_get_series(
             raise ValueError("series_id is required")
         params = FREDGetSeriesParams(**arguments)
         data = fetch_get_series(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching FRED series: {e}")
         raise
@@ -208,7 +208,7 @@ async def handle_get_series_observations(
             raise ValueError("series_id is required")
         params = FREDGetSeriesObservationsParams(**arguments)
         data = fetch_get_series_observations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching FRED series observations: {e}")
         raise
@@ -258,7 +258,7 @@ async def handle_list_categories(
     try:
         params = FREDListCategoriesParams(**(arguments or {}))
         data = fetch_list_categories(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing FRED categories: {e}")
         raise
@@ -306,7 +306,7 @@ async def handle_get_category(
             raise ValueError("category_id is required")
         params = FREDGetCategoryParams(**arguments)
         data = fetch_get_category(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching FRED category: {e}")
         raise
@@ -352,7 +352,7 @@ async def handle_list_releases(
     try:
         params = FREDListReleasesParams(**(arguments or {}))
         data = fetch_list_releases(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing FRED releases: {e}")
         raise
@@ -400,7 +400,7 @@ async def handle_get_release(
             raise ValueError("release_id is required")
         params = FREDGetReleaseParams(**arguments)
         data = fetch_get_release(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching FRED release: {e}")
         raise
@@ -442,7 +442,7 @@ async def handle_list_sources(
     try:
         params = FREDListSourcesParams(**(arguments or {}))
         data = fetch_list_sources(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing FRED sources: {e}")
         raise

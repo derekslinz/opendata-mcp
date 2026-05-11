@@ -28,7 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ async def handle_gbif_search_occurrences(
     try:
         params = GBIFSearchOccurrencesParams(**(arguments or {}))
         data = fetch_gbif_search_occurrences(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching GBIF occurrences: {e}")
         raise
@@ -129,7 +129,7 @@ async def handle_gbif_get_occurrence(
             raise ValueError("key is required")
         params = GBIFGetOccurrenceParams(**arguments)
         data = fetch_gbif_get_occurrence(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching GBIF occurrence: {e}")
         raise
@@ -179,7 +179,7 @@ async def handle_gbif_search_species(
             raise ValueError("q is required")
         params = GBIFSearchSpeciesParams(**arguments)
         data = fetch_gbif_search_species(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching GBIF species: {e}")
         raise
@@ -221,7 +221,7 @@ async def handle_gbif_get_species(
             raise ValueError("key is required")
         params = GBIFGetSpeciesParams(**arguments)
         data = fetch_gbif_get_species(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching GBIF species: {e}")
         raise
@@ -265,7 +265,7 @@ async def handle_gbif_get_species_name_suggest(
             raise ValueError("q is required")
         params = GBIFSpeciesSuggestParams(**arguments)
         data = fetch_gbif_species_suggest(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error suggesting GBIF species names: {e}")
         raise
@@ -318,7 +318,7 @@ async def handle_gbif_list_datasets(
     try:
         params = GBIFListDatasetsParams(**(arguments or {}))
         data = fetch_gbif_list_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing GBIF datasets: {e}")
         raise
@@ -360,7 +360,7 @@ async def handle_gbif_get_dataset(
             raise ValueError("key is required")
         params = GBIFGetDatasetParams(**arguments)
         data = fetch_gbif_get_dataset(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching GBIF dataset: {e}")
         raise
@@ -405,7 +405,7 @@ async def handle_gbif_get_occurrence_counts(
     try:
         params = GBIFOccurrenceCountsParams(**(arguments or {}))
         data = fetch_gbif_occurrence_counts(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching GBIF occurrence counts: {e}")
         raise

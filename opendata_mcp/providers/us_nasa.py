@@ -24,6 +24,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import serialize_for_llm
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -72,7 +74,7 @@ async def handle_get_apod(
     try:
         params = APODParams(**(arguments or {}))
         data = fetch_apod(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NASA APOD: {e}")
         raise
@@ -130,7 +132,7 @@ async def handle_get_asteroids(
             raise ValueError("start_date is required")
         params = NeoWsParams(**arguments)
         data = fetch_neows(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NASA Asteroids: {e}")
         raise
@@ -190,7 +192,7 @@ async def handle_get_mars_photos(
             raise ValueError("rover is required")
         params = MarsRoverParams(**arguments)
         data = fetch_mars_photos(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Mars photos: {e}")
         raise
@@ -272,7 +274,7 @@ async def handle_get_ace_data(
                 )
             ]
 
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ACE data: {e}")
         raise

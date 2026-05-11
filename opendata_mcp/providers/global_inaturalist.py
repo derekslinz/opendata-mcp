@@ -30,7 +30,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ async def handle_inaturalist_search_observations(
     try:
         params = INaturalistSearchObservationsParams(**(arguments or {}))
         data = fetch_inaturalist_search_observations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching iNaturalist observations: {e}")
         raise
@@ -140,7 +140,7 @@ async def handle_inaturalist_get_observation(
             raise ValueError("id is required")
         params = INaturalistGetObservationParams(**arguments)
         data = fetch_inaturalist_get_observation(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching iNaturalist observation: {e}")
         raise
@@ -190,7 +190,7 @@ async def handle_inaturalist_search_taxa(
             raise ValueError("q is required")
         params = INaturalistSearchTaxaParams(**arguments)
         data = fetch_inaturalist_search_taxa(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching iNaturalist taxa: {e}")
         raise
@@ -232,7 +232,7 @@ async def handle_inaturalist_get_taxon(
             raise ValueError("id is required")
         params = INaturalistGetTaxonParams(**arguments)
         data = fetch_inaturalist_get_taxon(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching iNaturalist taxon: {e}")
         raise
@@ -276,7 +276,7 @@ async def handle_inaturalist_list_places(
             raise ValueError("q is required")
         params = INaturalistListPlacesParams(**arguments)
         data = fetch_inaturalist_list_places(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing iNaturalist places: {e}")
         raise
@@ -318,7 +318,7 @@ async def handle_inaturalist_get_place(
             raise ValueError("id is required")
         params = INaturalistGetPlaceParams(**arguments)
         data = fetch_inaturalist_get_place(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching iNaturalist place: {e}")
         raise
@@ -362,7 +362,7 @@ async def handle_inaturalist_list_projects(
     try:
         params = INaturalistListProjectsParams(**(arguments or {}))
         data = fetch_inaturalist_list_projects(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing iNaturalist projects: {e}")
         raise
@@ -404,7 +404,7 @@ async def handle_inaturalist_get_user(
             raise ValueError("id is required")
         params = INaturalistGetUserParams(**arguments)
         data = fetch_inaturalist_get_user(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching iNaturalist user: {e}")
         raise

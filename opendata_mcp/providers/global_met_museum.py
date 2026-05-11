@@ -28,7 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ async def handle_met_list_objects(
     try:
         params = MetListObjectsParams(**(arguments or {}))
         data = fetch_met_list_objects(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing Met objects: {e}")
         raise
@@ -122,7 +122,7 @@ async def handle_met_get_object(
             raise ValueError("objectID is required")
         params = MetGetObjectParams(**arguments)
         data = fetch_met_get_object(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Met object: {e}")
         raise
@@ -197,7 +197,7 @@ async def handle_met_search(
             raise ValueError("q is required")
         params = MetSearchParams(**arguments)
         data = fetch_met_search(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Met collection: {e}")
         raise
@@ -235,7 +235,7 @@ async def handle_met_list_departments(
     try:
         params = MetListDepartmentsParams(**(arguments or {}))
         data = fetch_met_list_departments(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing Met departments: {e}")
         raise
@@ -283,7 +283,7 @@ async def handle_met_search_by_artist(
             raise ValueError("q is required")
         params = MetSearchByArtistParams(**arguments)
         data = fetch_met_search_by_artist(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Met collection by artist: {e}")
         raise

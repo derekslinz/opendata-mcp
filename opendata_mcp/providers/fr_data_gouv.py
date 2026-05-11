@@ -35,7 +35,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ async def handle_fr_datagouv_search_datasets(
     try:
         params = FRDataGouvSearchDatasetsParams(**(arguments or {}))
         data = fetch_fr_datagouv_search_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching data.gouv.fr datasets: {e}")
         raise
@@ -136,7 +136,7 @@ async def handle_fr_datagouv_get_dataset(
             raise ValueError("id is required")
         params = FRDataGouvGetDatasetParams(**arguments)
         data = fetch_fr_datagouv_get_dataset(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching data.gouv.fr dataset: {e}")
         raise
@@ -185,7 +185,7 @@ async def handle_fr_datagouv_list_organizations(
     try:
         params = FRDataGouvListOrganizationsParams(**(arguments or {}))
         data = fetch_fr_datagouv_list_organizations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gouv.fr organisations: {e}")
         raise
@@ -234,7 +234,7 @@ async def handle_fr_datagouv_get_organization(
             raise ValueError("id is required")
         params = FRDataGouvGetOrganizationParams(**arguments)
         data = fetch_fr_datagouv_get_organization(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching data.gouv.fr organisation: {e}")
         raise
@@ -283,7 +283,7 @@ async def handle_fr_datagouv_search_reuses(
     try:
         params = FRDataGouvSearchReusesParams(**(arguments or {}))
         data = fetch_fr_datagouv_search_reuses(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching data.gouv.fr reuses: {e}")
         raise
@@ -326,7 +326,7 @@ async def handle_fr_datagouv_list_topics(
     try:
         params = FRDataGouvListTopicsParams(**(arguments or {}))
         data = fetch_fr_datagouv_list_topics(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gouv.fr topics: {e}")
         raise
@@ -372,7 +372,7 @@ async def handle_fr_datagouv_list_tags(
     try:
         params = FRDataGouvListTagsParams(**(arguments or {}))
         data = fetch_fr_datagouv_list_tags(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error suggesting data.gouv.fr tags: {e}")
         raise

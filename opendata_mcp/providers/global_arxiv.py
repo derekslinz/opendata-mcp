@@ -33,7 +33,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ async def handle_arxiv_query(
             raise ValueError("search_query is required")
         params = ArxivQueryParams(**arguments)
         data = fetch_arxiv_query(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error querying arXiv: {e}")
         raise
@@ -149,7 +149,7 @@ async def handle_arxiv_search_by_title(
             raise ValueError("title is required")
         params = ArxivSearchByTitleParams(**arguments)
         data = fetch_arxiv_search_by_title(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching arXiv by title: {e}")
         raise
@@ -198,7 +198,7 @@ async def handle_arxiv_search_by_author(
             raise ValueError("author is required")
         params = ArxivSearchByAuthorParams(**arguments)
         data = fetch_arxiv_search_by_author(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching arXiv by author: {e}")
         raise
@@ -249,7 +249,7 @@ async def handle_arxiv_search_by_category(
             raise ValueError("category is required")
         params = ArxivSearchByCategoryParams(**arguments)
         data = fetch_arxiv_search_by_category(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching arXiv by category: {e}")
         raise
@@ -294,7 +294,7 @@ async def handle_arxiv_get_paper(
             raise ValueError("arxiv_id is required")
         params = ArxivGetPaperParams(**arguments)
         data = fetch_arxiv_get_paper(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching arXiv paper: {e}")
         raise

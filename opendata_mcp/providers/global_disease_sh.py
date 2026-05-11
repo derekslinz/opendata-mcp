@@ -33,7 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ async def handle_global(
     try:
         params = DiseaseShGlobalParams(**(arguments or {}))
         data = fetch_global(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching disease.sh global aggregate: {e}")
         raise
@@ -123,7 +123,7 @@ async def handle_countries(
     try:
         params = DiseaseShCountriesParams(**(arguments or {}))
         data = fetch_countries(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching disease.sh countries: {e}")
         raise
@@ -170,7 +170,7 @@ async def handle_country(
             raise ValueError("country is required")
         params = DiseaseShCountryParams(**arguments)
         data = fetch_country(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching disease.sh country: {e}")
         raise
@@ -221,7 +221,7 @@ async def handle_historical_all(
     try:
         params = DiseaseShHistoricalAllParams(**(arguments or {}))
         data = fetch_historical_all(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching disease.sh historical all: {e}")
         raise
@@ -275,7 +275,7 @@ async def handle_historical_country(
             raise ValueError("country is required")
         params = DiseaseShHistoricalCountryParams(**arguments)
         data = fetch_historical_country(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching disease.sh historical country: {e}")
         raise
@@ -327,7 +327,7 @@ async def handle_vaccine_coverage(
     try:
         params = DiseaseShVaccineCoverageParams(**(arguments or {}))
         data = fetch_vaccine_coverage(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching disease.sh vaccine coverage: {e}")
         raise

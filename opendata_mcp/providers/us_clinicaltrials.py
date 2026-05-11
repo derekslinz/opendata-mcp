@@ -33,7 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ async def handle_search_studies(
     try:
         params = CtgovSearchStudiesParams(**(arguments or {}))
         data = fetch_search_studies(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching ClinicalTrials.gov studies: {e}")
         raise
@@ -154,7 +154,7 @@ async def handle_get_study(
             raise ValueError("nctId is required")
         params = CtgovGetStudyParams(**arguments)
         data = fetch_get_study(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ClinicalTrials.gov study: {e}")
         raise
@@ -204,7 +204,7 @@ async def handle_search_by_condition(
             raise ValueError("condition is required")
         params = CtgovSearchByConditionParams(**arguments)
         data = fetch_search_by_condition(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching ClinicalTrials.gov by condition: {e}")
         raise
@@ -256,7 +256,7 @@ async def handle_search_by_intervention(
             raise ValueError("intervention is required")
         params = CtgovSearchByInterventionParams(**arguments)
         data = fetch_search_by_intervention(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching ClinicalTrials.gov by intervention: {e}")
         raise
@@ -307,7 +307,7 @@ async def handle_search_by_location(
             raise ValueError("location is required")
         params = CtgovSearchByLocationParams(**arguments)
         data = fetch_search_by_location(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching ClinicalTrials.gov by location: {e}")
         raise
@@ -347,7 +347,7 @@ async def handle_list_stats(
     try:
         params = CtgovListStatsParams(**(arguments or {}))
         data = fetch_list_stats(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ClinicalTrials.gov stats: {e}")
         raise

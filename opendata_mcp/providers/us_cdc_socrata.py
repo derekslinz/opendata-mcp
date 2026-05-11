@@ -29,7 +29,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ async def handle_search_datasets(
     try:
         params = CDCSearchDatasetsParams(**(arguments or {}))
         data = fetch_search_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching CDC datasets: {e}")
         raise
@@ -118,7 +118,7 @@ async def handle_get_dataset_metadata(
             raise ValueError("dataset_id is required")
         params = CDCGetDatasetMetadataParams(**arguments)
         data = fetch_get_dataset_metadata(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CDC dataset metadata: {e}")
         raise
@@ -174,7 +174,7 @@ async def handle_query_dataset(
             raise ValueError("dataset_id is required")
         params = CDCQueryDatasetParams(**arguments)
         data = fetch_query_dataset(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error querying CDC dataset: {e}")
         raise
@@ -221,7 +221,7 @@ async def handle_count_dataset_rows(
             raise ValueError("dataset_id is required")
         params = CDCCountDatasetRowsParams(**arguments)
         data = fetch_count_dataset_rows(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error counting CDC dataset rows: {e}")
         raise
@@ -262,7 +262,7 @@ async def handle_get_metadata_v1(
     try:
         params = CDCGetMetadataV1Params(**(arguments or {}))
         data = fetch_get_metadata_v1(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CDC v1 metadata: {e}")
         raise

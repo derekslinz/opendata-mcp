@@ -30,7 +30,7 @@ from urllib.parse import quote
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ async def handle_crossref_works_search(
     try:
         params = CrossrefWorksSearchParams(**(arguments or {}))
         data = fetch_crossref_works_search(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Crossref works: {e}")
         raise
@@ -144,7 +144,7 @@ async def handle_crossref_get_work(
             raise ValueError("doi is required")
         params = CrossrefGetWorkParams(**arguments)
         data = fetch_crossref_get_work(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Crossref work: {e}")
         raise
@@ -197,7 +197,7 @@ async def handle_crossref_works_by_author(
             raise ValueError("author is required")
         params = CrossrefWorksByAuthorParams(**arguments)
         data = fetch_crossref_works_by_author(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Crossref works by author: {e}")
         raise
@@ -244,7 +244,7 @@ async def handle_crossref_works_by_title(
             raise ValueError("title is required")
         params = CrossrefWorksByTitleParams(**arguments)
         data = fetch_crossref_works_by_title(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Crossref works by title: {e}")
         raise
@@ -291,7 +291,7 @@ async def handle_crossref_journals_search(
             raise ValueError("query is required")
         params = CrossrefJournalsSearchParams(**arguments)
         data = fetch_crossref_journals_search(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Crossref journals: {e}")
         raise
@@ -333,7 +333,7 @@ async def handle_crossref_get_journal(
             raise ValueError("issn is required")
         params = CrossrefGetJournalParams(**arguments)
         data = fetch_crossref_get_journal(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Crossref journal: {e}")
         raise
@@ -380,7 +380,7 @@ async def handle_crossref_funders_search(
             raise ValueError("query is required")
         params = CrossrefFundersSearchParams(**arguments)
         data = fetch_crossref_funders_search(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Crossref funders: {e}")
         raise

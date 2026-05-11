@@ -31,7 +31,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ async def handle_coingecko_simple_price(
             raise ValueError("ids is required")
         params = CoinGeckoSimplePriceParams(**arguments)
         data = fetch_coingecko_simple_price(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko simple price: {e}")
         raise
@@ -137,7 +137,7 @@ async def handle_coingecko_list_coins(
     try:
         params = CoinGeckoListCoinsParams(**(arguments or {}))
         data = fetch_coingecko_list_coins(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko coin list: {e}")
         raise
@@ -200,7 +200,7 @@ async def handle_coingecko_coins_markets(
     try:
         params = CoinGeckoCoinsMarketsParams(**(arguments or {}))
         data = fetch_coingecko_coins_markets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko markets: {e}")
         raise
@@ -249,7 +249,7 @@ async def handle_coingecko_get_coin(
             raise ValueError("id is required")
         params = CoinGeckoGetCoinParams(**arguments)
         data = fetch_coingecko_get_coin(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko coin {arguments}: {e}")
         raise
@@ -297,7 +297,7 @@ async def handle_coingecko_coin_history(
             raise ValueError("id and date are required")
         params = CoinGeckoCoinHistoryParams(**arguments)
         data = fetch_coingecko_coin_history(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko coin history: {e}")
         raise
@@ -355,7 +355,7 @@ async def handle_coingecko_coin_market_chart(
             raise ValueError("id is required")
         params = CoinGeckoCoinMarketChartParams(**arguments)
         data = fetch_coingecko_coin_market_chart(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko market chart: {e}")
         raise
@@ -393,7 +393,7 @@ async def handle_coingecko_search_trending(
     try:
         params = CoinGeckoSearchTrendingParams(**(arguments or {}))
         data = fetch_coingecko_search_trending(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko trending: {e}")
         raise
@@ -431,7 +431,7 @@ async def handle_coingecko_global(
     try:
         params = CoinGeckoGlobalParams(**(arguments or {}))
         data = fetch_coingecko_global(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko global: {e}")
         raise
