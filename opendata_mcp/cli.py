@@ -32,15 +32,23 @@ def _import_provider_module(provider: str):
 @click.argument("provider")
 @click.option(
     "--transport",
-    default="stdio",
+    default="sse",
+    show_default=True,
     type=click.Choice(["stdio", "sse"]),
     help="Transport protocol to use (stdio or sse)",
 )
 @click.option(
-    "--port", default=8000, type=int, help="Port to listen on for SSE transport"
+    "--port", 
+    default=8000, 
+    show_default=True,
+    type=int, 
+    help="Port to listen on for SSE transport"
 )
 @click.option(
-    "--host", default="127.0.0.1", help="Host to listen on for SSE transport"
+    "--host", 
+    default="127.0.0.1", 
+    show_default=True,
+    help="Host to listen on for SSE transport"
 )
 def run(provider: str, transport: str, port: int, host: str):
     """Run a specific provider MCP server."""
@@ -202,6 +210,8 @@ def setup(provider: str, local: bool, force: bool):
                 "run",
                 "opendata-mcp",
                 "run",
+                "--transport",
+                "stdio",
                 provider,
             ],
             "env": {
@@ -216,6 +226,8 @@ def setup(provider: str, local: bool, force: bool):
             "args": [
                 LIB_NAME,
                 "run",
+                "--transport",
+                "stdio",
                 provider,
             ],
         }
@@ -438,10 +450,19 @@ def inspect(provider: str, local: bool):
             "run",
             LIB_NAME,
             "run",
+            "--transport",
+            "stdio",
             provider,
         ]
     else:
-        server_cmd = ["uvx", LIB_NAME, "run", provider]
+        server_cmd = [
+            "uvx", 
+            LIB_NAME, 
+            "run", 
+            "--transport", 
+            "stdio", 
+            provider
+        ]
 
     click.echo(f"Starting MCP Inspector for provider '{provider}'…")
     click.echo("Open http://localhost:5173 in your browser (Ctrl-C to stop).")

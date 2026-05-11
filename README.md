@@ -230,11 +230,20 @@ Restart Claude and you should see a new hammer icon at the bottom right of the c
 
 #### Alternative Transports (SSE)
 
-By default, providers run using the `stdio` transport. You can also run providers as an HTTP Server-Sent Events (SSE) server. This is useful for remote setups or web clients.
+By default, the `run` command uses the **SSE (HTTP)** transport. This launches an HTTP server suitable for remote connections or browser-based tools like the MCP Inspector.
 
 ```bash
-# start the server using SSE transport on port 8000
-uv run opendata-mcp run ch_sbb --transport sse --port 8000
+# start the server using default SSE transport on port 8000
+uv run opendata-mcp run ch_sbb
+
+# specify host and port
+uv run opendata-mcp run ch_sbb --host 0.0.0.0 --port 3001
+```
+
+If you need to run a provider via **stdio** (standard input/output), use the `--transport stdio` flag:
+
+```bash
+uv run opendata-mcp run ch_sbb --transport stdio
 ```
 
 You can now ask questions to Claude about SBB train network disruption and it will answer based on data collected on `data.sbb.ch`.
