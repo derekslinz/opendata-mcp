@@ -10,8 +10,8 @@ log = logging.getLogger(__name__)
 
 
 def to_json_text(payload: Any, max_chars: int | None = None) -> str:
-    """Serialize data to stable JSON text for MCP responses."""
-    text = json.dumps(payload, ensure_ascii=False, default=str)
+    """Serialize data to deterministic JSON text for MCP responses."""
+    text = json.dumps(payload, ensure_ascii=False, default=str, sort_keys=True)
     if max_chars is None or len(text) <= max_chars:
         return text
 
@@ -22,7 +22,7 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
         "preview": text,
     }
     truncated_text = json.dumps(
-        truncated_payload, ensure_ascii=False, default=str
+        truncated_payload, ensure_ascii=False, default=str, sort_keys=True
     )
     if len(truncated_text) <= max_chars:
         return truncated_text
@@ -31,7 +31,7 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
     while preview:
         truncated_payload["preview"] = preview
         truncated_text = json.dumps(
-            truncated_payload, ensure_ascii=False, default=str
+            truncated_payload, ensure_ascii=False, default=str, sort_keys=True
         )
         if len(truncated_text) <= max_chars:
             return truncated_text
@@ -43,12 +43,14 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
         "max_chars": max_chars,
     }
     minimal_truncated_text = json.dumps(
-        minimal_truncated_payload, ensure_ascii=False, default=str
+        minimal_truncated_payload, ensure_ascii=False, default=str, sort_keys=True
     )
     if len(minimal_truncated_text) <= max_chars:
         return minimal_truncated_text
 
-    return json.dumps({"truncated": True}, ensure_ascii=False, default=str)
+    return json.dumps(
+        {"truncated": True}, ensure_ascii=False, default=str, sort_keys=True
+    )
 
 
 def create_mcp_server(

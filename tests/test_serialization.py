@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 
 from opendata_mcp.utils import to_json_text
 
@@ -11,4 +12,15 @@ def test_to_json_text_serializes_datetime():
 
 def test_to_json_text_applies_max_chars():
     text = to_json_text({"value": "abcdef"}, max_chars=8)
-    assert text == '{"value"'
+    assert text == '{"truncated": true}'
+
+
+def test_to_json_text_sorts_keys():
+    text = to_json_text({"b": 2, "a": 1})
+    assert text == '{"a": 1, "b": 2}'
+
+
+def test_to_json_text_truncation_remains_valid_json():
+    text = to_json_text({"value": "abcdef"}, max_chars=15)
+    payload = json.loads(text)
+    assert payload["truncated"] is True
