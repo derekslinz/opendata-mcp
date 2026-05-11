@@ -9,11 +9,23 @@ from pydantic import AnyUrl
 log = logging.getLogger(__name__)
 
 
+def _json_dumps(payload: Any) -> str:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        default=str,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
 def to_json_text(payload: Any, max_chars: int | None = None) -> str:
     """Serialize data to deterministic JSON text for MCP responses."""
-    text = json.dumps(payload, ensure_ascii=False, default=str, sort_keys=True)
+    text = _json_dumps(payload)
     if max_chars is None or len(text) <= max_chars:
         return text
+    if max_chars < 1:
+        return ""
 
     truncated_payload = {
         "truncated": True,
@@ -21,18 +33,14 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
         "max_chars": max_chars,
         "preview": text,
     }
-    truncated_text = json.dumps(
-        truncated_payload, ensure_ascii=False, default=str, sort_keys=True
-    )
+    truncated_text = _json_dumps(truncated_payload)
     if len(truncated_text) <= max_chars:
         return truncated_text
 
     preview = text
     while preview:
         truncated_payload["preview"] = preview
-        truncated_text = json.dumps(
-            truncated_payload, ensure_ascii=False, default=str, sort_keys=True
-        )
+        truncated_text = _json_dumps(truncated_payload)
         if len(truncated_text) <= max_chars:
             return truncated_text
         preview = preview[:-1]
@@ -42,15 +50,15 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
         "original_length": len(text),
         "max_chars": max_chars,
     }
-    minimal_truncated_text = json.dumps(
-        minimal_truncated_payload, ensure_ascii=False, default=str, sort_keys=True
-    )
+    minimal_truncated_text = _json_dumps(minimal_truncated_payload)
     if len(minimal_truncated_text) <= max_chars:
         return minimal_truncated_text
 
-    return json.dumps(
-        {"truncated": True}, ensure_ascii=False, default=str, sort_keys=True
-    )
+    for fallback in ('{"truncated":true}', "{}", "[]", '""', "0", "null"):
+        if len(fallback) <= max_chars:
+            return fallback
+
+    return ""
 
 
 def create_mcp_server(
