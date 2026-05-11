@@ -7,7 +7,7 @@ name = "opendata-mcp"
 dynamic = ["version"]
 description = "Python MCP servers exposing Open Data to compatible LLM clients."
 readme = "README.md"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
     "click>=8.1.7",
