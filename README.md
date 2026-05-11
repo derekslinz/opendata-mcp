@@ -39,19 +39,135 @@ How do we do that?
 
 ## Available Providers
 
+55 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
+
+### Meta / Discovery
+
 | Provider | Name | Description |
 |---|---|---|
-| `ch_sbb` | Swiss Federal Railways (SBB) | Train network disruptions and service data |
-| `de_db` | Deutsche Bahn (DB) | German railway open data |
-| `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
-| `eu_eurostat` | Eurostat | European Union statistics |
-| `global_open_meteo` | Open-Meteo | Global open-source weather forecast data |
-| `nl_cbs` | Statistics Netherlands (CBS) | Dutch statistical datasets (OData v2/v3) |
-| `nl_ndov` | NDOV Loket | Dutch public transport data |
+| `opendata_mcp_meta` | OpenData MCP Meta | Aggregator: `find-providers`, `describe-provider`, `list-domains`, `list-regions`, `list-providers`. Set this up FIRST; it tells the LLM which other providers to install. |
+
+### Government / Civic
+
+| Provider | Name | Description |
+|---|---|---|
+| `au_data_gov` | Australian Government Open Data | CKAN catalog at data.gov.au |
+| `ca_open_gov` | Canada Open Data | CKAN catalog at open.canada.ca |
+| `fr_data_gouv` | data.gouv.fr | French government open data platform |
 | `nl_tweedekamer` | Tweede Kamer | Dutch Parliament open data |
+| `sg_data_gov` | Singapore Open Data | data.gov.sg datasets and collections |
+| `uk_gov` | data.gov.uk | UK government CKAN catalog |
 | `us_data_gov` | Data.gov | US federal government open datasets |
-| `us_doe_arm` | DOE ARM | US Dept of Energy atmospheric radiation data |
-| `us_nasa` | NASA | Astronomy, near-Earth objects, Mars rover photos |
+
+### Statistics / Economics
+
+| Provider | Name | Description |
+|---|---|---|
+| `eu_eurostat` | Eurostat | European Union statistics |
+| `global_imf` | International Monetary Fund | IMF SDMX 2.1 statistical data |
+| `global_oecd` | OECD | OECD economic & social statistics (SDMX) |
+| `global_world_bank` | World Bank | Development indicators by country |
+| `nl_cbs` | Statistics Netherlands (CBS) | Dutch statistical datasets (OData v2/v3) |
+| `uk_ons` | UK ONS | UK Office for National Statistics |
+| `us_fred` | FRED | St. Louis Fed economic time series — **requires `FRED_API_KEY`** |
+
+### Finance / Markets
+
+| Provider | Name | Description |
+|---|---|---|
+| `eu_ecb` | European Central Bank | ECB data portal (SDMX) — FX, monetary, banking |
+| `global_coingecko` | CoinGecko | Cryptocurrency market data |
+| `global_frankfurter` | Frankfurter | ECB reference FX rates (key-less) |
+| `us_sec_edgar` | SEC EDGAR | Public company filings, XBRL financials |
+| `us_treasury_fiscal` | US Treasury Fiscal Data | Federal debt, daily Treasury statement, FX rates |
+
+### Health
+
+| Provider | Name | Description |
+|---|---|---|
+| `global_disease_sh` | disease.sh | COVID-19, influenza, vaccine aggregator |
+| `global_who_gho` | WHO GHO | WHO Global Health Observatory (OData) |
+| `us_cdc_socrata` | US CDC | CDC open data via Socrata |
+| `us_clinicaltrials` | ClinicalTrials.gov | NIH/NLM clinical trials registry v2 |
+| `us_fda_openfda` | openFDA | FDA adverse events, recalls, labels |
+
+### Earth Science / Weather / Environment
+
+| Provider | Name | Description |
+|---|---|---|
+| `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
+| `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
+| `global_openaq` | OpenAQ | Global air quality measurements — **requires `OPENAQ_API_KEY`** |
+| `us_doe_arm` | DOE ARM | US DoE Atmospheric Radiation Measurement |
+| `us_noaa_ncei` | NOAA NCEI | Climate data access services (key-less) |
+| `us_noaa_tides` | NOAA Tides & Currents | Water levels, tides, currents |
+| `us_usgs_earthquake` | USGS Earthquakes | Real-time and historical seismic events |
+
+### Biodiversity / Space / Physics
+
+| Provider | Name | Description |
+|---|---|---|
+| `cern_opendata` | CERN Open Data | Particle physics datasets and software |
+| `global_gbif` | GBIF | Global biodiversity occurrence records |
+| `global_inaturalist` | iNaturalist | Citizen-science species observations |
+| `global_opensky` | OpenSky Network | Live ADS-B flight tracking |
+| `us_nasa` | NASA | APOD, Near Earth Objects, Mars rover photos |
+
+### Geo / Mapping / Knowledge
+
+| Provider | Name | Description |
+|---|---|---|
+| `global_osm_nominatim` | OSM Nominatim | Geocoding / reverse-geocoding (1 req/sec) |
+| `global_overpass` | OSM Overpass | Query OpenStreetMap with Overpass QL |
+| `global_wikidata` | Wikidata | Structured knowledge graph + SPARQL |
+| `global_wikipedia` | Wikipedia | Article summaries, related, page views |
+| `us_census_geocoder` | US Census Geocoder | Address ⇄ coordinates ⇄ geographies |
+
+### Transit / Aviation
+
+| Provider | Name | Description |
+|---|---|---|
+| `ch_sbb` | Swiss Federal Railways | Swiss train disruptions and service data |
+| `de_db` | Deutsche Bahn | German railway open data |
+| `nl_ndov` | NDOV Loket | Dutch public transport data |
+| `us_faa_nasstatus` | FAA NAS Status | US airspace status, delays, ground stops (XML) |
+
+### Scholarly Literature
+
+| Provider | Name | Description |
+|---|---|---|
+| `global_arxiv` | arXiv | Preprint metadata (Atom XML) |
+| `global_crossref` | Crossref | DOI metadata, citations, journals |
+| `global_europepmc` | Europe PMC | Biomedical literature + fulltext XML |
+| `global_openalex` | OpenAlex | Open scholarly metadata |
+
+### Culture / Books
+
+| Provider | Name | Description |
+|---|---|---|
+| `global_met_museum` | Met Museum | Met Museum Open Access (CC0) |
+| `global_open_library` | Open Library | Books, authors, works (Internet Archive) |
+| `global_smithsonian` | Smithsonian Open Access | CC0 collection items — **requires `SMITHSONIAN_API_KEY`** |
+
+### Legal
+
+| Provider | Name | Description |
+|---|---|---|
+| `uk_legislation` | UK legislation.gov.uk | UK Acts, statutory instruments (XML/Atom) |
+| `us_courtlistener` | CourtListener | US court opinions, dockets, judges (Free Law Project) |
+| `us_federal_register` | US Federal Register | Daily rules, notices, executive orders |
+
+### Environment variables
+
+A few providers need API keys (free signup); the rest work anonymously. Set these in your shell or in the Claude Desktop server config's `env` block:
+
+| Variable | Provider | Purpose |
+|---|---|---|
+| `FRED_API_KEY` | `us_fred` | Required — register at https://fred.stlouisfed.org/docs/api/api_key.html |
+| `OPENAQ_API_KEY` | `global_openaq` | Required — register at https://explore.openaq.org/register |
+| `SMITHSONIAN_API_KEY` | `global_smithsonian` | Required — free key at https://api.data.gov/signup/ |
+| `COURTLISTENER_API_TOKEN` | `us_courtlistener` | Optional — anonymous access works at low volumes |
+| `OPENDATA_MCP_CONTACT` | all providers | Optional — your email, used in User-Agent for polite-pool APIs (Crossref, OpenAlex, OSM, SEC EDGAR). Defaults to `opendata-mcp@example.org`. |
 
 ## Usage
 
