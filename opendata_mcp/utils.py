@@ -151,6 +151,7 @@ def create_mcp_server(
         ],
     ]
     | None = None,
+    resource_templates: list[types.ResourceTemplate] | None = None,
 ) -> Server:
     """
     Create a MCP server with the given resources, tools, and prompts.
@@ -163,6 +164,7 @@ def create_mcp_server(
         tools_handlers: The dictionary of tools handlers.
         prompts: The list of prompts to register.
         prompts_handlers: The dictionary of prompt handlers.
+        resource_templates: The list of resource templates to register.
 
     Returns:
         The created MCP server.
@@ -173,6 +175,7 @@ def create_mcp_server(
     _tools_handlers = tools_handlers or {}
     _prompts = prompts or []
     _prompts_handlers = prompts_handlers or {}
+    _resource_templates = resource_templates or []
 
     # instantiate the server
     server = Server(server_name)
@@ -193,6 +196,11 @@ def create_mcp_server(
             raise AttributeError(f"Resource {resource_uri} not found")
 
         return _resources_handlers[resource_key](resource_uri)
+
+    # register resource templates
+    @server.list_resource_templates()
+    async def handle_list_resource_templates() -> list[types.ResourceTemplate]:
+        return _resource_templates
 
     # register the tools
     @server.list_tools()
