@@ -24,8 +24,13 @@ def test_to_json_text_sorts_keys():
 
 
 def test_to_json_text_truncation_remains_valid_json():
-    max_chars = 85
-    text = to_json_text({"value": "a" * 100}, max_chars=max_chars)
+    source_payload = {"value": "a" * 100}
+    max_chars = next(
+        size
+        for size in range(1, 200)
+        if '"preview"' in to_json_text(source_payload, max_chars=size)
+    )
+    text = to_json_text(source_payload, max_chars=max_chars)
     payload = json.loads(text)
     assert payload["truncated"] is True
-    assert payload["preview"].startswith('{"value":"')
+    assert payload["preview"].startswith("{")

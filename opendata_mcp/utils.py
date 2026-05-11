@@ -54,6 +54,7 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
     if len(minimal_truncated_text) <= max_chars:
         return minimal_truncated_text
 
+    # Return the smallest valid JSON value that still fits max_chars.
     for fallback in ('{"truncated":true}', "{}", "[]", '""', "0"):
         if len(fallback) <= max_chars:
             return fallback
