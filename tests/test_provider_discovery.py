@@ -15,6 +15,7 @@ def test_real_provider_discovery():
         "global_pubchem",
         "global_rcsb_pdb",
         "us_noaa_awc",
+        "nl_rechtspraak",
     ]
 
     for provider in expected_new_providers:

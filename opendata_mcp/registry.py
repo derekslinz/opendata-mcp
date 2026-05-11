@@ -489,6 +489,16 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         homepage="https://www.ndovloket.nl/",
     ),
     ProviderEntry(
+        id="nl_rechtspraak",
+        server_name="nl-rechtspraak",
+        title="Dutch Rechtspraak (Case Law)",
+        description="Official Dutch court rulings and case law — search by ECLI and full text.",
+        domains=("legal",),
+        regions=("nl",),
+        keywords=("rechtspraak", "netherlands", "dutch", "legal", "court", "ruling", "ecli"),
+        homepage="https://www.rechtspraak.nl/",
+    ),
+    ProviderEntry(
         id="nl_tweedekamer",
         server_name="nl-tweedekamer",
         title="Tweede Kamer (Dutch Parliament)",
