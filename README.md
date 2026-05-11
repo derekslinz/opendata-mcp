@@ -15,6 +15,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 > ```bash
 > uv run opendata-mcp setup opendata_mcp_meta
 > ```
+<img width="1779" height="1092" alt="Screenshot 2026-05-11 at 21 50 39" src="https://github.com/user-attachments/assets/6173d926-769a-4fc8-bf4a-07669033719b" />
 
 ### Meta / Discovery
 
