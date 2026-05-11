@@ -35,7 +35,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 | `global_world_bank` | World Bank | Development indicators by country |
 | `nl_cbs` | Statistics Netherlands (CBS) | Dutch statistical datasets (OData v2/v3) |
 | `uk_ons` | UK ONS | UK Office for National Statistics |
-| `us_fred` | FRED | St. Louis Fed economic time series — **requires `FRED_API_KEY`** |
+
 
 ### Finance / Markets
 
@@ -65,7 +65,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 |---|---|---|
 | `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
 | `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
-| `global_openaq` | OpenAQ | Global air quality measurements — **requires `OPENAQ_API_KEY`** |
+
 | `us_noaa_ncei` | NOAA NCEI | Climate data access services (key-less) |
 | `us_noaa_tides` | NOAA Tides & Currents | Water levels, tides, currents |
 | `us_usgs_earthquake` | USGS Earthquakes | Real-time and historical seismic events |
@@ -115,7 +115,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 |---|---|---|
 | `global_met_museum` | Met Museum | Met Museum Open Access (CC0) |
 | `global_open_library` | Open Library | Books, authors, works (Internet Archive) |
-| `global_smithsonian` | Smithsonian Open Access | CC0 collection items — **requires `SMITHSONIAN_API_KEY`** |
+
 
 ### Legal
 
@@ -128,13 +128,10 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 
 ### Environment variables
 
-A few providers need API keys (free signup); the rest work anonymously. Set these in your shell or in the Claude Desktop server config's `env` block:
+A few providers accept optional API keys for higher rate limits. Set these in your shell or in the Claude Desktop server config's `env` block:
 
 | Variable | Provider | Purpose |
 |---|---|---|
-| `FRED_API_KEY` | `us_fred` | Required — register at https://fred.stlouisfed.org/docs/api/api_key.html |
-| `OPENAQ_API_KEY` | `global_openaq` | Required — register at https://explore.openaq.org/register |
-| `SMITHSONIAN_API_KEY` | `global_smithsonian` | Required — free key at https://api.data.gov/signup/ |
 | `COURTLISTENER_API_TOKEN` | `us_courtlistener` | Optional — anonymous access works at low volumes |
 | `OPENDATA_MCP_CONTACT` | all providers | Optional — your email, used in User-Agent for polite-pool APIs (Crossref, OpenAlex, OSM, SEC EDGAR). Defaults to `opendata-mcp@example.org`. |
 

@@ -348,17 +348,7 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         keywords=("weather", "forecast", "temperature", "precipitation", "air quality"),
         homepage="https://open-meteo.com/",
     ),
-    ProviderEntry(
-        id="global_openaq",
-        server_name="global-openaq",
-        title="OpenAQ",
-        description="Global air quality measurements — PM2.5, NO2, O3, CO, SO2, BC.",
-        domains=("environment", "health"),
-        regions=("global",),
-        keywords=("openaq", "air quality", "pollution", "pm2.5", "ozone"),
-        homepage="https://openaq.org/",
-        requires_env=("OPENAQ_API_KEY",),
-    ),
+
     ProviderEntry(
         id="global_opensky",
         server_name="global-opensky",
@@ -424,17 +414,7 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         keywords=("protein", "structure", "dna", "rna", "biology", "macromolecules"),
         homepage="https://www.rcsb.org/",
     ),
-    ProviderEntry(
-        id="global_smithsonian",
-        server_name="global-smithsonian",
-        title="Smithsonian Open Access",
-        description="Millions of CC0 collection items from Smithsonian museums and research centers.",
-        domains=("culture",),
-        regions=("global", "us"),
-        keywords=("smithsonian", "museum", "collection", "art", "cc0"),
-        homepage="https://www.si.edu/openaccess",
-        requires_env=("SMITHSONIAN_API_KEY",),
-    ),
+
     ProviderEntry(
         id="global_who_gho",
         server_name="global-who-gho",
@@ -686,17 +666,7 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         ),
         homepage="https://www.federalregister.gov/",
     ),
-    ProviderEntry(
-        id="us_fred",
-        server_name="us-fred",
-        title="FRED (Federal Reserve Economic Data)",
-        description="US economic time series from St. Louis Fed — GDP, CPI, unemployment, interest rates.",
-        domains=("economics", "statistics"),
-        regions=("us",),
-        keywords=("fred", "federal reserve", "economic", "gdp", "cpi", "unemployment"),
-        homepage="https://fred.stlouisfed.org/",
-        requires_env=("FRED_API_KEY",),
-    ),
+
     ProviderEntry(
         id="us_nasa",
         server_name="us-nasa",
