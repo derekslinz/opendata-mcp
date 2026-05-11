@@ -25,7 +25,7 @@ import logging
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
-from pydantic import BaseModel, Field
+from pydantic import AnyUrl, BaseModel, Field
 
 from opendata_mcp.utils import serialize_for_llm
 
@@ -278,14 +278,81 @@ TOOLS.append(
 TOOLS_HANDLERS["opendata-list-providers"] = handle_list_providers
 
 
+###################
+# Resources
+###################
+
+RESOURCES.append(
+    types.Resource(
+        uri="registry://all-providers",
+        name="All OpenData Providers",
+        description="A complete list of all currently registered OpenData MCP providers and their metadata.",
+        mimeType="application/json",
+    )
+)
+
+def handle_read_all_providers(uri: AnyUrl) -> str:
+    payload = [entry.to_dict() for entry in REGISTRY]
+    return serialize_for_llm(payload)
+
+RESOURCES_HANDLERS["registry://all-providers"] = handle_read_all_providers
+
+###################
+# Prompts
+###################
+
+# Create a module-level variable for prompts
+PROMPTS: List[types.Prompt] = []
+PROMPTS_HANDLERS: dict[str, Any] = {}
+
+PROMPTS.append(
+    types.Prompt(
+        name="discover-providers",
+        description="Ask the LLM to analyze your needs and suggest the best OpenData MCP providers.",
+        arguments=[
+            types.PromptArgument(
+                name="use_case",
+                description="What are you trying to build? (e.g., 'a dashboard for weather and flights')",
+                required=True,
+            )
+        ]
+    )
+)
+
+async def handle_discover_providers(arguments: dict[str, str] | None) -> types.GetPromptResult:
+    use_case = (arguments or {}).get("use_case", "General exploration")
+    
+    return types.GetPromptResult(
+        description=f"Suggest providers for: {use_case}",
+        messages=[
+            types.PromptMessage(
+                role="user",
+                content=types.TextContent(
+                    type="text",
+                    text=f"I want to build the following: {use_case}\n\nPlease use your `opendata-find-providers` tool to search the registry and recommend the 3 most relevant providers for my project. Explain why each one is a good fit and how I can use them together."
+                )
+            )
+        ]
+    )
+
+PROMPTS_HANDLERS["discover-providers"] = handle_discover_providers
+
+
 async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
     from opendata_mcp.utils import create_mcp_server, run_server
 
     server = create_mcp_server(
-        "opendata-mcp-meta", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
+        "opendata-mcp-meta", 
+        resources=RESOURCES, 
+        resources_handlers=RESOURCES_HANDLERS, 
+        tools=TOOLS, 
+        tools_handlers=TOOLS_HANDLERS,
+        prompts=PROMPTS,
+        prompts_handlers=PROMPTS_HANDLERS
     )
 
     await run_server(server, transport, port, host)
+
 
 
 if __name__ == "__main__":

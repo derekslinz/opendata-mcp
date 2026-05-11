@@ -142,14 +142,27 @@ def create_mcp_server(
         ],
     ]
     | None = None,
+    prompts: list[types.Prompt] | None = None,
+    prompts_handlers: dict[
+        str,
+        Callable[
+            [dict[str, str] | None],
+            types.GetPromptResult,
+        ],
+    ]
+    | None = None,
 ) -> Server:
     """
-    Create a MCP server with the given tools and handlers.
+    Create a MCP server with the given resources, tools, and prompts.
 
     Args:
         server_name: The name of the server.
+        resources: The list of resources to register.
+        resources_handlers: The dictionary of resource handlers.
         tools: The list of tools to register.
         tools_handlers: The dictionary of tools handlers.
+        prompts: The list of prompts to register.
+        prompts_handlers: The dictionary of prompt handlers.
 
     Returns:
         The created MCP server.
@@ -158,6 +171,8 @@ def create_mcp_server(
     _resources_handlers = resources_handlers or {}
     _tools = tools or []
     _tools_handlers = tools_handlers or {}
+    _prompts = prompts or []
+    _prompts_handlers = prompts_handlers or {}
 
     # instantiate the server
     server = Server(server_name)
@@ -197,6 +212,26 @@ def create_mcp_server(
             return await _tools_handlers[name](arguments)
         except Exception as e:
             log.error(f"Error calling tool {name}: {e}")
+            raise
+
+    # register the prompts
+    @server.list_prompts()
+    async def handle_list_prompts() -> list[types.Prompt]:
+        return _prompts
+
+    # register the prompts handlers
+    @server.get_prompt()
+    async def handle_get_prompt(
+        name: str, arguments: dict[str, str] | None = None
+    ) -> types.GetPromptResult:
+        if name not in _prompts_handlers:
+            log.error(f"Prompt {name} not found")
+            raise AttributeError(f"Prompt {name} not found")
+
+        try:
+            return await _prompts_handlers[name](arguments)
+        except Exception as e:
+            log.error(f"Error getting prompt {name}: {e}")
             raise
 
     return server
