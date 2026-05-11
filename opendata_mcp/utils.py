@@ -74,6 +74,61 @@ def serialize_for_llm(data: Any) -> str:
     return json.dumps(data, default=str, ensure_ascii=False)[:MAX_RESPONSE_CHARS]
 
 
+def _json_dumps(payload: Any) -> str:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        default=str,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def to_json_text(payload: Any, max_chars: int | None = None) -> str:
+    """Serialize data to deterministic JSON text for MCP responses."""
+    text = _json_dumps(payload)
+    if max_chars is None or len(text) <= max_chars:
+        return text
+    if max_chars < 2:
+        raise ValueError("max_chars must be >= 2")
+
+    truncated_payload = {
+        "truncated": True,
+        "original_length": len(text),
+        "max_chars": max_chars,
+        "preview": text,
+    }
+    truncated_text = _json_dumps(truncated_payload)
+    if len(truncated_text) <= max_chars:
+        return truncated_text
+
+    preview = text
+    while preview:
+        truncated_payload["preview"] = preview
+        truncated_text = _json_dumps(truncated_payload)
+        if len(truncated_text) <= max_chars:
+            return truncated_text
+        preview = preview[:-1]
+
+    minimal_truncated_payload = {
+        "truncated": True,
+        "original_length": len(text),
+        "max_chars": max_chars,
+    }
+    minimal_truncated_text = _json_dumps(minimal_truncated_payload)
+    if len(minimal_truncated_text) <= max_chars:
+        return minimal_truncated_text
+
+    # Ordered from most informative to smallest object-shaped JSON to preserve
+    # context while still honoring strict max_chars limits.
+    for fallback_payload in ({"truncated": True}, {}):
+        fallback = _json_dumps(fallback_payload)
+        if len(fallback) <= max_chars:
+            return fallback
+
+    raise ValueError("max_chars is too small for a valid JSON object fallback")
+
+
 def create_mcp_server(
     server_name: str,
     resources: list[types.Resource] | None = None,

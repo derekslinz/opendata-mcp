@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
 import httpx
+from urllib.parse import urlparse
 
 from opendata_mcp.providers.global_wikipedia import (
     TOOLS,
@@ -55,7 +56,7 @@ async def test_wikipedia_get_summary_lang_override():
         )
         # Verify the URL the caller built points at the French Wikipedia.
         called_url = mock_get.call_args.args[0]
-        assert "fr.wikipedia.org" in called_url
+        assert urlparse(called_url).hostname == "fr.wikipedia.org"
         assert "Einstein" in result[0].text
 
 
