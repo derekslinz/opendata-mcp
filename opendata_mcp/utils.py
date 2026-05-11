@@ -1,6 +1,9 @@
+import hashlib
 import json
 import logging
 import os
+import threading
+import time
 from typing import Any, Callable, Sequence
 
 import httpx
@@ -14,6 +17,64 @@ log = logging.getLogger(__name__)
 
 # Maximum character length for tool/resource text responses.
 MAX_RESPONSE_CHARS = 20_000
+
+# ---------------------------------------------------------------------------
+# TTL response cache
+# ---------------------------------------------------------------------------
+
+_CACHE_DEFAULT_TTL: float = float(os.getenv("OPENDATA_MCP_CACHE_TTL", "0"))
+_CACHE_MAX_SIZE: int = 256
+
+
+class _TTLCache:
+    """Thread-safe in-memory TTL cache for HTTP responses.
+
+    Evicts the oldest entry when the cache is full. Entries older than
+    ``ttl`` seconds are treated as absent and evicted on next access.
+    """
+
+    def __init__(self, maxsize: int = _CACHE_MAX_SIZE, ttl: float = 60.0) -> None:
+        self._cache: dict[str, tuple[float, Any]] = {}
+        self._maxsize = maxsize
+        self._ttl = ttl
+        self._lock = threading.Lock()
+
+    def get(self, key: str) -> Any | None:
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is None:
+                return None
+            ts, val = entry
+            if time.monotonic() - ts > self._ttl:
+                del self._cache[key]
+                return None
+            return val
+
+    def set(self, key: str, val: Any) -> None:
+        with self._lock:
+            if len(self._cache) >= self._maxsize:
+                oldest = min(self._cache, key=lambda k: self._cache[k][0])
+                del self._cache[oldest]
+            self._cache[key] = (time.monotonic(), val)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._cache.clear()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._cache)
+
+
+_response_cache = _TTLCache(maxsize=_CACHE_MAX_SIZE, ttl=max(_CACHE_DEFAULT_TTL, 1.0))
+
+
+def _cache_key(url: str, params: dict | None, accept: str) -> str:
+    payload = json.dumps(
+        {"url": url, "params": sorted((params or {}).items()), "accept": accept},
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def _default_user_agent() -> str:
@@ -33,22 +94,31 @@ def http_get(
     *,
     timeout: float = 10.0,
     headers: dict[str, str] | None = None,
+    cache_ttl: float | None = None,
 ) -> httpx.Response:
     """Perform a GET request with sensible defaults for open-data APIs.
 
     - Sets a default User-Agent identifying opendata-mcp (override via
-      `OPENDATA_MCP_CONTACT` env var or `headers` argument).
-    - Sets `Accept: application/json` by default; override via `headers`.
-    - Calls `raise_for_status()` so handlers see a clean exception path.
+      ``OPENDATA_MCP_CONTACT`` env var or ``headers`` argument).
+    - Sets ``Accept: application/json`` by default; override via ``headers``.
+    - Calls ``raise_for_status()`` so handlers see a clean exception path.
+    - Optional response caching: pass ``cache_ttl=<seconds>`` to cache the
+      response body. The global ``OPENDATA_MCP_CACHE_TTL`` env var sets the
+      default TTL (default 0 = disabled). Only successful (2xx) responses
+      are cached; auth headers are excluded from cache keys.
 
     Args:
         url: The endpoint URL.
         params: Optional query parameters.
         timeout: Request timeout in seconds (default 10.0).
         headers: Optional header overrides merged on top of defaults.
+        cache_ttl: Seconds to cache this response. ``None`` uses the global
+            default (``OPENDATA_MCP_CACHE_TTL`` env var, default 0 = off).
 
     Returns:
-        The httpx.Response (already status-checked).
+        The httpx.Response (already status-checked). When served from cache
+        the object is a lightweight stand-in with ``.json()`` and ``.text``
+        populated from the cached data.
     """
     merged_headers = {
         "User-Agent": _default_user_agent(),
@@ -57,8 +127,24 @@ def http_get(
     if headers:
         merged_headers.update(headers)
 
+    effective_ttl = _CACHE_DEFAULT_TTL if cache_ttl is None else cache_ttl
+
+    if effective_ttl > 0:
+        key = _cache_key(url, params, merged_headers.get("Accept", ""))
+        cached = _response_cache.get(key)
+        if cached is not None:
+            log.debug("Cache hit for %s", url)
+            return cached
+
     response = httpx.get(url, params=params, timeout=timeout, headers=merged_headers)
     response.raise_for_status()
+
+    if effective_ttl > 0:
+        # Update TTL on the shared cache instance if caller specified a different one.
+        if cache_ttl is not None and cache_ttl != _response_cache._ttl:
+            _response_cache._ttl = cache_ttl
+        _response_cache.set(key, response)  # type: ignore[possibly-undefined]
+
     return response
 
 
