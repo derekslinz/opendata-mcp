@@ -39,7 +39,7 @@ How do we do that?
 
 ## Available Providers
 
-58 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
+59 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
 
 ### Meta / Discovery
 
@@ -156,6 +156,7 @@ How do we do that?
 
 | Provider | Name | Description |
 |---|---|---|
+| `nl_rechtspraak` | Dutch Rechtspraak | Dutch court rulings and case law (ECLI) |
 | `uk_legislation` | UK legislation.gov.uk | UK Acts, statutory instruments (XML/Atom) |
 | `us_courtlistener` | CourtListener | US court opinions, dockets, judges (Free Law Project) |
 | `us_federal_register` | US Federal Register | Daily rules, notices, executive orders |
