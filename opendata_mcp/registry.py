@@ -47,6 +47,8 @@ DOMAINS: tuple[str, ...] = (
     "legal",
     "crypto",
     "demographics",
+    "biology",
+    "chemistry",
 )
 
 REGIONS: tuple[str, ...] = (
@@ -227,6 +229,16 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         homepage="https://www.crossref.org/",
     ),
     ProviderEntry(
+        id="global_dbnomics",
+        server_name="global-dbnomics",
+        title="DBnomics",
+        description="Global economic data aggregator from 100+ providers (IMF, World Bank, ECB, Fed, etc.).",
+        domains=("economics", "statistics"),
+        regions=("global",),
+        keywords=("economics", "imf", "world bank", "ecb", "series", "statistics"),
+        homepage="https://db.nomics.world/",
+    ),
+    ProviderEntry(
         id="global_disease_sh",
         server_name="global-disease-sh",
         title="disease.sh",
@@ -356,6 +368,26 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         regions=("global",),
         keywords=("opensky", "flight", "aircraft", "ads-b", "aviation", "tracking"),
         homepage="https://opensky-network.org/",
+    ),
+    ProviderEntry(
+        id="global_pubchem",
+        server_name="global-pubchem",
+        title="NCBI PubChem",
+        description="World's largest collection of freely accessible chemical information.",
+        domains=("health", "biology", "chemistry"),
+        regions=("global",),
+        keywords=("chemicals", "compounds", "substances", "drugs", "toxicology", "ncbi"),
+        homepage="https://pubchem.ncbi.nlm.nih.gov/",
+    ),
+    ProviderEntry(
+        id="global_rcsb_pdb",
+        server_name="global-rcsb-pdb",
+        title="RCSB Protein Data Bank (PDB)",
+        description="Primary source for 3D biological macromolecular structures.",
+        domains=("biology", "scholarly"),
+        regions=("global",),
+        keywords=("protein", "structure", "dna", "rna", "biology", "macromolecules"),
+        homepage="https://www.rcsb.org/",
     ),
     ProviderEntry(
         id="global_osm_nominatim",
@@ -649,6 +681,16 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         regions=("us", "global"),
         keywords=("nasa", "apod", "asteroids", "mars", "space", "astronomy"),
         homepage="https://api.nasa.gov/",
+    ),
+    ProviderEntry(
+        id="us_noaa_awc",
+        server_name="us-noaa-awc",
+        title="NOAA Aviation Weather Center",
+        description="Aviation weather data including METARs, TAFs, and station metadata.",
+        domains=("weather", "aviation"),
+        regions=("us",),
+        keywords=("weather", "metar", "taf", "aviation", "noaa", "airport"),
+        homepage="https://aviationweather.gov/",
     ),
     ProviderEntry(
         id="us_noaa_ncei",

@@ -1,0 +1,113 @@
+"""
+PubChem Provider
+
+This module provides interfaces to the NCBI PubChem API, the world's largest
+collection of freely accessible chemical information.
+
+License: PubChem data is in the public domain.
+See https://pubchem.ncbi.nlm.nih.gov/docs/programmatic-access for details.
+
+API Documentation: https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest
+"""
+
+import logging
+from typing import Any, List, Optional, Sequence
+
+import mcp.types as types
+from pydantic import BaseModel, Field
+
+from opendata_mcp.utils import http_get, serialize_for_llm
+
+# Initialize logging
+log = logging.getLogger(__name__)
+
+# Constants
+BASE_URL = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
+
+# Registration Variables
+RESOURCES: List[Any] = []
+RESOURCES_HANDLERS: dict[str, Any] = {}
+TOOLS: List[types.Tool] = []
+TOOLS_HANDLERS: dict[str, Any] = {}
+
+###################
+# PubChem Compound
+###################
+
+class PubChemCompoundParams(BaseModel):
+    """Parameters for fetching PubChem compound data."""
+    identifier: str = Field(..., description="Compound name, CID, SMILES, or InChI")
+    namespace: str = Field(default="name", description="Type of identifier (name, cid, smiles, inchi)")
+
+def fetch_pubchem_compound(params: PubChemCompoundParams) -> Any:
+    """Fetch compound data from PubChem."""
+    response = http_get(f"{BASE_URL}/compound/{params.namespace}/{params.identifier}/JSON")
+    return response.json()
+
+async def handle_pubchem_compound(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the pubchem-compound tool call."""
+    try:
+        params = PubChemCompoundParams(**(arguments or {}))
+        data = fetch_pubchem_compound(params)
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    except Exception as e:
+        log.error(f"Error fetching PubChem compound: {e}")
+        raise
+
+TOOLS.append(
+    types.Tool(
+        name="pubchem-compound",
+        description="Fetch chemical compound data from PubChem by name, CID, etc.",
+        inputSchema=PubChemCompoundParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["pubchem-compound"] = handle_pubchem_compound
+
+###################
+# PubChem Substance
+###################
+
+class PubChemSubstanceParams(BaseModel):
+    """Parameters for fetching PubChem substance data."""
+    sid: int = Field(..., description="PubChem Substance ID (SID)")
+
+def fetch_pubchem_substance(params: PubChemSubstanceParams) -> Any:
+    """Fetch substance data from PubChem."""
+    response = http_get(f"{BASE_URL}/substance/sid/{params.sid}/JSON")
+    return response.json()
+
+async def handle_pubchem_substance(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the pubchem-substance tool call."""
+    try:
+        params = PubChemSubstanceParams(**(arguments or {}))
+        data = fetch_pubchem_substance(params)
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    except Exception as e:
+        log.error(f"Error fetching PubChem substance: {e}")
+        raise
+
+TOOLS.append(
+    types.Tool(
+        name="pubchem-substance",
+        description="Fetch chemical substance data from PubChem by SID.",
+        inputSchema=PubChemSubstanceParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["pubchem-substance"] = handle_pubchem_substance
+
+async def main(transport: str = "stdio", port: int = 8000):
+    from opendata_mcp.utils import create_mcp_server, run_server
+
+    server = create_mcp_server(
+        "global-pubchem", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
+    )
+
+    await run_server(server, transport, port)
+
+if __name__ == "__main__":
+    import anyio
+    anyio.run(main)
