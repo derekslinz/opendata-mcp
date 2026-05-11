@@ -132,7 +132,6 @@ async def test_handle_cbs_list_tables(mock_cbs_catalog_response):
         # Test with search
         result = await handle_cbs_list_tables({"search": "Fuel"})
         assert "80416ENG" in result[0].text
-        assert '"total_count": 100' in result[0].text
         payload = json.loads(result[0].text)
         assert payload["total_count"] == 100
         args, kwargs = mock_get.call_args
