@@ -25,7 +25,7 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
     if max_chars is None or len(text) <= max_chars:
         return text
     if max_chars < 1:
-        return "null"
+        raise ValueError("max_chars must be >= 1")
 
     truncated_payload = {
         "truncated": True,
@@ -56,11 +56,12 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
 
     # Ordered from most informative to smallest valid JSON to preserve context
     # while still honoring strict max_chars limits.
-    for fallback in ('{"truncated":true}', "{}", "[]", '""', "0"):
+    for fallback_payload in ({"truncated": True}, {}, [], "", 0):
+        fallback = _json_dumps(fallback_payload)
         if len(fallback) <= max_chars:
             return fallback
 
-    return "null"
+    return _json_dumps(None)
 
 
 def create_mcp_server(
