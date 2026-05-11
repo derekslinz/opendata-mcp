@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import patch, Mock
 from opendata_mcp.providers.us_data_gov import (
@@ -82,6 +83,9 @@ async def test_handle_datagov_list_datasets(mock_search_response):
         result = await handle_datagov_list_datasets({"search": "complaints"})
         assert len(result) == 1
         assert "Consumer Complaint Database" in result[0].text
+        payload = json.loads(result[0].text)
+        assert payload["count"] == 1
+        assert payload["datasets"][0]["title"] == "Consumer Complaint Database"
 
 
 def test_fetch_datagov_dataset(mock_show_response):
@@ -111,6 +115,8 @@ async def test_handle_datagov_get_dataset(mock_show_response):
         )
         assert len(result) == 1
         assert "CSV Data" in result[0].text
+        payload = json.loads(result[0].text)
+        assert payload["dcat"]["distribution"][0]["title"] == "CSV Data"
 
 
 def test_api_error_handling():

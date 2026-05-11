@@ -74,6 +74,61 @@ def serialize_for_llm(data: Any) -> str:
     return json.dumps(data, default=str, ensure_ascii=False)[:MAX_RESPONSE_CHARS]
 
 
+def _json_dumps(payload: Any) -> str:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        default=str,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def to_json_text(payload: Any, max_chars: int | None = None) -> str:
+    """Serialize data to deterministic JSON text for MCP responses."""
+    text = _json_dumps(payload)
+    if max_chars is None or len(text) <= max_chars:
+        return text
+    if max_chars < 2:
+        raise ValueError("max_chars must be >= 2")
+
+    truncated_payload = {
+        "truncated": True,
+        "original_length": len(text),
+        "max_chars": max_chars,
+        "preview": text,
+    }
+    truncated_text = _json_dumps(truncated_payload)
+    if len(truncated_text) <= max_chars:
+        return truncated_text
+
+    preview = text
+    while preview:
+        truncated_payload["preview"] = preview
+        truncated_text = _json_dumps(truncated_payload)
+        if len(truncated_text) <= max_chars:
+            return truncated_text
+        preview = preview[:-1]
+
+    minimal_truncated_payload = {
+        "truncated": True,
+        "original_length": len(text),
+        "max_chars": max_chars,
+    }
+    minimal_truncated_text = _json_dumps(minimal_truncated_payload)
+    if len(minimal_truncated_text) <= max_chars:
+        return minimal_truncated_text
+
+    # Ordered from most informative to smallest object-shaped JSON to preserve
+    # context while still honoring strict max_chars limits.
+    for fallback_payload in ({"truncated": True}, {}):
+        fallback = _json_dumps(fallback_payload)
+        if len(fallback) <= max_chars:
+            return fallback
+
+    raise ValueError("max_chars is too small for a valid JSON object fallback")
+
+
 def create_mcp_server(
     server_name: str,
     resources: list[types.Resource] | None = None,
@@ -147,7 +202,9 @@ def create_mcp_server(
     return server
 
 
-async def run_server(server: Server, transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
+async def run_server(
+    server: Server, transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"
+):
     """
     Run the MCP server with the specified transport.
     """
@@ -182,18 +239,17 @@ async def run_server(server: Server, transport: str = "stdio", port: int = 8000,
                 log.info("SSE connection closed")
 
         async def root(request):
-            return JSONResponse({
-                "status": "running",
-                "server": server.name,
-                "transport": "sse",
-                "endpoints": {
-                    "sse": "/sse",
-                    "messages": "/messages"
+            return JSONResponse(
+                {
+                    "status": "running",
+                    "server": server.name,
+                    "transport": "sse",
+                    "endpoints": {"sse": "/sse", "messages": "/messages"},
                 }
-            })
+            )
 
         app = Starlette(
-            debug=True,
+            debug=False,
             routes=[
                 Route("/", endpoint=root),
                 Mount("/sse", app=handle_sse),
@@ -209,12 +265,12 @@ async def run_server(server: Server, transport: str = "stdio", port: int = 8000,
         )
 
         config = uvicorn.Config(
-            app, 
-            host=host, 
-            port=port, 
+            app,
+            host=host,
+            port=port,
             log_level="debug",
             timeout_keep_alive=65,
-            timeout_notify=60
+            timeout_notify=60,
         )
         uvicorn_server = uvicorn.Server(config)
         await uvicorn_server.serve()

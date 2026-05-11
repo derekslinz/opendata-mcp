@@ -23,7 +23,7 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import serialize_for_llm
+from opendata_mcp.utils import to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -122,7 +122,9 @@ async def handle_eurostat_list_datasets(
         params = EurostatListDatasetsParams(**(arguments or {}))
         datasets = list_eurostat_datasets(params)
         return [
-            types.TextContent(type="text", text=str([d.model_dump() for d in datasets]))
+            types.TextContent(
+                type="text", text=to_json_text([d.model_dump() for d in datasets])
+            )
         ]
     except Exception as e:
         log.error(f"Error listing Eurostat datasets: {e}")
@@ -174,7 +176,9 @@ async def handle_eurostat_get_dataset(
 
         params = EurostatDataParams(**arguments)
         data = fetch_eurostat_data(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(type="text", text=to_json_text(data, max_chars=20000))
+        ]
     except Exception as e:
         log.error(f"Error fetching Eurostat data: {e}")
         raise
@@ -237,7 +241,7 @@ async def handle_eurostat_get_metadata(
 
         params = EurostatMetadataParams(**arguments)
         metadata = fetch_eurostat_metadata(params)
-        return [types.TextContent(type="text", text=str(metadata))]
+        return [types.TextContent(type="text", text=to_json_text(metadata))]
     except Exception as e:
         log.error(f"Error fetching Eurostat metadata: {e}")
         raise

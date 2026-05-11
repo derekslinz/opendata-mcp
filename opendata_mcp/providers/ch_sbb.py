@@ -23,6 +23,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import to_json_text
+
 log = logging.getLogger(__name__)
 
 BASE_URL = "https://data.sbb.ch/api/explore/v2.1"
@@ -153,7 +155,11 @@ async def handle_rail_traffic_info(
         traffic_info_response = fetch_rail_traffic_info(
             TrafficInfoParams(**(arguments or {}))
         )
-        return [types.TextContent(type="text", text=str(traffic_info_response))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(traffic_info_response.model_dump())
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching rail traffic info: {e}")
         raise
@@ -276,7 +282,11 @@ async def handle_railway_lines(
         railway_lines_response = fetch_railway_lines(
             RailwayLineParams(**(arguments or {}))
         )
-        return [types.TextContent(type="text", text=str(railway_lines_response))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(railway_lines_response.model_dump())
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching railway lines: {e}")
         raise
@@ -377,7 +387,11 @@ async def handle_rolling_stock(
         rolling_stock_response = fetch_rolling_stock(
             RollingStockParams(**(arguments or {}))
         )
-        return [types.TextContent(type="text", text=str(rolling_stock_response))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(rolling_stock_response.model_dump())
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching rolling stock info: {e}")
         raise

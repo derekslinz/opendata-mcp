@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import patch, Mock
 from opendata_mcp.providers.nl_cbs import (
@@ -81,6 +82,8 @@ async def test_handle_cbs_data(mock_cbs_data_response):
 
         assert len(result) == 1
         assert "2023MM01" in result[0].text
+        payload = json.loads(result[0].text)
+        assert payload["results"][0]["Periods"] == "2023MM01"
 
 
 def test_fetch_cbs_metadata(mock_cbs_metadata_response):
@@ -129,7 +132,8 @@ async def test_handle_cbs_list_tables(mock_cbs_catalog_response):
         # Test with search
         result = await handle_cbs_list_tables({"search": "Fuel"})
         assert "80416ENG" in result[0].text
-        assert "'total_count': 100" in result[0].text
+        payload = json.loads(result[0].text)
+        assert payload["total_count"] == 100
         args, kwargs = mock_get.call_args
         assert kwargs["params"]["$top"] == 10
         assert kwargs["params"]["$skip"] == 0

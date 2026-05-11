@@ -1,41 +1,6 @@
 # Open Data Model Context Protocol
+Inspired by/born out of  https://github.com/grll 's project, it's grown into a sort of window into the world of amazing open data sources.
 
-![vc3598_Hyper-realistic_Swiss_landscape_pristine_SBB_red_train_p_40803c2e-43f5-410e-89aa-f6bdcb4cd089](https://github.com/user-attachments/assets/80c823dd-0b26-4d06-98f9-5c6d7c9103de)
-
-<p align="center">
-    <em>Connect Open Data to LLMs in minutes!</em>
-</p>
-<p align="center">
-   <a href="https://github.com/derekslinz/opendata-mcp/actions/workflows/ci.yml" target="_blank">
-    <img src="https://github.com/derekslinz/opendata-mcp/actions/workflows/ci.yml/badge.svg" alt="CI">
-   </a>
-   <a href="https://pypi.org/project/opendata-mcp" target="_blank">
-       <img src="https://img.shields.io/pypi/v/opendata-mcp?color=%2334D058&label=pypi%20package" alt="Package version">
-   </a>
-   <a href="https://github.com/derekslinz/opendata-mcp/blob/main/LICENSE" target="_blank">
-      <img src="https://img.shields.io/github/license/derekslinz/opendata-mcp.svg" alt="License">
-   </a>
-   <a href="https://pepy.tech/badge/opendata-mcp" target="_blank">
-      <img src="https://pepy.tech/badge/opendata-mcp?cache-control=no-cache" alt="License">
-   </a>
-   <a href="https://github.com/derekslinz/opendata-mcp/stargazers" target="_blank">
-      <img src="https://img.shields.io/github/stars/derekslinz/opendata-mcp.svg?cache-control=no-cache" alt="Stars">
-   </a>
-</p>
-
-## See it in action
-
-https://github.com/user-attachments/assets/760e1a16-add6-49a1-bf71-dfbb335e893e
-
-We enable 2 things:
-
-* **Open Data Access**: Access to many public datasets right from your LLM application (starting with Claude, more to come).
-* **Publishing**: Get community help and a distribution network to distribute your Open Data. Get everyone to use it!
-
-How do we do that?
-
-* **Access**: Setup our MCP servers in your LLM application in 2 clicks via our CLI tool (starting with Claude, see Roadmap for next steps).
-* **Publish**: Use provided templates and guidelines to quickly contribute and publish on Open Data MCP. Make your data easily discoverable!
 
 ## Available Providers
 
@@ -197,6 +162,19 @@ brew install uv
 # (UNTESTED)
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
+
+#### The "Install Meta + Run Everything" Pattern
+
+With over 55 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
+
+1. **Install Meta**: Set up the meta-aggregator provider FIRST.
+   ```bash
+   uv run opendata-mcp setup opendata_mcp_meta
+   ```
+2. **Restart Client**: Restart your Claude Desktop app so it can access the meta tools shown in the client (`opendata-find-providers`, `opendata-describe-provider`, etc.).
+3. **Run Everything**: Ask Claude your data question! If Claude needs another provider, it will use those meta tools to discover it, and then instruct you to run `uv run opendata-mcp setup <provider_name>` to install the specific dataset you need. 
+
+*(For developers: Check out `system_prompt.md` for a prompt you can give to your agent to enforce this pattern.)*
 
 ##### Overview
 
