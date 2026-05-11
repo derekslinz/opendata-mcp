@@ -39,7 +39,7 @@ How do we do that?
 
 ## Available Providers
 
-54 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
+58 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
 
 ### Meta / Discovery
 
@@ -65,6 +65,7 @@ How do we do that?
 |---|---|---|
 | `eu_eurostat` | Eurostat | European Union statistics |
 | `global_imf` | International Monetary Fund | IMF SDMX 2.1 statistical data |
+| `global_dbnomics` | DBnomics | Global economic data aggregator (IMF, World Bank, etc.) |
 | `global_oecd` | OECD | OECD economic & social statistics (SDMX) |
 | `global_world_bank` | World Bank | Development indicators by country |
 | `nl_cbs` | Statistics Netherlands (CBS) | Dutch statistical datasets (OData v2/v3) |
@@ -81,11 +82,13 @@ How do we do that?
 | `us_sec_edgar` | SEC EDGAR | Public company filings, XBRL financials |
 | `us_treasury_fiscal` | US Treasury Fiscal Data | Federal debt, daily Treasury statement, FX rates |
 
-### Health
+### Health & Life Sciences
 
 | Provider | Name | Description |
 |---|---|---|
 | `global_disease_sh` | disease.sh | COVID-19, influenza, vaccine aggregator |
+| `global_pubchem` | NCBI PubChem | Chemical compounds and substances |
+| `global_rcsb_pdb` | RCSB PDB | 3D protein and macromolecular structures |
 | `global_who_gho` | WHO GHO | WHO Global Health Observatory (OData) |
 | `us_cdc_socrata` | US CDC | CDC open data via Socrata |
 | `us_clinicaltrials` | ClinicalTrials.gov | NIH/NLM clinical trials registry v2 |
@@ -130,6 +133,7 @@ How do we do that?
 | `de_db` | Deutsche Bahn | German railway open data |
 | `nl_ndov` | NDOV Loket | Dutch public transport data |
 | `us_faa_nasstatus` | FAA NAS Status | US airspace status, delays, ground stops (XML) |
+| `us_noaa_awc` | NOAA Aviation Weather | METAR, TAF, and station weather data |
 
 ### Scholarly Literature
 
