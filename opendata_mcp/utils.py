@@ -147,7 +147,7 @@ def create_mcp_server(
     return server
 
 
-async def run_server(server: Server, transport: str = "stdio", port: int = 8000):
+async def run_server(server: Server, transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
     """
     Run the MCP server with the specified transport.
     """
@@ -159,28 +159,63 @@ async def run_server(server: Server, transport: str = "stdio", port: int = 8000)
                 streams[0], streams[1], server.create_initialization_options()
             )
     elif transport == "sse":
+        import uvicorn
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
-        from starlette.routing import Mount
-        import uvicorn
+        from starlette.middleware.cors import CORSMiddleware
+        from starlette.responses import JSONResponse
+        from starlette.routing import Mount, Route
 
         sse = SseServerTransport("/messages")
 
-        async def handle_sse(scope, receive, send):
-            async with sse.connect_sse(scope, receive, send) as streams:
-                await server.run(
-                    streams[0], streams[1], server.create_initialization_options()
-                )
+        async def handle_sse(request):
+            log.info(f"New SSE connection request from {request.client}")
+            try:
+                async with sse.connect_sse(request.scope, request.receive, request.send) as streams:
+                    log.info("SSE connection established, running server...")
+                    await server.run(
+                        streams[0], streams[1], server.create_initialization_options()
+                    )
+            except Exception as e:
+                log.error(f"SSE connection error: {e}")
+            finally:
+                log.info("SSE connection closed")
+
+        async def root(request):
+            return JSONResponse({
+                "status": "running",
+                "server": server.name,
+                "transport": "sse",
+                "endpoints": {
+                    "sse": "/sse",
+                    "messages": "/messages"
+                }
+            })
 
         app = Starlette(
             debug=True,
             routes=[
-                Mount("/sse", app=handle_sse),
+                Route("/", endpoint=root),
+                Route("/sse", endpoint=handle_sse),
                 Mount("/messages", app=sse.handle_post_message),
             ],
         )
 
-        config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        config = uvicorn.Config(
+            app, 
+            host=host, 
+            port=port, 
+            log_level="debug",
+            timeout_keep_alive=65,
+            timeout_notify=60
+        )
         uvicorn_server = uvicorn.Server(config)
         await uvicorn_server.serve()
     else:

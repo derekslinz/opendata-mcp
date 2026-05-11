@@ -215,14 +215,14 @@ TOOLS.append(
 TOOLS_HANDLERS["copernicus-get-product-metadata"] = handle_get_product_metadata
 
 
-async def main(transport: str = "stdio", port: int = 8000):
+async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
     from opendata_mcp.utils import create_mcp_server, run_server
 
     server = create_mcp_server(
         "eu-copernicus", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
     )
 
-    await run_server(server, transport, port)
+    await run_server(server, transport, port, host)
 
 
 if __name__ == "__main__":

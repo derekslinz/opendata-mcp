@@ -39,11 +39,21 @@ def _import_provider_module(provider: str):
 @click.option(
     "--port", default=8000, type=int, help="Port to listen on for SSE transport"
 )
-def run(provider: str, transport: str, port: int):
+@click.option(
+    "--host", default="127.0.0.1", help="Host to listen on for SSE transport"
+)
+def run(provider: str, transport: str, port: int, host: str):
     """Run a specific provider MCP server."""
     try:
         module = _import_provider_module(provider)
-        anyio.run(module.main, transport, port)
+        # Check if main accepts host
+        import inspect
+
+        sig = inspect.signature(module.main)
+        if "host" in sig.parameters:
+            anyio.run(module.main, transport, port, host)
+        else:
+            anyio.run(module.main, transport, port)
     except ImportError as e:
         click.echo(
             f"Provider '{provider}' not found or has missing dependencies.", err=True
