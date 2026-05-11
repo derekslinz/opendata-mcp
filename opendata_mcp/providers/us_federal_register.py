@@ -1,0 +1,410 @@
+"""
+US Federal Register Provider
+
+This module exposes the federalregister.gov public API (v1), which
+publishes the daily Federal Register: rules, proposed rules, notices,
+and presidential documents (executive orders, proclamations, etc.).
+
+License note:
+    Federal Register documents are works of the US federal government
+    and are therefore in the public domain in the United States.
+
+Features:
+- Full-text search across documents
+- Document lookup by document number (e.g. '2024-12345')
+- Agency directory and per-agency lookup
+- Public Inspection documents (pre-publication)
+- Executive Orders listing
+- Suggested searches (curated topic feeds)
+
+Usage:
+    The module can be run directly to start an MCP server, or its
+    components can be imported individually.
+"""
+
+import logging
+from typing import Any, List, Optional, Sequence
+
+import mcp.types as types
+from pydantic import BaseModel, Field
+
+from opendata_mcp.utils import http_get
+
+# Initialize logging
+log = logging.getLogger(__name__)
+
+# Constants
+BASE_URL = "https://www.federalregister.gov/api/v1"
+
+# Registration Variables
+RESOURCES: List[Any] = []
+RESOURCES_HANDLERS: dict[str, Any] = {}
+TOOLS: List[types.Tool] = []
+TOOLS_HANDLERS: dict[str, Any] = {}
+
+
+###################
+# Search Documents
+###################
+
+
+class FedRegSearchDocumentsParams(BaseModel):
+    """Parameters for searching Federal Register documents."""
+
+    term: Optional[str] = Field(
+        None, description="Free-text search term (matched against documents)."
+    )
+    per_page: int = Field(default=20, description="Results per page (max 1000).")
+    page: int = Field(default=1, description="Results page (1-indexed).")
+    order: Optional[str] = Field(
+        None,
+        description=(
+            "Sort order, e.g. 'relevance', 'newest', 'oldest', "
+            "'executive_order_number'."
+        ),
+    )
+
+
+def fetch_fedreg_search_documents(params: FedRegSearchDocumentsParams) -> dict:
+    """Call /documents.json for a general search."""
+    query_params: dict[str, Any] = {
+        "per_page": params.per_page,
+        "page": params.page,
+    }
+    if params.term:
+        query_params["conditions[term]"] = params.term
+    if params.order:
+        query_params["order"] = params.order
+    response = http_get(f"{BASE_URL}/documents.json", params=query_params)
+    return response.json()
+
+
+async def handle_fedreg_search_documents(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the fedreg-search-documents tool call."""
+    try:
+        params = FedRegSearchDocumentsParams(**(arguments or {}))
+        data = fetch_fedreg_search_documents(params)
+        return [types.TextContent(type="text", text=str(data)[:20000])]
+    except Exception as e:
+        log.error(f"Error searching Federal Register documents: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="fedreg-search-documents",
+        description="Search Federal Register documents (rules, notices, proposed rules, presidential documents).",
+        inputSchema=FedRegSearchDocumentsParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["fedreg-search-documents"] = handle_fedreg_search_documents
+
+
+###################
+# Get Document
+###################
+
+
+class FedRegGetDocumentParams(BaseModel):
+    """Parameters for fetching a single Federal Register document."""
+
+    document_number: str = Field(
+        ...,
+        description="Federal Register document number (e.g. '2024-12345').",
+    )
+
+
+def fetch_fedreg_get_document(params: FedRegGetDocumentParams) -> dict:
+    """Call /documents/{document_number}.json."""
+    response = http_get(f"{BASE_URL}/documents/{params.document_number}.json")
+    return response.json()
+
+
+async def handle_fedreg_get_document(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the fedreg-get-document tool call."""
+    try:
+        if not arguments or "document_number" not in arguments:
+            raise ValueError("document_number is required")
+        params = FedRegGetDocumentParams(**arguments)
+        data = fetch_fedreg_get_document(params)
+        return [types.TextContent(type="text", text=str(data)[:20000])]
+    except Exception as e:
+        log.error(f"Error fetching Federal Register document: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="fedreg-get-document",
+        description="Fetch a single Federal Register document by its document number.",
+        inputSchema=FedRegGetDocumentParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["fedreg-get-document"] = handle_fedreg_get_document
+
+
+###################
+# List Agencies
+###################
+
+
+class FedRegListAgenciesParams(BaseModel):
+    """Parameters for listing Federal Register agencies (no filters)."""
+
+
+def fetch_fedreg_list_agencies(params: FedRegListAgenciesParams) -> Any:
+    """Call /agencies.json. Returns a list of agency objects."""
+    response = http_get(f"{BASE_URL}/agencies.json")
+    return response.json()
+
+
+async def handle_fedreg_list_agencies(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the fedreg-list-agencies tool call."""
+    try:
+        params = FedRegListAgenciesParams(**(arguments or {}))
+        data = fetch_fedreg_list_agencies(params)
+        return [types.TextContent(type="text", text=str(data)[:20000])]
+    except Exception as e:
+        log.error(f"Error listing Federal Register agencies: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="fedreg-list-agencies",
+        description="List all agencies tracked by the Federal Register.",
+        inputSchema=FedRegListAgenciesParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["fedreg-list-agencies"] = handle_fedreg_list_agencies
+
+
+###################
+# Get Agency
+###################
+
+
+class FedRegGetAgencyParams(BaseModel):
+    """Parameters for fetching a single Federal Register agency."""
+
+    slug: str = Field(
+        ...,
+        description="Agency slug (e.g. 'environmental-protection-agency').",
+    )
+
+
+def fetch_fedreg_get_agency(params: FedRegGetAgencyParams) -> dict:
+    """Call /agencies/{slug}.json."""
+    response = http_get(f"{BASE_URL}/agencies/{params.slug}.json")
+    return response.json()
+
+
+async def handle_fedreg_get_agency(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the fedreg-get-agency tool call."""
+    try:
+        if not arguments or "slug" not in arguments:
+            raise ValueError("slug is required")
+        params = FedRegGetAgencyParams(**arguments)
+        data = fetch_fedreg_get_agency(params)
+        return [types.TextContent(type="text", text=str(data)[:20000])]
+    except Exception as e:
+        log.error(f"Error fetching Federal Register agency: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="fedreg-get-agency",
+        description="Fetch metadata for a single Federal Register agency by slug.",
+        inputSchema=FedRegGetAgencyParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["fedreg-get-agency"] = handle_fedreg_get_agency
+
+
+###################
+# Public Inspection Documents
+###################
+
+
+class FedRegPublicInspectionParams(BaseModel):
+    """Parameters for the Public Inspection desk feed."""
+
+    available_on: Optional[str] = Field(
+        None,
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="ISO date (YYYY-MM-DD) on which the document is available.",
+    )
+    per_page: int = Field(default=20, description="Results per page (max 1000).")
+
+
+def fetch_fedreg_public_inspection(params: FedRegPublicInspectionParams) -> dict:
+    """Call /public-inspection-documents.json."""
+    query_params: dict[str, Any] = {"per_page": params.per_page}
+    if params.available_on:
+        query_params["conditions[available_on]"] = params.available_on
+    response = http_get(
+        f"{BASE_URL}/public-inspection-documents.json", params=query_params
+    )
+    return response.json()
+
+
+async def handle_fedreg_public_inspection(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the fedreg-public-inspection-documents tool call."""
+    try:
+        params = FedRegPublicInspectionParams(**(arguments or {}))
+        data = fetch_fedreg_public_inspection(params)
+        return [types.TextContent(type="text", text=str(data)[:20000])]
+    except Exception as e:
+        log.error(f"Error fetching Public Inspection documents: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="fedreg-public-inspection-documents",
+        description=(
+            "List documents on the Public Inspection desk (pre-publication "
+            "documents), optionally filtered by availability date."
+        ),
+        inputSchema=FedRegPublicInspectionParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["fedreg-public-inspection-documents"] = handle_fedreg_public_inspection
+
+
+###################
+# List Executive Orders
+###################
+
+
+class FedRegListExecutiveOrdersParams(BaseModel):
+    """Parameters for listing Executive Orders via the documents endpoint."""
+
+    president: Optional[str] = Field(
+        None,
+        description=(
+            "President slug filter (e.g. 'donald-trump', 'joe-biden', 'barack-obama')."
+        ),
+    )
+    per_page: int = Field(default=20, description="Results per page (max 1000).")
+    page: int = Field(default=1, description="Results page (1-indexed).")
+
+
+def fetch_fedreg_list_executive_orders(
+    params: FedRegListExecutiveOrdersParams,
+) -> dict:
+    """Call /documents.json with presidential_document_type=executive_order."""
+    query_params: dict[str, Any] = {
+        "conditions[presidential_document_type]": "executive_order",
+        "per_page": params.per_page,
+        "page": params.page,
+    }
+    if params.president:
+        query_params["conditions[president]"] = params.president
+    response = http_get(f"{BASE_URL}/documents.json", params=query_params)
+    return response.json()
+
+
+async def handle_fedreg_list_executive_orders(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the fedreg-list-executive-orders tool call."""
+    try:
+        params = FedRegListExecutiveOrdersParams(**(arguments or {}))
+        data = fetch_fedreg_list_executive_orders(params)
+        return [types.TextContent(type="text", text=str(data)[:20000])]
+    except Exception as e:
+        log.error(f"Error listing Executive Orders: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="fedreg-list-executive-orders",
+        description="List Executive Orders from the Federal Register, optionally filtered by president.",
+        inputSchema=FedRegListExecutiveOrdersParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["fedreg-list-executive-orders"] = handle_fedreg_list_executive_orders
+
+
+###################
+# Suggested Searches
+###################
+
+
+class FedRegSuggestedSearchesParams(BaseModel):
+    """Parameters for fetching curated suggested searches."""
+
+    sections: Optional[str] = Field(
+        None,
+        description="Comma-separated section slugs (e.g. 'health,environment').",
+    )
+    term: Optional[str] = Field(
+        None,
+        description="Optional free-text query to filter suggested searches.",
+    )
+
+
+def fetch_fedreg_suggested_searches(params: FedRegSuggestedSearchesParams) -> Any:
+    """Call /suggested_searches.json."""
+    query_params: dict[str, Any] = {}
+    if params.sections:
+        query_params["sections"] = params.sections
+    if params.term:
+        query_params["conditions[term]"] = params.term
+    response = http_get(f"{BASE_URL}/suggested_searches.json", params=query_params)
+    return response.json()
+
+
+async def handle_fedreg_suggested_searches(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the fedreg-suggested-searches tool call."""
+    try:
+        params = FedRegSuggestedSearchesParams(**(arguments or {}))
+        data = fetch_fedreg_suggested_searches(params)
+        return [types.TextContent(type="text", text=str(data)[:20000])]
+    except Exception as e:
+        log.error(f"Error fetching suggested searches: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="fedreg-suggested-searches",
+        description="Fetch Federal Register editor-curated suggested searches by section or term.",
+        inputSchema=FedRegSuggestedSearchesParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["fedreg-suggested-searches"] = handle_fedreg_suggested_searches
+
+
+async def main():
+    from mcp.server.stdio import stdio_server
+
+    from opendata_mcp.utils import create_mcp_server
+
+    server = create_mcp_server(
+        "us-federal-register", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
+    )
+
+    async with stdio_server() as streams:
+        await server.run(streams[0], streams[1], server.create_initialization_options())
+
+
+if __name__ == "__main__":
+    import anyio
+
+    anyio.run(main)
