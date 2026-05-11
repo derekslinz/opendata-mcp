@@ -593,16 +593,6 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         homepage="https://data.gov/",
     ),
     ProviderEntry(
-        id="us_doe_arm",
-        server_name="us-doe-arm",
-        title="DOE ARM",
-        description="US Dept of Energy Atmospheric Radiation Measurement data — climate observations.",
-        domains=("earth-science", "environment"),
-        regions=("us",),
-        keywords=("doe", "arm", "atmospheric", "radiation", "climate"),
-        homepage="https://www.arm.gov/",
-    ),
-    ProviderEntry(
         id="us_faa_nasstatus",
         server_name="us-faa-nasstatus",
         title="FAA NAS Status",
