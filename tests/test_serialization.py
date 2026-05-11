@@ -25,8 +25,14 @@ def test_to_json_text_sorts_keys():
 
 def test_to_json_text_truncation_remains_valid_json():
     source_payload = {"value": "a" * 100}
-    # 85 is the smallest budget for this payload that keeps a non-empty "preview".
-    max_chars = 85
+    low, high = 1, 200
+    while low < high:
+        mid = (low + high) // 2
+        if '"preview"' in to_json_text(source_payload, max_chars=mid):
+            high = mid
+        else:
+            low = mid + 1
+    max_chars = low
     text = to_json_text(source_payload, max_chars=max_chars)
     payload = json.loads(text)
     assert payload["truncated"] is True
