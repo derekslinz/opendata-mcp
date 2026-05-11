@@ -448,7 +448,7 @@ TOOLS.append(
 TOOLS_HANDLERS["wikipedia-get-on-this-day"] = handle_wikipedia_get_on_this_day
 
 
-async def main(transport: str = "stdio", port: int = 8000):
+async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
     from opendata_mcp.utils import create_mcp_server, run_server
 
     server = create_mcp_server(
@@ -459,7 +459,7 @@ async def main(transport: str = "stdio", port: int = 8000):
         TOOLS_HANDLERS,
     )
 
-    await run_server(server, transport, port)
+    await run_server(server, transport, port, host)
 
 
 if __name__ == "__main__":
