@@ -39,7 +39,7 @@ How do we do that?
 
 ## Available Providers
 
-55 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
+54 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
 
 ### Meta / Discovery
 
@@ -98,7 +98,6 @@ How do we do that?
 | `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
 | `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
 | `global_openaq` | OpenAQ | Global air quality measurements — **requires `OPENAQ_API_KEY`** |
-| `us_doe_arm` | DOE ARM | US DoE Atmospheric Radiation Measurement |
 | `us_noaa_ncei` | NOAA NCEI | Climate data access services (key-less) |
 | `us_noaa_tides` | NOAA Tides & Currents | Water levels, tides, currents |
 | `us_usgs_earthquake` | USGS Earthquakes | Real-time and historical seismic events |
