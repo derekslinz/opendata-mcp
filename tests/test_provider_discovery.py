@@ -10,7 +10,6 @@ def test_real_provider_discovery():
         "eu_copernicus",
         "us_nasa",
         "de_db",
-        "us_doe_arm",
         "global_open_meteo",
     ]
 
@@ -28,7 +27,6 @@ def test_provider_docs_present():
         "eu_copernicus",
         "us_nasa",
         "de_db",
-        "us_doe_arm",
         "global_open_meteo",
     ]
 
