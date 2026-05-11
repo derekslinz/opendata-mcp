@@ -168,10 +168,10 @@ async def run_server(server: Server, transport: str = "stdio", port: int = 8000,
 
         sse = SseServerTransport("/messages")
 
-        async def handle_sse(request):
-            log.info(f"New SSE connection request from {request.client}")
+        async def handle_sse(scope, receive, send):
+            log.info(f"New SSE connection request from {scope.get('client')}")
             try:
-                async with sse.connect_sse(request.scope, request.receive, request.send) as streams:
+                async with sse.connect_sse(scope, receive, send) as streams:
                     log.info("SSE connection established, running server...")
                     await server.run(
                         streams[0], streams[1], server.create_initialization_options()
@@ -196,7 +196,7 @@ async def run_server(server: Server, transport: str = "stdio", port: int = 8000,
             debug=True,
             routes=[
                 Route("/", endpoint=root),
-                Route("/sse", endpoint=handle_sse),
+                Mount("/sse", app=handle_sse),
                 Mount("/messages", app=sse.handle_post_message),
             ],
         )
