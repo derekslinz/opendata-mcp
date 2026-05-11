@@ -225,18 +225,20 @@ async def run_server(
 
         sse = SseServerTransport("/messages")
 
-        async def handle_sse(scope, receive, send):
-            log.info(f"New SSE connection request from {scope.get('client')}")
-            try:
-                async with sse.connect_sse(scope, receive, send) as streams:
-                    log.info("SSE connection established, running server...")
-                    await server.run(
-                        streams[0], streams[1], server.create_initialization_options()
-                    )
-            except Exception as e:
-                log.error(f"SSE connection error: {e}")
-            finally:
-                log.info("SSE connection closed")
+        class SseApp:
+            async def __call__(self, scope, receive, send):
+                log.info(f"New SSE connection request from {scope.get('client')}")
+                try:
+                    async with sse.connect_sse(scope, receive, send) as streams:
+                        log.info("SSE connection established, running server...")
+                        await server.run(
+                            streams[0], streams[1], server.create_initialization_options()
+                        )
+                except Exception as e:
+                    # Connection closed by client is common and can be ignored or logged at debug
+                    log.debug(f"SSE connection error: {e}")
+                finally:
+                    log.info("SSE connection closed")
 
         async def root(request):
             return JSONResponse(
@@ -252,7 +254,7 @@ async def run_server(
             debug=False,
             routes=[
                 Route("/", endpoint=root),
-                Mount("/sse", app=handle_sse),
+                Route("/sse", endpoint=SseApp()),
                 Mount("/messages", app=sse.handle_post_message),
             ],
         )
@@ -262,6 +264,7 @@ async def run_server(
             allow_origins=["*"],
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=["*"],
         )
 
         config = uvicorn.Config(
