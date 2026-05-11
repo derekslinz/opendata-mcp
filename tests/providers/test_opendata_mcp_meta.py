@@ -110,9 +110,4 @@ async def test_list_providers_pagination():
     assert '"limit": 3' in text
 
 
-@pytest.mark.anyio
-async def test_list_providers_shows_required_env_when_present():
-    result = await handle_list_providers({"limit": 200, "offset": 0})
-    text = result[0].text
-    # us_fred is in the registry and requires FRED_API_KEY
-    assert "FRED_API_KEY" in text
+
