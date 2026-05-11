@@ -173,14 +173,14 @@ async def run_server(server: Server, transport: str = "stdio", port: int = 8000)
                 )
 
         app = Starlette(
-            debug=True,
+            debug=False,
             routes=[
                 Mount("/sse", app=handle_sse),
                 Mount("/messages", app=sse.handle_post_message),
             ],
         )
 
-        config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
+        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
         uvicorn_server = uvicorn.Server(config)
         await uvicorn_server.serve()
     else:
