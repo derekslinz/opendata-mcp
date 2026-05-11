@@ -21,7 +21,6 @@ from typing import Any, List, Optional, Sequence
 
 import httpx
 import mcp.types as types
-from mcp.server.stdio import stdio_server
 from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
@@ -395,17 +394,14 @@ TOOLS.append(
 TOOLS_HANDLERS["rolling-stock"] = handle_rolling_stock
 
 
-async def main():
-    from opendata_mcp.utils import create_mcp_server
+async def main(transport: str = "stdio", port: int = 8000):
+    from opendata_mcp.utils import create_mcp_server, run_server
 
-    # create the server
     server = create_mcp_server(
         "data.sbb.ch", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
     )
 
-    # run the server
-    async with stdio_server() as streams:
-        await server.run(streams[0], streams[1], server.create_initialization_options())
+    await run_server(server, transport, port)
 
 
 if __name__ == "__main__":

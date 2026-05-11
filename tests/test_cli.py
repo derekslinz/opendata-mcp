@@ -19,7 +19,7 @@ def test_run_valid_provider(runner):
             result = runner.invoke(cli, ["run", "test_provider"])
 
     assert result.exit_code == 0
-    mock_run.assert_called_once_with(mock_module.main)
+    mock_run.assert_called_once_with(mock_module.main, "stdio", 8000)
 
 
 def test_run_invalid_provider(runner):

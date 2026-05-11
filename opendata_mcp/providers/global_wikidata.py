@@ -361,17 +361,14 @@ TOOLS.append(
 TOOLS_HANDLERS["wikidata-get-entity-by-title"] = handle_wikidata_get_by_title
 
 
-async def main():
-    from mcp.server.stdio import stdio_server
-
-    from opendata_mcp.utils import create_mcp_server
+async def main(transport: str = "stdio", port: int = 8000):
+    from opendata_mcp.utils import create_mcp_server, run_server
 
     server = create_mcp_server(
         "global-wikidata", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
     )
 
-    async with stdio_server() as streams:
-        await server.run(streams[0], streams[1], server.create_initialization_options())
+    await run_server(server, transport, port)
 
 
 if __name__ == "__main__":

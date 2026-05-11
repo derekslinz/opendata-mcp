@@ -30,11 +30,13 @@ def _import_provider_module(provider: str):
 
 @cli.command()
 @click.argument("provider")
-def run(provider: str):
+@click.option("--transport", default="stdio", type=click.Choice(["stdio", "sse"]), help="Transport protocol to use (stdio or sse)")
+@click.option("--port", default=8000, type=int, help="Port to listen on for SSE transport")
+def run(provider: str, transport: str, port: int):
     """Run a specific provider MCP server."""
     try:
         module = _import_provider_module(provider)
-        anyio.run(module.main)
+        anyio.run(module.main, transport, port)
     except ImportError as e:
         click.echo(
             f"Provider '{provider}' not found or has missing dependencies.", err=True

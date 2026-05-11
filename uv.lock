@@ -341,6 +341,8 @@ dependencies = [
     { name = "click" },
     { name = "httpx" },
     { name = "mcp" },
+    { name = "starlette" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -356,6 +358,8 @@ requires-dist = [
     { name = "click", specifier = ">=8.1.7" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "mcp", specifier = ">=1.0.0" },
+    { name = "starlette", specifier = ">=1.0.0" },
+    { name = "uvicorn", specifier = ">=0.42.0" },
 ]
 
 [package.metadata.requires-dev]
