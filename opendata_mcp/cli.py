@@ -375,6 +375,70 @@ def setup_all(local: bool, force: bool):
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("provider")
+@click.option(
+    "--local", is_flag=True, help="Force local development mode using absolute paths."
+)
+def inspect(provider: str, local: bool):
+    """Launch MCP Inspector against a provider for interactive testing.
+
+    Requires Node.js / npx. Opens a browser-based UI at http://localhost:5173
+    where you can browse tools, send requests, and inspect responses.
+
+    Example:
+        uv run opendata-mcp inspect us_nasa
+    """
+    import shutil
+    import subprocess
+
+    if shutil.which("npx") is None:
+        click.echo(
+            "npx not found. Install Node.js (https://nodejs.org/) to use mcp-inspector.",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        _import_provider_module(provider)
+    except ImportError as e:
+        click.echo(
+            f"Provider '{provider}' not found or has missing dependencies.", err=True
+        )
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    repo_root = Path(__file__).parent.parent.resolve()
+    is_local_repo = (repo_root / "pyproject.toml").exists()
+
+    if is_local_repo or local:
+        server_cmd = [
+            "uv",
+            "--directory",
+            str(repo_root),
+            "run",
+            LIB_NAME,
+            "run",
+            provider,
+        ]
+    else:
+        server_cmd = ["uvx", LIB_NAME, "run", provider]
+
+    click.echo(f"Starting MCP Inspector for provider '{provider}'…")
+    click.echo("Open http://localhost:5173 in your browser (Ctrl-C to stop).")
+
+    try:
+        subprocess.run(
+            ["npx", "-y", "@modelcontextprotocol/inspector"] + server_cmd,
+            check=True,
+        )
+    except KeyboardInterrupt:
+        pass
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Inspector exited with code {e.returncode}.", err=True)
+        sys.exit(e.returncode)
+
+
 def main():
     cli()
 
