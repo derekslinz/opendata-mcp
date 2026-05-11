@@ -10,7 +10,7 @@ API Documentation: https://aviationweather.gov/data/api/
 """
 
 import logging
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Sequence
 
 import mcp.types as types
 from pydantic import BaseModel, Field
@@ -33,15 +33,19 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 # AWC METAR
 ###################
 
+
 class AWCMetarParams(BaseModel):
     """Parameters for fetching METAR data."""
+
     ids: str = Field(..., description="Station IDs (e.g. 'KJFK,EGLL')")
+
 
 def fetch_awc_metar(params: AWCMetarParams) -> Any:
     """Fetch METAR data from NOAA AWC."""
     query_params = {"ids": params.ids, "format": "json"}
     response = http_get(f"{BASE_URL}/metar", params=query_params)
     return response.json()
+
 
 async def handle_awc_metar(
     arguments: dict[str, Any] | None = None,
@@ -54,6 +58,7 @@ async def handle_awc_metar(
     except Exception as e:
         log.error(f"Error fetching AWC METAR: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -68,15 +73,19 @@ TOOLS_HANDLERS["awc-metar"] = handle_awc_metar
 # AWC TAF
 ###################
 
+
 class AWCTafParams(BaseModel):
     """Parameters for fetching TAF data."""
+
     ids: str = Field(..., description="Station IDs (e.g. 'KJFK')")
+
 
 def fetch_awc_taf(params: AWCTafParams) -> Any:
     """Fetch TAF data from NOAA AWC."""
     query_params = {"ids": params.ids, "format": "json"}
     response = http_get(f"{BASE_URL}/taf", params=query_params)
     return response.json()
+
 
 async def handle_awc_taf(
     arguments: dict[str, Any] | None = None,
@@ -89,6 +98,7 @@ async def handle_awc_taf(
     except Exception as e:
         log.error(f"Error fetching AWC TAF: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -103,15 +113,19 @@ TOOLS_HANDLERS["awc-taf"] = handle_awc_taf
 # AWC Station
 ###################
 
+
 class AWCStationParams(BaseModel):
     """Parameters for fetching station data."""
+
     ids: str = Field(..., description="Station IDs (e.g. 'KJFK')")
+
 
 def fetch_awc_station(params: AWCStationParams) -> Any:
     """Fetch station metadata from NOAA AWC."""
     query_params = {"ids": params.ids, "format": "json"}
     response = http_get(f"{BASE_URL}/station", params=query_params)
     return response.json()
+
 
 async def handle_awc_station(
     arguments: dict[str, Any] | None = None,
@@ -124,6 +138,7 @@ async def handle_awc_station(
     except Exception as e:
         log.error(f"Error fetching AWC station: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -143,6 +158,8 @@ async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.
 
     await run_server(server, transport, port, host)
 
+
 if __name__ == "__main__":
     import anyio
+
     anyio.run(main)

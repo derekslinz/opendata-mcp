@@ -11,7 +11,7 @@ API Documentation: https://data.rcsb.org/redoc/index.html
 """
 
 import logging
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Sequence
 
 import mcp.types as types
 from pydantic import BaseModel, Field
@@ -34,14 +34,18 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 # PDB Entry
 ###################
 
+
 class PDBEntryParams(BaseModel):
     """Parameters for fetching PDB entry data."""
+
     entry_id: str = Field(..., description="PDB Entry ID (e.g. '4HHB')")
+
 
 def fetch_pdb_entry(params: PDBEntryParams) -> Any:
     """Fetch entry metadata from RCSB PDB."""
     response = http_get(f"{BASE_URL}/core/entry/{params.entry_id}")
     return response.json()
+
 
 async def handle_pdb_entry(
     arguments: dict[str, Any] | None = None,
@@ -54,6 +58,7 @@ async def handle_pdb_entry(
     except Exception as e:
         log.error(f"Error fetching PDB entry: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -68,15 +73,21 @@ TOOLS_HANDLERS["pdb-entry"] = handle_pdb_entry
 # PDB Polymer Entity
 ###################
 
+
 class PDBPolymerParams(BaseModel):
     """Parameters for fetching PDB polymer entity data."""
+
     entry_id: str = Field(..., description="PDB Entry ID (e.g. '4HHB')")
     entity_id: str = Field(..., description="Entity ID within the entry (e.g. '1')")
 
+
 def fetch_pdb_polymer(params: PDBPolymerParams) -> Any:
     """Fetch polymer entity data from RCSB PDB."""
-    response = http_get(f"{BASE_URL}/core/polymer_entity/{params.entry_id}/{params.entity_id}")
+    response = http_get(
+        f"{BASE_URL}/core/polymer_entity/{params.entry_id}/{params.entity_id}"
+    )
     return response.json()
+
 
 async def handle_pdb_polymer(
     arguments: dict[str, Any] | None = None,
@@ -89,6 +100,7 @@ async def handle_pdb_polymer(
     except Exception as e:
         log.error(f"Error fetching PDB polymer entity: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -108,6 +120,8 @@ async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.
 
     await run_server(server, transport, port, host)
 
+
 if __name__ == "__main__":
     import anyio
+
     anyio.run(main)

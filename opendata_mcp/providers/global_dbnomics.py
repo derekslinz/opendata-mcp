@@ -11,7 +11,7 @@ API Documentation: https://api.db.nomics.world/apidocs
 """
 
 import logging
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Sequence
 
 import mcp.types as types
 from pydantic import BaseModel, Field
@@ -34,21 +34,21 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 # DBnomics Search
 ###################
 
+
 class DBnomicsSearchParams(BaseModel):
     """Parameters for searching DBnomics datasets and series."""
+
     query: str = Field(..., description="Search query string")
     limit: int = Field(default=10, description="Number of results to return (max 50)")
     offset: int = Field(default=0, description="Number of results to skip")
 
+
 def search_dbnomics(params: DBnomicsSearchParams) -> Any:
     """Search for datasets and series on DBnomics."""
-    query_params = {
-        "q": params.query,
-        "limit": params.limit,
-        "offset": params.offset
-    }
+    query_params = {"q": params.query, "limit": params.limit, "offset": params.offset}
     response = http_get(f"{BASE_URL}/search", params=query_params)
     return response.json()
+
 
 async def handle_dbnomics_search(
     arguments: dict[str, Any] | None = None,
@@ -61,6 +61,7 @@ async def handle_dbnomics_search(
     except Exception as e:
         log.error(f"Error searching DBnomics: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -75,10 +76,12 @@ TOOLS_HANDLERS["dbnomics-search"] = handle_dbnomics_search
 # DBnomics Providers
 ###################
 
+
 def list_dbnomics_providers() -> Any:
     """List all data providers available on DBnomics."""
     response = http_get(f"{BASE_URL}/providers")
     return response.json()
+
 
 async def handle_dbnomics_list_providers(
     arguments: dict[str, Any] | None = None,
@@ -90,6 +93,7 @@ async def handle_dbnomics_list_providers(
     except Exception as e:
         log.error(f"Error listing DBnomics providers: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -104,15 +108,22 @@ TOOLS_HANDLERS["dbnomics-list-providers"] = handle_dbnomics_list_providers
 # DBnomics Series
 ###################
 
+
 class DBnomicsSeriesParams(BaseModel):
     """Parameters for fetching DBnomics series data."""
-    series_ids: str = Field(..., description="Comma-separated list of series IDs (e.g. 'IMF/WEO:2024-04/ABW.NGDP_RPCH')")
+
+    series_ids: str = Field(
+        ...,
+        description="Comma-separated list of series IDs (e.g. 'IMF/WEO:2024-04/ABW.NGDP_RPCH')",
+    )
+
 
 def fetch_dbnomics_series(params: DBnomicsSeriesParams) -> Any:
     """Fetch data for specific series from DBnomics."""
     query_params = {"series_ids": params.series_ids}
     response = http_get(f"{BASE_URL}/series", params=query_params)
     return response.json()
+
 
 async def handle_dbnomics_series(
     arguments: dict[str, Any] | None = None,
@@ -125,6 +136,7 @@ async def handle_dbnomics_series(
     except Exception as e:
         log.error(f"Error fetching DBnomics series: {e}")
         raise
+
 
 TOOLS.append(
     types.Tool(
@@ -144,6 +156,8 @@ async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.
 
     await run_server(server, transport, port, host)
 
+
 if __name__ == "__main__":
     import anyio
+
     anyio.run(main)
