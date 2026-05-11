@@ -232,7 +232,9 @@ async def run_server(
                     async with sse.connect_sse(scope, receive, send) as streams:
                         log.info("SSE connection established, running server...")
                         await server.run(
-                            streams[0], streams[1], server.create_initialization_options()
+                            streams[0],
+                            streams[1],
+                            server.create_initialization_options(),
                         )
                 except Exception as e:
                     # Connection closed by client is common and can be ignored or logged at debug

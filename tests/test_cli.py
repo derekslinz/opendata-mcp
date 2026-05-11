@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -15,7 +15,7 @@ def test_run_valid_provider(runner):
     # Create a mock module where main accepts transport, port, and host
     async def mock_main(transport="sse", port=8000, host="127.0.0.1"):
         pass
-    
+
     mock_module = type("Module", (), {"main": mock_main})
 
     with patch("opendata_mcp.cli._import_provider_module", return_value=mock_module):
