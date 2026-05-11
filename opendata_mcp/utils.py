@@ -1,11 +1,77 @@
+import json
 import logging
+import os
 from typing import Any, Callable, Sequence
 
+import httpx
 from mcp import types
 from mcp.server import Server
 from pydantic import AnyUrl
 
+from opendata_mcp import __version__
+
 log = logging.getLogger(__name__)
+
+# Maximum character length for tool/resource text responses.
+MAX_RESPONSE_CHARS = 20_000
+
+
+def _default_user_agent() -> str:
+    """Return the default User-Agent string for outbound HTTP requests.
+
+    Several open-data APIs (Crossref, Europe PMC, OSM Nominatim, SEC EDGAR)
+    require an identifiable User-Agent including a contact address. Callers
+    may override `OPENDATA_MCP_CONTACT` via environment variable.
+    """
+    contact = os.getenv("OPENDATA_MCP_CONTACT", "opendata-mcp@example.org")
+    return f"opendata-mcp/{__version__} (+https://github.com/derekslinz/opendata-mcp; {contact})"
+
+
+def http_get(
+    url: str,
+    params: dict[str, Any] | None = None,
+    *,
+    timeout: float = 10.0,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    """Perform a GET request with sensible defaults for open-data APIs.
+
+    - Sets a default User-Agent identifying opendata-mcp (override via
+      `OPENDATA_MCP_CONTACT` env var or `headers` argument).
+    - Sets `Accept: application/json` by default; override via `headers`.
+    - Calls `raise_for_status()` so handlers see a clean exception path.
+
+    Args:
+        url: The endpoint URL.
+        params: Optional query parameters.
+        timeout: Request timeout in seconds (default 10.0).
+        headers: Optional header overrides merged on top of defaults.
+
+    Returns:
+        The httpx.Response (already status-checked).
+    """
+    merged_headers = {
+        "User-Agent": _default_user_agent(),
+        "Accept": "application/json",
+    }
+    if headers:
+        merged_headers.update(headers)
+
+    response = httpx.get(url, params=params, timeout=timeout, headers=merged_headers)
+    response.raise_for_status()
+    return response
+
+
+def serialize_for_llm(data: Any) -> str:
+    """Serialize ``data`` to a JSON string truncated to ``MAX_RESPONSE_CHARS``.
+
+    Uses ``json.dumps`` so that LLMs receive valid JSON (``true``/``false``,
+    ``null``, double-quoted keys) instead of Python's ``repr`` output.
+
+    ``default=str`` is used as a fallback serializer for types that are not
+    natively JSON-serializable (e.g. ``datetime``, ``UUID``).
+    """
+    return json.dumps(data, default=str, ensure_ascii=False)[:MAX_RESPONSE_CHARS]
 
 
 def create_mcp_server(

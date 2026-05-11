@@ -23,6 +23,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import serialize_for_llm
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -172,7 +174,7 @@ async def handle_eurostat_get_dataset(
 
         params = EurostatDataParams(**arguments)
         data = fetch_eurostat_data(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Eurostat data: {e}")
         raise
