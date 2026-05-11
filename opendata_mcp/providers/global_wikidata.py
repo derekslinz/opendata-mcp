@@ -31,7 +31,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ async def handle_wikidata_get_entities(
             raise ValueError("ids is required")
         params = WikidataGetEntitiesParams(**arguments)
         data = fetch_wikidata_entities(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikidata entities: {e}")
         raise
@@ -139,7 +139,7 @@ async def handle_wikidata_search_entities(
             raise ValueError("search is required")
         params = WikidataSearchEntitiesParams(**arguments)
         data = fetch_wikidata_search_entities(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Wikidata entities: {e}")
         raise
@@ -192,7 +192,7 @@ async def handle_wikidata_get_claims(
             raise ValueError("entity is required")
         params = WikidataGetClaimsParams(**arguments)
         data = fetch_wikidata_claims(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikidata claims: {e}")
         raise
@@ -238,7 +238,7 @@ async def handle_wikidata_sparql(
             raise ValueError("query is required")
         params = WikidataSPARQLParams(**arguments)
         data = fetch_wikidata_sparql(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error running Wikidata SPARQL: {e}")
         raise
@@ -290,7 +290,7 @@ async def handle_wikidata_list_properties(
             raise ValueError("search is required")
         params = WikidataListPropertiesParams(**arguments)
         data = fetch_wikidata_list_properties(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Wikidata properties: {e}")
         raise
@@ -345,7 +345,7 @@ async def handle_wikidata_get_by_title(
             raise ValueError("titles is required")
         params = WikidataGetByTitleParams(**arguments)
         data = fetch_wikidata_get_by_title(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Wikidata entity by Wikipedia title: {e}")
         raise

@@ -22,6 +22,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import serialize_for_llm
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -85,7 +87,7 @@ async def handle_get_forecast(
     try:
         params = WeatherForecastParams(**(arguments or {}))
         data = fetch_weather_forecast(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching weather forecast: {e}")
         raise
@@ -148,7 +150,7 @@ async def handle_get_historical_weather(
     try:
         params = HistoricalWeatherParams(**(arguments or {}))
         data = fetch_historical_weather(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching historical weather: {e}")
         raise
@@ -203,7 +205,7 @@ async def handle_get_air_quality(
     try:
         params = AirQualityParams(**(arguments or {}))
         data = fetch_air_quality(params)
-        return [types.TextContent(type="text", text=str(data))]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching air quality: {e}")
         raise

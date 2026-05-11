@@ -25,7 +25,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ async def handle_list_dataflows(
     try:
         params = OECDListDataflowsParams(**(arguments or {}))
         data = fetch_list_dataflows(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing OECD dataflows: {e}")
         raise
@@ -121,7 +121,7 @@ async def handle_get_dataflow(
             raise ValueError("agencyId and flowId are required")
         params = OECDGetDataflowParams(**arguments)
         data = fetch_get_dataflow(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OECD dataflow: {e}")
         raise
@@ -173,7 +173,7 @@ async def handle_get_datastructure(
             raise ValueError("agencyId and structureId are required")
         params = OECDGetDataStructureParams(**arguments)
         data = fetch_get_datastructure(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OECD data-structure: {e}")
         raise
@@ -242,7 +242,7 @@ async def handle_get_data(
             raise ValueError("agencyId and flowId are required")
         params = OECDGetDataParams(**arguments)
         data = fetch_get_data(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OECD data: {e}")
         raise
@@ -295,7 +295,7 @@ async def handle_list_codelist(
             raise ValueError("agencyId and codelistId are required")
         params = OECDListCodelistParams(**arguments)
         data = fetch_list_codelist(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OECD codelist: {e}")
         raise
@@ -344,7 +344,7 @@ async def handle_list_conceptscheme(
             raise ValueError("agencyId and schemeId are required")
         params = OECDListConceptSchemeParams(**arguments)
         data = fetch_list_conceptscheme(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OECD concept scheme: {e}")
         raise

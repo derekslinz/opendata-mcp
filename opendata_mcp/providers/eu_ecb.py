@@ -29,7 +29,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ async def handle_ecb_list_dataflows(
     try:
         params = ECBListDataflowsParams(**(arguments or {}))
         data = fetch_ecb_list_dataflows(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing ECB dataflows: {e}")
         raise
@@ -112,7 +112,7 @@ async def handle_ecb_get_dataflow(
             raise ValueError("id is required")
         params = ECBGetDataflowParams(**arguments)
         data = fetch_ecb_get_dataflow(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ECB dataflow {arguments}: {e}")
         raise
@@ -183,7 +183,7 @@ async def handle_ecb_get_data(
             raise ValueError("flow and key are required")
         params = ECBGetDataParams(**arguments)
         data = fetch_ecb_get_data(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ECB data: {e}")
         raise
@@ -231,7 +231,7 @@ async def handle_ecb_get_codelist(
             raise ValueError("id is required")
         params = ECBGetCodelistParams(**arguments)
         data = fetch_ecb_get_codelist(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ECB codelist: {e}")
         raise
@@ -276,7 +276,7 @@ async def handle_ecb_get_conceptscheme(
             raise ValueError("id is required")
         params = ECBGetConceptSchemeParams(**arguments)
         data = fetch_ecb_get_conceptscheme(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ECB concept scheme: {e}")
         raise

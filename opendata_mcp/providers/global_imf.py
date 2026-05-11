@@ -26,7 +26,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ async def handle_list_dataflows(
     try:
         params = IMFListDataflowsParams(**(arguments or {}))
         data = fetch_list_dataflows(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing IMF dataflows: {e}")
         raise
@@ -124,7 +124,7 @@ async def handle_get_dataflow(
             raise ValueError("flowId is required")
         params = IMFGetDataflowParams(**arguments)
         data = fetch_get_dataflow(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching IMF dataflow: {e}")
         raise
@@ -191,7 +191,7 @@ async def handle_get_data(
             raise ValueError("flowRef is required")
         params = IMFGetDataParams(**arguments)
         data = fetch_get_data(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching IMF data: {e}")
         raise
@@ -240,7 +240,7 @@ async def handle_get_datastructure(
             raise ValueError("structureId is required")
         params = IMFGetDataStructureParams(**arguments)
         data = fetch_get_datastructure(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching IMF data-structure: {e}")
         raise
@@ -289,7 +289,7 @@ async def handle_list_codelist(
             raise ValueError("codelistId is required")
         params = IMFListCodelistParams(**arguments)
         data = fetch_list_codelist(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching IMF codelist: {e}")
         raise

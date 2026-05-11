@@ -29,7 +29,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ async def handle_search_records(
     try:
         params = CERNSearchRecordsParams(**(arguments or {}))
         data = fetch_search_records(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching CERN Open Data records: {e}")
         raise
@@ -120,7 +120,7 @@ async def handle_get_record(
             raise ValueError("record_id is required")
         params = CERNGetRecordParams(**arguments)
         data = fetch_get_record(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CERN Open Data record: {e}")
         raise
@@ -161,7 +161,7 @@ async def handle_list_collections(
     try:
         params = CERNListCollectionsParams(**(arguments or {}))
         data = fetch_list_collections(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing CERN Open Data collections: {e}")
         raise
@@ -214,7 +214,7 @@ async def handle_search_by_experiment(
             raise ValueError("experiment is required")
         params = CERNSearchByExperimentParams(**arguments)
         data = fetch_search_by_experiment(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching CERN Open Data by experiment: {e}")
         raise
@@ -259,7 +259,7 @@ async def handle_search_software(
     try:
         params = CERNSearchSoftwareParams(**(arguments or {}))
         data = fetch_search_software(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching CERN Open Data software: {e}")
         raise

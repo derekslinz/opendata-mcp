@@ -24,7 +24,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ async def handle_list_datasets(
     try:
         params = ONSListDatasetsParams(**(arguments or {}))
         data = fetch_list_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing ONS datasets: {e}")
         raise
@@ -107,7 +107,7 @@ async def handle_get_dataset(
             raise ValueError("id is required")
         params = ONSGetDatasetParams(**arguments)
         data = fetch_get_dataset(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ONS dataset: {e}")
         raise
@@ -149,7 +149,7 @@ async def handle_list_editions(
             raise ValueError("id is required")
         params = ONSListEditionsParams(**arguments)
         data = fetch_list_editions(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing ONS editions: {e}")
         raise
@@ -194,7 +194,7 @@ async def handle_get_edition(
             raise ValueError("id and edition are required")
         params = ONSGetEditionParams(**arguments)
         data = fetch_get_edition(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ONS edition: {e}")
         raise
@@ -240,7 +240,7 @@ async def handle_list_versions(
             raise ValueError("id and edition are required")
         params = ONSListVersionsParams(**arguments)
         data = fetch_list_versions(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing ONS versions: {e}")
         raise
@@ -305,7 +305,7 @@ async def handle_get_observations(
             raise ValueError("id, edition, and version are required")
         params = ONSGetObservationsParams(**arguments)
         data = fetch_get_observations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ONS observations: {e}")
         raise
@@ -347,7 +347,7 @@ async def handle_list_codelists(
     try:
         params = ONSListCodeListsParams(**(arguments or {}))
         data = fetch_list_codelists(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing ONS code-lists: {e}")
         raise
@@ -389,7 +389,7 @@ async def handle_get_codelist(
             raise ValueError("id is required")
         params = ONSGetCodeListParams(**arguments)
         data = fetch_get_codelist(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching ONS code-list: {e}")
         raise

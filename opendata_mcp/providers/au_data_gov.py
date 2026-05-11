@@ -32,7 +32,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ async def handle_au_datagov_search_datasets(
     try:
         params = AUDataGovSearchDatasetsParams(**(arguments or {}))
         data = fetch_au_datagov_search_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching data.gov.au datasets: {e}")
         raise
@@ -129,7 +129,7 @@ async def handle_au_datagov_get_dataset(
             raise ValueError("id is required")
         params = AUDataGovGetDatasetParams(**arguments)
         data = fetch_au_datagov_get_dataset(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching data.gov.au dataset: {e}")
         raise
@@ -178,7 +178,7 @@ async def handle_au_datagov_list_organizations(
     try:
         params = AUDataGovListOrganizationsParams(**(arguments or {}))
         data = fetch_au_datagov_list_organizations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gov.au organisations: {e}")
         raise
@@ -220,7 +220,7 @@ async def handle_au_datagov_get_organization(
             raise ValueError("id is required")
         params = AUDataGovGetOrganizationParams(**arguments)
         data = fetch_au_datagov_get_organization(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching data.gov.au organisation: {e}")
         raise
@@ -266,7 +266,7 @@ async def handle_au_datagov_list_groups(
     try:
         params = AUDataGovListGroupsParams(**(arguments or {}))
         data = fetch_au_datagov_list_groups(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gov.au groups: {e}")
         raise
@@ -312,7 +312,7 @@ async def handle_au_datagov_list_tags(
     try:
         params = AUDataGovListTagsParams(**(arguments or {}))
         data = fetch_au_datagov_list_tags(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing data.gov.au tags: {e}")
         raise

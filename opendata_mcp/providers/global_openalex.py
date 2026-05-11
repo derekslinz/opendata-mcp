@@ -34,7 +34,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ async def handle_openalex_search_works(
     try:
         params = OpenAlexSearchWorksParams(**(arguments or {}))
         data = fetch_openalex_search_works(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching OpenAlex works: {e}")
         raise
@@ -161,7 +161,7 @@ async def handle_openalex_get_work(
             raise ValueError("id is required")
         params = OpenAlexGetWorkParams(**arguments)
         data = fetch_openalex_get_work(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenAlex work: {e}")
         raise
@@ -218,7 +218,7 @@ async def handle_openalex_search_authors(
     try:
         params = OpenAlexSearchAuthorsParams(**(arguments or {}))
         data = fetch_openalex_search_authors(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching OpenAlex authors: {e}")
         raise
@@ -266,7 +266,7 @@ async def handle_openalex_get_author(
             raise ValueError("id is required")
         params = OpenAlexGetAuthorParams(**arguments)
         data = fetch_openalex_get_author(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenAlex author: {e}")
         raise
@@ -318,7 +318,7 @@ async def handle_openalex_search_institutions(
     try:
         params = OpenAlexSearchInstitutionsParams(**(arguments or {}))
         data = fetch_openalex_search_institutions(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching OpenAlex institutions: {e}")
         raise
@@ -368,7 +368,7 @@ async def handle_openalex_search_sources(
     try:
         params = OpenAlexSearchSourcesParams(**(arguments or {}))
         data = fetch_openalex_search_sources(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching OpenAlex sources: {e}")
         raise
@@ -412,7 +412,7 @@ async def handle_openalex_search_concepts(
     try:
         params = OpenAlexSearchConceptsParams(**(arguments or {}))
         data = fetch_openalex_search_concepts(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching OpenAlex concepts: {e}")
         raise
@@ -456,7 +456,7 @@ async def handle_openalex_search_publishers(
     try:
         params = OpenAlexSearchPublishersParams(**(arguments or {}))
         data = fetch_openalex_search_publishers(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching OpenAlex publishers: {e}")
         raise

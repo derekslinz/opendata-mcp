@@ -129,9 +129,7 @@ async def test_openalex_search_institutions_success():
         }
         mock_get.return_value.raise_for_status = Mock()
 
-        result = await handle_openalex_search_institutions(
-            {"search": "toronto"}
-        )
+        result = await handle_openalex_search_institutions({"search": "toronto"})
         assert "University of Toronto" in result[0].text
 
 
@@ -157,9 +155,7 @@ async def test_openalex_search_concepts_success():
         }
         mock_get.return_value.raise_for_status = Mock()
 
-        result = await handle_openalex_search_concepts(
-            {"search": "machine learning"}
-        )
+        result = await handle_openalex_search_concepts({"search": "machine learning"})
         assert "Machine learning" in result[0].text
 
 

@@ -24,7 +24,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ async def handle_list_countries(
     try:
         params = WorldBankListCountriesParams(**(arguments or {}))
         data = fetch_list_countries(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching World Bank countries: {e}")
         raise
@@ -116,7 +116,7 @@ async def handle_get_country(
             raise ValueError("country is required")
         params = WorldBankGetCountryParams(**arguments)
         data = fetch_get_country(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching World Bank country: {e}")
         raise
@@ -162,7 +162,7 @@ async def handle_list_indicators(
     try:
         params = WorldBankListIndicatorsParams(**(arguments or {}))
         data = fetch_list_indicators(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching World Bank indicators: {e}")
         raise
@@ -219,7 +219,7 @@ async def handle_search_indicators(
     try:
         params = WorldBankSearchIndicatorsParams(**(arguments or {}))
         data = fetch_search_indicators(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching World Bank indicators: {e}")
         raise
@@ -282,7 +282,7 @@ async def handle_get_indicator_data(
             raise ValueError("country and indicator are required")
         params = WorldBankIndicatorDataParams(**arguments)
         data = fetch_indicator_data(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching World Bank indicator data: {e}")
         raise
@@ -322,7 +322,7 @@ async def handle_list_topics(
     try:
         params = WorldBankListTopicsParams(**(arguments or {}))
         data = fetch_list_topics(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching World Bank topics: {e}")
         raise
@@ -362,7 +362,7 @@ async def handle_list_sources(
     try:
         params = WorldBankListSourcesParams(**(arguments or {}))
         data = fetch_list_sources(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching World Bank sources: {e}")
         raise
@@ -404,7 +404,7 @@ async def handle_list_income_levels(
     try:
         params = WorldBankListIncomeLevelsParams(**(arguments or {}))
         data = fetch_list_income_levels(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching World Bank income levels: {e}")
         raise

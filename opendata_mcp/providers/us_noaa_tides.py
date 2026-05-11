@@ -30,7 +30,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ async def handle_noaa_tides_water_level(
             raise ValueError("station is required")
         params = NOAATidesWaterLevelParams(**arguments)
         data = fetch_noaa_tides_water_level(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NOAA tides water level: {e}")
         raise
@@ -155,7 +155,7 @@ async def handle_noaa_tides_predictions(
             raise ValueError("station is required")
         params = NOAATidesPredictionsParams(**arguments)
         data = fetch_noaa_tides_predictions(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NOAA tides predictions: {e}")
         raise
@@ -228,7 +228,7 @@ async def handle_noaa_tides_air_temperature(
             raise ValueError("station is required")
         params = NOAATidesMetParams(**arguments)
         data = fetch_noaa_tides_air_temperature(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NOAA air temperature: {e}")
         raise
@@ -243,7 +243,7 @@ async def handle_noaa_tides_water_temperature(
             raise ValueError("station is required")
         params = NOAATidesMetParams(**arguments)
         data = fetch_noaa_tides_water_temperature(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NOAA water temperature: {e}")
         raise
@@ -258,7 +258,7 @@ async def handle_noaa_tides_wind(
             raise ValueError("station is required")
         params = NOAATidesMetParams(**arguments)
         data = fetch_noaa_tides_wind(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NOAA wind: {e}")
         raise
@@ -273,7 +273,7 @@ async def handle_noaa_tides_currents(
             raise ValueError("station is required")
         params = NOAATidesMetParams(**arguments)
         data = fetch_noaa_tides_currents(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NOAA currents: {e}")
         raise
@@ -288,7 +288,7 @@ async def handle_noaa_tides_hourly_height(
             raise ValueError("station is required")
         params = NOAATidesMetParams(**arguments)
         data = fetch_noaa_tides_hourly_height(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NOAA hourly height: {e}")
         raise
@@ -370,7 +370,7 @@ async def handle_noaa_tides_station_metadata(
     try:
         params = NOAATidesStationMetadataParams(**(arguments or {}))
         data = fetch_noaa_tides_station_metadata(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NOAA tides station metadata: {e}")
         raise

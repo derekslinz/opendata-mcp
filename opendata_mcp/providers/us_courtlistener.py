@@ -35,7 +35,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ async def handle_courtlistener_search(
     try:
         params = CourtListenerSearchParams(**(arguments or {}))
         data = fetch_courtlistener_search(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching CourtListener: {e}")
         raise
@@ -152,7 +152,7 @@ async def handle_courtlistener_list_courts(
     try:
         params = CourtListenerListCourtsParams(**(arguments or {}))
         data = fetch_courtlistener_list_courts(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing CourtListener courts: {e}")
         raise
@@ -196,7 +196,7 @@ async def handle_courtlistener_get_opinion(
             raise ValueError("opinion_id is required")
         params = CourtListenerGetOpinionParams(**arguments)
         data = fetch_courtlistener_get_opinion(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CourtListener opinion: {e}")
         raise
@@ -242,7 +242,7 @@ async def handle_courtlistener_get_cluster(
             raise ValueError("cluster_id is required")
         params = CourtListenerGetClusterParams(**arguments)
         data = fetch_courtlistener_get_cluster(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CourtListener cluster: {e}")
         raise
@@ -294,7 +294,7 @@ async def handle_courtlistener_list_judges(
     try:
         params = CourtListenerListJudgesParams(**(arguments or {}))
         data = fetch_courtlistener_list_judges(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing CourtListener judges: {e}")
         raise
@@ -338,7 +338,7 @@ async def handle_courtlistener_get_judge(
             raise ValueError("person_id is required")
         params = CourtListenerGetJudgeParams(**arguments)
         data = fetch_courtlistener_get_judge(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching CourtListener judge: {e}")
         raise
@@ -391,7 +391,7 @@ async def handle_courtlistener_list_dockets(
     try:
         params = CourtListenerListDocketsParams(**(arguments or {}))
         data = fetch_courtlistener_list_dockets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing CourtListener dockets: {e}")
         raise

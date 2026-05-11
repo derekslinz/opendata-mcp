@@ -28,7 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ async def handle_fedreg_search_documents(
     try:
         params = FedRegSearchDocumentsParams(**(arguments or {}))
         data = fetch_fedreg_search_documents(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Federal Register documents: {e}")
         raise
@@ -131,7 +131,7 @@ async def handle_fedreg_get_document(
             raise ValueError("document_number is required")
         params = FedRegGetDocumentParams(**arguments)
         data = fetch_fedreg_get_document(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Federal Register document: {e}")
         raise
@@ -169,7 +169,7 @@ async def handle_fedreg_list_agencies(
     try:
         params = FedRegListAgenciesParams(**(arguments or {}))
         data = fetch_fedreg_list_agencies(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing Federal Register agencies: {e}")
         raise
@@ -214,7 +214,7 @@ async def handle_fedreg_get_agency(
             raise ValueError("slug is required")
         params = FedRegGetAgencyParams(**arguments)
         data = fetch_fedreg_get_agency(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Federal Register agency: {e}")
         raise
@@ -264,7 +264,7 @@ async def handle_fedreg_public_inspection(
     try:
         params = FedRegPublicInspectionParams(**(arguments or {}))
         data = fetch_fedreg_public_inspection(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Public Inspection documents: {e}")
         raise
@@ -323,7 +323,7 @@ async def handle_fedreg_list_executive_orders(
     try:
         params = FedRegListExecutiveOrdersParams(**(arguments or {}))
         data = fetch_fedreg_list_executive_orders(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing Executive Orders: {e}")
         raise
@@ -375,7 +375,7 @@ async def handle_fedreg_suggested_searches(
     try:
         params = FedRegSuggestedSearchesParams(**(arguments or {}))
         data = fetch_fedreg_suggested_searches(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching suggested searches: {e}")
         raise

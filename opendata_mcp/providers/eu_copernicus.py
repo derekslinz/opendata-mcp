@@ -21,6 +21,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import MAX_RESPONSE_CHARS, serialize_for_llm
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ async def handle_list_collections(
         params = ListCollectionsParams(**(arguments or {}))
         collections = list_copernicus_collections(params)
         text = str([c.model_dump() for c in collections])
-        return [types.TextContent(type="text", text=text[:10000])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error listing Copernicus collections: {e}")
         raise
@@ -197,7 +199,7 @@ async def handle_get_product_metadata(
     try:
         params = ProductMetadataParams(**(arguments or {}))
         data = fetch_product_metadata(params)
-        return [types.TextContent(type="text", text=str(data)[:15000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Copernicus product metadata: {e}")
         raise

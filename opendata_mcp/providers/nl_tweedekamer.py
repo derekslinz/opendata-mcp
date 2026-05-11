@@ -20,6 +20,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import serialize_for_llm
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -144,7 +146,7 @@ async def handle_tk_query(
 
         params = TkQueryEntityParams(**arguments)
         result = query_tk_entity(params)
-        return [types.TextContent(type="text", text=str(result)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(result))]
     except Exception as e:
         log.error(
             f"Error querying TK entity {arguments.get('entity') if arguments else ''}: {e}"

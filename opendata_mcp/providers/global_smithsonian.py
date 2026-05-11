@@ -33,7 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ async def handle_smithsonian_search(
             raise ValueError("q is required")
         params = SmithsonianSearchParams(**arguments)
         data = fetch_smithsonian_search(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Smithsonian: {e}")
         raise
@@ -151,7 +151,7 @@ async def handle_smithsonian_get_content(
             raise ValueError("id is required")
         params = SmithsonianGetContentParams(**arguments)
         data = fetch_smithsonian_get_content(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Smithsonian content: {e}")
         raise
@@ -206,7 +206,7 @@ async def handle_smithsonian_list_terms(
             raise ValueError("category is required")
         params = SmithsonianListTermsParams(**arguments)
         data = fetch_smithsonian_list_terms(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing Smithsonian terms: {e}")
         raise
@@ -263,7 +263,7 @@ async def handle_smithsonian_search_category(
             raise ValueError("category and q are required")
         params = SmithsonianSearchCategoryParams(**arguments)
         data = fetch_smithsonian_search_category(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Smithsonian category: {e}")
         raise
@@ -302,7 +302,7 @@ async def handle_smithsonian_stats(
     try:
         params = SmithsonianStatsParams(**(arguments or {}))
         data = fetch_smithsonian_stats(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Smithsonian stats: {e}")
         raise

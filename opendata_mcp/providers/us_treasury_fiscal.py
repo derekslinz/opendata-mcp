@@ -40,7 +40,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ async def handle_treasury_get_debt_to_penny(
     try:
         params = TreasuryDebtToPennyParams(**(arguments or {}))
         data = fetch_treasury_debt_to_penny(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Treasury debt-to-penny: {e}")
         raise
@@ -192,7 +192,7 @@ async def handle_treasury_get_avg_interest_rates(
     try:
         params = TreasuryAvgInterestRatesParams(**(arguments or {}))
         data = fetch_treasury_avg_interest_rates(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Treasury avg-interest-rates: {e}")
         raise
@@ -243,7 +243,7 @@ async def handle_treasury_get_dts_operating_cash(
     try:
         params = TreasuryDtsOperatingCashParams(**(arguments or {}))
         data = fetch_treasury_dts_operating_cash(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Treasury DTS operating cash balance: {e}")
         raise
@@ -294,7 +294,7 @@ async def handle_treasury_get_dts_public_debt(
     try:
         params = TreasuryDtsPublicDebtParams(**(arguments or {}))
         data = fetch_treasury_dts_public_debt(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Treasury DTS public-debt transactions: {e}")
         raise
@@ -343,7 +343,7 @@ async def handle_treasury_get_exchange_rates(
     try:
         params = TreasuryExchangeRatesParams(**(arguments or {}))
         data = fetch_treasury_exchange_rates(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Treasury exchange rates: {e}")
         raise
@@ -382,7 +382,7 @@ async def handle_treasury_list_endpoints(
     try:
         params = TreasuryListEndpointsParams(**(arguments or {}))
         data = fetch_treasury_list_endpoints(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing Treasury Fiscal Data endpoints: {e}")
         raise
@@ -453,7 +453,7 @@ async def handle_treasury_search_records(
             raise ValueError("endpoint is required")
         params = TreasurySearchRecordsParams(**arguments)
         data = fetch_treasury_search_records(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Treasury Fiscal Data: {e}")
         raise

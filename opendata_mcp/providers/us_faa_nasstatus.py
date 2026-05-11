@@ -39,14 +39,13 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, MAX_RESPONSE_CHARS
 
 # Initialize logging
 log = logging.getLogger(__name__)
 
 # Constants
 BASE_URL = "https://nasstatus.faa.gov/api"
-MAX_TEXT_LEN = 20000
 XML_HEADERS = {"Accept": "application/xml"}
 
 # Registration Variables
@@ -81,7 +80,7 @@ async def handle_faa_airport_status(
     try:
         params = FAAAirportStatusParams(**(arguments or {}))
         text = fetch_faa_airport_status(params)
-        return [types.TextContent(type="text", text=text[:MAX_TEXT_LEN])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error fetching FAA airport status: {e}")
         raise
@@ -131,7 +130,7 @@ async def handle_faa_ground_stops(
     try:
         params = FAAGroundStopsParams(**(arguments or {}))
         text = fetch_faa_ground_stops(params)
-        return [types.TextContent(type="text", text=text[:MAX_TEXT_LEN])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error fetching FAA ground stops: {e}")
         raise
@@ -176,7 +175,7 @@ async def handle_faa_departure_delays(
     try:
         params = FAADepartureDelaysParams(**(arguments or {}))
         text = fetch_faa_departure_delays(params)
-        return [types.TextContent(type="text", text=text[:MAX_TEXT_LEN])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error fetching FAA departure delays: {e}")
         raise
@@ -221,7 +220,7 @@ async def handle_faa_arrival_delays(
     try:
         params = FAAArrivalDelaysParams(**(arguments or {}))
         text = fetch_faa_arrival_delays(params)
-        return [types.TextContent(type="text", text=text[:MAX_TEXT_LEN])]
+        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
     except Exception as e:
         log.error(f"Error fetching FAA arrival delays: {e}")
         raise

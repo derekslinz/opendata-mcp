@@ -29,7 +29,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ async def handle_census_geocode_oneline(
             raise ValueError("address is required")
         params = CensusGeocodeOnelineParams(**arguments)
         data = fetch_census_geocode_oneline(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error geocoding one-line address via Census: {e}")
         raise
@@ -146,7 +146,7 @@ async def handle_census_geocode_address(
             raise ValueError("street is required")
         params = CensusGeocodeAddressParams(**arguments)
         data = fetch_census_geocode_address(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error geocoding structured address via Census: {e}")
         raise
@@ -204,7 +204,7 @@ async def handle_census_geocode_coordinates(
             raise ValueError("x and y are required")
         params = CensusGeocodeCoordinatesParams(**arguments)
         data = fetch_census_geocode_coordinates(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error reverse-geocoding coordinates via Census: {e}")
         raise
@@ -261,7 +261,7 @@ async def handle_census_geocode_oneline_geographies(
             raise ValueError("address is required")
         params = CensusGeocodeOnelineGeoParams(**arguments)
         data = fetch_census_geocode_oneline_geographies(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error geocoding one-line address with geographies via Census: {e}")
         raise
@@ -329,7 +329,7 @@ async def handle_census_geocode_address_geographies(
             raise ValueError("street is required")
         params = CensusGeocodeAddressGeoParams(**arguments)
         data = fetch_census_geocode_address_geographies(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(
             f"Error geocoding structured address with geographies via Census: {e}"
@@ -371,7 +371,7 @@ async def handle_census_benchmarks(
     try:
         params = CensusBenchmarksParams(**(arguments or {}))
         data = fetch_census_benchmarks(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing Census benchmarks: {e}")
         raise
@@ -420,7 +420,7 @@ async def handle_census_vintages(
             raise ValueError("benchmark is required")
         params = CensusVintagesParams(**arguments)
         data = fetch_census_vintages(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing Census vintages: {e}")
         raise

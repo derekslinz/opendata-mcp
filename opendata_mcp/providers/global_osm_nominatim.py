@@ -32,7 +32,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ async def handle_search(
             raise ValueError("q is required")
         params = NominatimSearchParams(**arguments)
         data = fetch_search(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error in Nominatim search: {e}")
         raise
@@ -137,7 +137,7 @@ async def handle_reverse(
             raise ValueError("lat and lon are required")
         params = NominatimReverseParams(**arguments)
         data = fetch_reverse(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error in Nominatim reverse: {e}")
         raise
@@ -190,7 +190,7 @@ async def handle_lookup(
             raise ValueError("osm_ids is required")
         params = NominatimLookupParams(**arguments)
         data = fetch_lookup(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error in Nominatim lookup: {e}")
         raise
@@ -252,7 +252,7 @@ async def handle_search_structured(
     try:
         params = NominatimSearchStructuredParams(**(arguments or {}))
         data = fetch_search_structured(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error in Nominatim structured search: {e}")
         raise
@@ -299,7 +299,7 @@ async def handle_status(
     try:
         params = NominatimStatusParams(**(arguments or {}))
         data = fetch_status(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Nominatim status: {e}")
         raise

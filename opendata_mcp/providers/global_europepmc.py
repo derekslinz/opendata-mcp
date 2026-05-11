@@ -29,7 +29,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ async def handle_europepmc_search(
             raise ValueError("query is required")
         params = EuropePmcSearchParams(**arguments)
         data = fetch_europepmc_search(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching Europe PMC: {e}")
         raise
@@ -145,7 +145,7 @@ async def handle_europepmc_get_article(
             raise ValueError("source and id are required")
         params = EuropePmcGetArticleParams(**arguments)
         data = fetch_europepmc_get_article(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Europe PMC article: {e}")
         raise
@@ -195,7 +195,7 @@ async def handle_europepmc_references(
             raise ValueError("source and id are required")
         params = EuropePmcReferencesParams(**arguments)
         data = fetch_europepmc_references(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Europe PMC references: {e}")
         raise
@@ -245,7 +245,7 @@ async def handle_europepmc_citations(
             raise ValueError("source and id are required")
         params = EuropePmcCitationsParams(**arguments)
         data = fetch_europepmc_citations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Europe PMC citations: {e}")
         raise
@@ -293,7 +293,7 @@ async def handle_europepmc_fulltext_xml(
             raise ValueError("source and id are required")
         params = EuropePmcFullTextXmlParams(**arguments)
         data = fetch_europepmc_fulltext_xml(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Europe PMC full text XML: {e}")
         raise
@@ -348,7 +348,7 @@ async def handle_europepmc_supplementaryfiles(
             raise ValueError("source and id are required")
         params = EuropePmcSupplementaryFilesParams(**arguments)
         data = fetch_europepmc_supplementaryfiles(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Europe PMC supplementary files: {e}")
         raise

@@ -30,7 +30,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ async def handle_list_parameters(
     try:
         params = OpenAQListParametersParams(**(arguments or {}))
         data = fetch_list_parameters(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenAQ parameters: {e}")
         raise
@@ -147,7 +147,7 @@ async def handle_list_locations(
     try:
         params = OpenAQListLocationsParams(**(arguments or {}))
         data = fetch_list_locations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenAQ locations: {e}")
         raise
@@ -192,7 +192,7 @@ async def handle_get_location(
             raise ValueError("locations_id is required")
         params = OpenAQGetLocationParams(**arguments)
         data = fetch_get_location(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenAQ location: {e}")
         raise
@@ -237,7 +237,7 @@ async def handle_get_latest(
             raise ValueError("locations_id is required")
         params = OpenAQGetLatestParams(**arguments)
         data = fetch_get_latest(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenAQ latest measurements: {e}")
         raise
@@ -282,7 +282,7 @@ async def handle_list_countries(
     try:
         params = OpenAQListCountriesParams(**(arguments or {}))
         data = fetch_list_countries(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenAQ countries: {e}")
         raise
@@ -327,7 +327,7 @@ async def handle_list_sensors(
             raise ValueError("locations_id is required")
         params = OpenAQListSensorsParams(**arguments)
         data = fetch_list_sensors(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching OpenAQ sensors: {e}")
         raise

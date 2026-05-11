@@ -33,7 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ async def handle_drug_events(
     try:
         params = OpenFDADrugEventsParams(**(arguments or {}))
         data = fetch_drug_events(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching openFDA drug events: {e}")
         raise
@@ -134,7 +134,7 @@ async def handle_drug_labels(
     try:
         params = OpenFDADrugLabelsParams(**(arguments or {}))
         data = fetch_drug_labels(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching openFDA drug labels: {e}")
         raise
@@ -178,7 +178,7 @@ async def handle_drug_enforcement(
     try:
         params = OpenFDADrugEnforcementParams(**(arguments or {}))
         data = fetch_drug_enforcement(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching openFDA drug enforcement: {e}")
         raise
@@ -222,7 +222,7 @@ async def handle_device_events(
     try:
         params = OpenFDADeviceEventsParams(**(arguments or {}))
         data = fetch_device_events(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching openFDA device events: {e}")
         raise
@@ -266,7 +266,7 @@ async def handle_device_recalls(
     try:
         params = OpenFDADeviceRecallsParams(**(arguments or {}))
         data = fetch_device_recalls(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching openFDA device recalls: {e}")
         raise
@@ -310,7 +310,7 @@ async def handle_device_510k(
     try:
         params = OpenFDADevice510kParams(**(arguments or {}))
         data = fetch_device_510k(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching openFDA device 510k: {e}")
         raise
@@ -354,7 +354,7 @@ async def handle_food_enforcement(
     try:
         params = OpenFDAFoodEnforcementParams(**(arguments or {}))
         data = fetch_food_enforcement(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching openFDA food enforcement: {e}")
         raise
@@ -403,7 +403,7 @@ async def handle_animal_veterinary_events(
     try:
         params = OpenFDAAnimalVeterinaryEventsParams(**(arguments or {}))
         data = fetch_animal_veterinary_events(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching openFDA animal & veterinary events: {e}")
         raise

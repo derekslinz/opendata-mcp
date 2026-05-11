@@ -32,7 +32,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ async def handle_edgar_get_company_submissions(
             raise ValueError("cik is required")
         params = EdgarCompanySubmissionsParams(**arguments)
         data = fetch_edgar_company_submissions(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching EDGAR company submissions: {e}")
         raise
@@ -134,7 +134,7 @@ async def handle_edgar_get_company_concept(
             raise ValueError("cik and concept are required")
         params = EdgarCompanyConceptParams(**arguments)
         data = fetch_edgar_company_concept(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching EDGAR company concept: {e}")
         raise
@@ -177,7 +177,7 @@ async def handle_edgar_get_company_facts(
             raise ValueError("cik is required")
         params = EdgarCompanyFactsParams(**arguments)
         data = fetch_edgar_company_facts(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching EDGAR company facts: {e}")
         raise
@@ -231,7 +231,7 @@ async def handle_edgar_get_frames(
             raise ValueError("concept, year, and quarter are required")
         params = EdgarFramesParams(**arguments)
         data = fetch_edgar_frames(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching EDGAR XBRL frame: {e}")
         raise
@@ -269,7 +269,7 @@ async def handle_edgar_list_tickers(
     try:
         params = EdgarListTickersParams(**(arguments or {}))
         data = fetch_edgar_list_tickers(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching EDGAR ticker list: {e}")
         raise

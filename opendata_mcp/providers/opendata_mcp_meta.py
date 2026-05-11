@@ -27,6 +27,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import serialize_for_llm
+
 from opendata_mcp.registry import (
     REGISTRY,
     find_providers,
@@ -88,7 +90,7 @@ async def handle_find_providers(
             "count": len(matches),
             "providers": [entry.to_dict() for entry in matches],
         }
-        return [types.TextContent(type="text", text=str(payload)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error in opendata-find-providers: {e}")
         raise
@@ -120,7 +122,8 @@ async def handle_list_domains(
     try:
         return [
             types.TextContent(
-                type="text", text=str({"domains": list_domains()})[:20000]
+                type="text",
+                text=serialize_for_llm({"domains": list_domains()}),
             )
         ]
     except Exception as e:
@@ -154,7 +157,8 @@ async def handle_list_regions(
     try:
         return [
             types.TextContent(
-                type="text", text=str({"regions": list_regions()})[:20000]
+                type="text",
+                text=serialize_for_llm({"regions": list_regions()}),
             )
         ]
     except Exception as e:
@@ -199,7 +203,7 @@ async def handle_describe_provider(
             payload = {"error": f"Provider '{params.provider_id}' not found"}
         else:
             payload = entry.to_dict()
-        return [types.TextContent(type="text", text=str(payload)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error in opendata-describe-provider: {e}")
         raise
@@ -258,7 +262,7 @@ async def handle_list_providers(
                 for entry in slice_
             ],
         }
-        return [types.TextContent(type="text", text=str(payload)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error in opendata-list-providers: {e}")
         raise

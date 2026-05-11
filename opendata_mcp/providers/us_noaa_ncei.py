@@ -30,7 +30,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ async def handle_ncei_get_daily_summaries(
             raise ValueError("stations is required")
         params = NCEIDailySummariesParams(**arguments)
         data = fetch_ncei_daily_summaries(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NCEI daily summaries: {e}")
         raise
@@ -141,7 +141,7 @@ async def handle_ncei_get_global_summary(
             raise ValueError("stations is required")
         params = NCEIGlobalSummaryParams(**arguments)
         data = fetch_ncei_global_summary(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NCEI global summary: {e}")
         raise
@@ -203,7 +203,7 @@ async def handle_ncei_search_stations(
     try:
         params = NCEISearchStationsParams(**(arguments or {}))
         data = fetch_ncei_search_stations(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error searching NCEI stations: {e}")
         raise
@@ -245,7 +245,7 @@ async def handle_ncei_list_datasets(
     try:
         params = NCEIListDatasetsParams(**(arguments or {}))
         data = fetch_ncei_list_datasets(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error listing NCEI datasets: {e}")
         raise
@@ -293,7 +293,7 @@ async def handle_ncei_get_station_meta(
             raise ValueError("stations is required")
         params = NCEIStationMetaParams(**arguments)
         data = fetch_ncei_station_meta(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NCEI station metadata: {e}")
         raise
@@ -345,7 +345,7 @@ async def handle_ncei_get_precipitation(
             raise ValueError("stations is required")
         params = NCEIPrecipitationParams(**arguments)
         data = fetch_ncei_precipitation(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NCEI precipitation: {e}")
         raise
@@ -397,7 +397,7 @@ async def handle_ncei_get_temperature(
             raise ValueError("stations is required")
         params = NCEITemperatureParams(**arguments)
         data = fetch_ncei_temperature(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching NCEI temperature: {e}")
         raise

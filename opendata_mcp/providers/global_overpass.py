@@ -36,7 +36,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from opendata_mcp.utils import http_get
+from opendata_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ async def handle_query(
             raise ValueError("query is required")
         params = OverpassQueryParams(**arguments)
         data = fetch_query(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error running Overpass query: {e}")
         raise
@@ -151,7 +151,7 @@ async def handle_status(
     try:
         params = OverpassStatusParams(**(arguments or {}))
         data = fetch_status(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error fetching Overpass status: {e}")
         raise
@@ -206,7 +206,7 @@ async def handle_around_amenity(
             raise ValueError("amenity, lat, and lon are required")
         params = OverpassAroundAmenityParams(**arguments)
         data = fetch_around_amenity(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error running Overpass around-amenity query: {e}")
         raise
@@ -272,7 +272,7 @@ async def handle_bbox_feature(
             raise ValueError("key, value, s, w, n, and e are required")
         params = OverpassBboxFeatureParams(**arguments)
         data = fetch_bbox_feature(params)
-        return [types.TextContent(type="text", text=str(data)[:20000])]
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
     except Exception as e:
         log.error(f"Error running Overpass bbox-feature query: {e}")
         raise

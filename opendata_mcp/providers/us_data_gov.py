@@ -20,6 +20,8 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from opendata_mcp.utils import serialize_for_llm
+
 # Initialize logging
 log = logging.getLogger(__name__)
 
@@ -174,7 +176,7 @@ async def handle_datagov_get_dataset(
 
         params = DataGovGetDatasetParams(**arguments)
         result = fetch_datagov_dataset(params)
-        return [types.TextContent(type="text", text=str(result))]
+        return [types.TextContent(type="text", text=serialize_for_llm(result))]
     except Exception as e:
         log.error(f"Error fetching Data.gov dataset: {e}")
         raise
