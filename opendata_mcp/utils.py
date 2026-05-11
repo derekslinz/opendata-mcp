@@ -200,3 +200,43 @@ def create_mcp_server(
             raise
 
     return server
+
+
+async def run_server(server: Server, transport: str = "stdio", port: int = 8000):
+    """
+    Run the MCP server with the specified transport.
+    """
+    if transport == "stdio":
+        from mcp.server.stdio import stdio_server
+
+        async with stdio_server() as streams:
+            await server.run(
+                streams[0], streams[1], server.create_initialization_options()
+            )
+    elif transport == "sse":
+        from mcp.server.sse import SseServerTransport
+        from starlette.applications import Starlette
+        from starlette.routing import Mount
+        import uvicorn
+
+        sse = SseServerTransport("/messages")
+
+        async def handle_sse(scope, receive, send):
+            async with sse.connect_sse(scope, receive, send) as streams:
+                await server.run(
+                    streams[0], streams[1], server.create_initialization_options()
+                )
+
+        app = Starlette(
+            debug=False,
+            routes=[
+                Mount("/sse", app=handle_sse),
+                Mount("/messages", app=sse.handle_post_message),
+            ],
+        )
+
+        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
+        uvicorn_server = uvicorn.Server(config)
+        await uvicorn_server.serve()
+    else:
+        raise ValueError(f"Unknown transport: {transport}")

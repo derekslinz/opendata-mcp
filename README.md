@@ -4,7 +4,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 
 ## Available Providers
 
-55 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
+54 data providers + 1 meta-aggregator. With this many providers an LLM can't memorize them all — use the **meta provider** to discover the right one for any question.
 
 ### Meta / Discovery
 
@@ -63,7 +63,6 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 | `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
 | `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
 | `global_openaq` | OpenAQ | Global air quality measurements — **requires `OPENAQ_API_KEY`** |
-| `us_doe_arm` | DOE ARM | US DoE Atmospheric Radiation Measurement |
 | `us_noaa_ncei` | NOAA NCEI | Climate data access services (key-less) |
 | `us_noaa_tides` | NOAA Tides & Currents | Water levels, tides, currents |
 | `us_usgs_earthquake` | USGS Earthquakes | Real-time and historical seismic events |
@@ -201,6 +200,15 @@ uv run opendata-mcp setup ch_sbb
 ```
 
 Restart Claude and you should see a new hammer icon at the bottom right of the chat.
+
+#### Alternative Transports (SSE)
+
+By default, providers run using the `stdio` transport. You can also run providers as an HTTP Server-Sent Events (SSE) server. This is useful for remote setups or web clients.
+
+```bash
+# start the server using SSE transport on port 8000
+uv run opendata-mcp run ch_sbb --transport sse --port 8000
+```
 
 You can now ask questions to Claude about SBB train network disruption and it will answer based on data collected on `data.sbb.ch`.
 
