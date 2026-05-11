@@ -202,8 +202,8 @@ With over 55 providers available, loading all of them into your LLM at once woul
    ```bash
    uv run opendata-mcp setup opendata_mcp_meta
    ```
-2. **Restart Client**: Restart your Claude Desktop app so it can access the meta tools (`find-providers`, `describe-provider`, etc.).
-3. **Run Everything**: Ask Claude your data question! If Claude needs another provider, it will use the meta tools to discover it, and then instruct you to run `uv run opendata-mcp setup <provider_name>` to install the specific dataset you need. 
+2. **Restart Client**: Restart your Claude Desktop app so it can access the meta tools shown in the client (`opendata-find-providers`, `opendata-describe-provider`, etc.).
+3. **Run Everything**: Ask Claude your data question! If Claude needs another provider, it will use those meta tools to discover it, and then instruct you to run `uv run opendata-mcp setup <provider_name>` to install the specific dataset you need. 
 
 *(For developers: Check out `system_prompt.md` for a prompt you can give to your agent to enforce this pattern.)*
 
