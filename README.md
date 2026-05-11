@@ -224,6 +224,15 @@ uv run opendata-mcp setup ch_sbb
 
 Restart Claude and you should see a new hammer icon at the bottom right of the chat.
 
+#### Alternative Transports (SSE)
+
+By default, providers run using the `stdio` transport. You can also run providers as an HTTP Server-Sent Events (SSE) server. This is useful for remote setups or web clients.
+
+```bash
+# start the server using SSE transport on port 8000
+uv run opendata-mcp run ch_sbb --transport sse --port 8000
+```
+
 You can now ask questions to Claude about SBB train network disruption and it will answer based on data collected on `data.sbb.ch`.
 
 ### `<u>`Publish`</u>`: Contribute by building and publishing public datasets

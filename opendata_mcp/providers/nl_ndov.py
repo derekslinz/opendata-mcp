@@ -118,19 +118,14 @@ TOOLS.append(
 TOOLS_HANDLERS["ndov-list-path"] = handle_ndov_list_path
 
 
-async def main():
-    from mcp.server.stdio import stdio_server
+async def main(transport: str = "stdio", port: int = 8000):
+    from opendata_mcp.utils import create_mcp_server, run_server
 
-    from opendata_mcp.utils import create_mcp_server
-
-    # create the server
     server = create_mcp_server(
         "nl-ndov", RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS
     )
 
-    # run the server
-    async with stdio_server() as streams:
-        await server.run(streams[0], streams[1], server.create_initialization_options())
+    await run_server(server, transport, port)
 
 
 # Server initialization
