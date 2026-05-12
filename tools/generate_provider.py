@@ -239,9 +239,28 @@ def _render_fetch_fn(tool: dict[str, Any], requires_env: list[str]) -> str:
 
     # Env-var injection (e.g. an api_key query parameter).
     env_lines: list[str] = []
-    for env_var in requires_env:
-        # Convention: env var NAME_API_KEY -> api_key query param.
-        env_lines.append(f'    query["api_key"] = _require_key({_py_literal(env_var)})')
+    env_requirements: list[tuple[str, str]]
+    if isinstance(requires_env, dict):
+        env_requirements = list(requires_env.items())
+    else:
+        legacy_env_vars = list(requires_env)
+        if len(legacy_env_vars) > 1:
+            raise ValueError(
+                "requires_env with multiple entries must be a mapping of "
+                "env var name to query parameter name"
+            )
+        env_requirements = [(env_var, "api_key") for env_var in legacy_env_vars]
+
+    seen_env_query_params: set[str] = set()
+    for env_var, query_param in env_requirements:
+        if query_param in seen_env_query_params:
+            raise ValueError(
+                f"Duplicate env-backed query parameter generated: {query_param!r}"
+            )
+        seen_env_query_params.add(query_param)
+        env_lines.append(
+            f'    query["{query_param}"] = _require_key({_py_literal(env_var)})'
+        )
 
     body_parts = [url_line, "    query: dict = {}"]
     body_parts.extend(env_lines)

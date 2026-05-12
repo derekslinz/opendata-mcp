@@ -1,0 +1,29 @@
+id: us_cary
+server_name: us-cary
+base_url: https://data.townofcary.org
+homepage: https://data.townofcary.org
+description: Town of Cary Socrata-backed open data provider.
+tools:
+  - name: us-cary-search-catalog
+    description: Search Cary open data catalog metadata.
+    endpoint: /api/views
+    response_format: json
+    params:
+      - name: q
+        type: string
+        required: false
+        description: Free-text catalog query.
+      - name: limit
+        type: int
+        required: false
+        default: 20
+        description: Maximum catalog results.
+  - name: us-cary-get-metadata
+    description: Fetch Cary dataset metadata by Socrata dataset id.
+    endpoint: /api/views/{dataset_id}
+    response_format: json
+    params:
+      - name: dataset_id
+        type: string
+        required: true
+        description: Socrata dataset id.
