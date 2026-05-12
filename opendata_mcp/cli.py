@@ -28,19 +28,60 @@ def _import_provider_module(provider: str):
     return importlib.import_module(f"opendata_mcp.providers.{provider}")
 
 
+def _server_key(provider: str) -> str:
+    """Return the Claude Desktop config key for *provider*.
+
+    Avoids the double-prefix bug: provider names that already begin with
+    ``opendata-mcp`` (e.g. ``opendata_mcp_meta`` → ``opendata-mcp-meta``)
+    are used as-is; all other providers get SERVER_PREFIX prepended.
+    """
+    kebab = provider.replace("_", "-")
+    prefix_stem = SERVER_PREFIX.rstrip("-")  # "opendata-mcp"
+    if kebab.startswith(prefix_stem):
+        return kebab  # e.g. "opendata-mcp-meta", "opendata-mcp-all"
+    return f"{SERVER_PREFIX}{kebab}"  # e.g. "opendata-mcp-ch-sbb"
+
+
+# Canonical config keys for the meta and aggregator servers.
+_META_KEY = _server_key("opendata_mcp_meta")  # "opendata-mcp-meta"
+_ALL_KEY = _server_key("opendata_mcp_all")  # "opendata-mcp-all"
+
+# Legacy double-prefixed keys produced by earlier buggy versions.
+_LEGACY_META_KEY = f"{SERVER_PREFIX}{_META_KEY}"  # "opendata-mcp-opendata-mcp-meta"
+_LEGACY_ALL_KEY = f"{SERVER_PREFIX}{_ALL_KEY}"  # "opendata-mcp-opendata-mcp-all"
+
+
 def _migrate_legacy_providers(config: dict) -> int:
     """Remove individual provider entries from *config* in place.
 
-    Any ``opendata-mcp-*`` key that is not the meta or aggregator server is
-    treated as a legacy entry and silently removed. Returns the number of
-    entries removed so callers can print a notice if non-zero.
+    - Renames double-prefixed meta/all keys (from the earlier bug) to the
+      canonical single-prefixed form.
+    - Removes any remaining ``opendata-mcp-*`` entry that is not the meta
+      or aggregator server.
+
+    Returns the total number of entries removed or renamed.
     """
-    keep = {f"{SERVER_PREFIX}meta", f"{SERVER_PREFIX}all"}
     servers = config.get("mcpServers", {})
+    changed = 0
+
+    # Fix double-prefixed meta/all keys created by the earlier bug.
+    for legacy_key, canonical_key in (
+        (_LEGACY_META_KEY, _META_KEY),
+        (_LEGACY_ALL_KEY, _ALL_KEY),
+    ):
+        if legacy_key in servers and canonical_key not in servers:
+            servers[canonical_key] = servers.pop(legacy_key)
+            changed += 1
+        elif legacy_key in servers:
+            del servers[legacy_key]
+            changed += 1
+
+    keep = {_META_KEY, _ALL_KEY}
     legacy = [k for k in list(servers) if k.startswith(SERVER_PREFIX) and k not in keep]
     for key in legacy:
         del servers[key]
-    return len(legacy)
+
+    return changed + len(legacy)
 
 
 @cli.command()
@@ -243,7 +284,7 @@ def setup(provider: str, local: bool, force: bool):
             f"Migrated: removed {removed} legacy individual provider entry/entries."
         )
 
-    server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+    server_key = _server_key(provider)
     if server_key in config["mcpServers"] and not force:
         click.confirm(
             f"Server '{server_key}' is already configured. Overwrite?", abort=True
@@ -268,7 +309,7 @@ def setup(provider: str, local: bool, force: bool):
     companion_key = None
     if provider == "opendata_mcp_meta":
         companion = "opendata_mcp_all"
-        companion_key = f"{SERVER_PREFIX}{companion.replace('_', '-')}"
+        companion_key = _server_key(companion)
         if companion_key not in config["mcpServers"] or force:
             config["mcpServers"][companion_key] = _build_server_entry(
                 companion, use_local, repo_root
@@ -326,7 +367,7 @@ def remove(provider: str):
             config = json.load(f)
 
         # Normalize key to match setup() format
-        server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+        server_key = _server_key(provider)
 
         # Check if mcpServers exists and provider is configured
         if "mcpServers" not in config or server_key not in config["mcpServers"]:
@@ -429,7 +470,7 @@ def setup_all(local: bool, force: bool, individual_providers: bool):
 
         # Always register the meta + aggregator pair.
         for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
-            key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+            key = _server_key(provider)
             if key in config["mcpServers"] and not force:
                 click.echo(
                     f"Skipping '{key}' (already exists). Use --force to overwrite."
@@ -453,7 +494,7 @@ def setup_all(local: bool, force: bool, individual_providers: bool):
                 if name not in skip
             ]
             for provider in sorted(all_providers):
-                key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+                key = _server_key(provider)
                 if key in config["mcpServers"] and not force:
                     click.echo(
                         f"Skipping '{key}' (already exists). Use --force to overwrite."
@@ -545,8 +586,8 @@ def cleanup(apply: bool, local: bool):
 
     if not apply:
         click.echo(
-            f"\nDry run — no changes made. Re-run with --apply to remove these "
-            f"and install opendata-mcp-meta + opendata-mcp-all."
+            "\nDry run — no changes made. Re-run with --apply to remove these "
+            "and install opendata-mcp-meta + opendata-mcp-all."
         )
         return
 
@@ -561,7 +602,7 @@ def cleanup(apply: bool, local: bool):
 
     installed = []
     for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
-        key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+        key = _server_key(provider)
         if key not in servers:
             servers[key] = _build_server_entry(provider, use_local, repo_root)
             click.echo(f"Installed {key} ({mode_label})")
