@@ -206,6 +206,26 @@ uv run opendata-mcp setup $PROVIDER_NAME
 uv run opendata-mcp remove $PROVIDER_NAME
 ```
 
+> [!WARNING]
+> **Individual provider setup is deprecated.**
+> Setting up 55+ providers one by one (`setup ch_sbb`, `setup us_nasa`, …) is no longer
+> recommended. Use the two-command setup below instead — it gives Claude both discovery and
+> data access through a single pair of servers. Any existing individual provider entries are
+> automatically removed the next time you run `setup`, `setup-all`, or `cleanup`.
+>
+> **Recommended setup (new):**
+> ```bash
+> uv run opendata-mcp setup-all       # installs meta + aggregator, removes legacy entries
+> # — or equivalently —
+> uv run opendata-mcp setup opendata_mcp_meta
+> ```
+>
+> **Migrate existing config:**
+> ```bash
+> uv run opendata-mcp cleanup          # preview what will be removed
+> uv run opendata-mcp cleanup --apply  # remove legacy entries and install meta + aggregator
+> ```
+
 Quickstart for the Switzerland SBB (train company) provider:
 
 ```bash

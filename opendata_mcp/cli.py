@@ -28,6 +28,21 @@ def _import_provider_module(provider: str):
     return importlib.import_module(f"opendata_mcp.providers.{provider}")
 
 
+def _migrate_legacy_providers(config: dict) -> int:
+    """Remove individual provider entries from *config* in place.
+
+    Any ``opendata-mcp-*`` key that is not the meta or aggregator server is
+    treated as a legacy entry and silently removed. Returns the number of
+    entries removed so callers can print a notice if non-zero.
+    """
+    keep = {f"{SERVER_PREFIX}meta", f"{SERVER_PREFIX}all"}
+    servers = config.get("mcpServers", {})
+    legacy = [k for k in list(servers) if k.startswith(SERVER_PREFIX) and k not in keep]
+    for key in legacy:
+        del servers[key]
+    return len(legacy)
+
+
 @cli.command()
 @click.argument("provider")
 @click.option(
@@ -221,6 +236,13 @@ def setup(provider: str, local: bool, force: bool):
     if "mcpServers" not in config:
         config["mcpServers"] = {}
 
+    # Transparently remove any legacy individual-provider entries.
+    removed = _migrate_legacy_providers(config)
+    if removed:
+        click.echo(
+            f"Migrated: removed {removed} legacy individual provider entry/entries."
+        )
+
     server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
     if server_key in config["mcpServers"] and not force:
         click.confirm(
@@ -231,8 +253,14 @@ def setup(provider: str, local: bool, force: bool):
     is_local_repo = (repo_root / "pyproject.toml").exists()
     use_local = is_local_repo or local
 
-    config["mcpServers"][server_key] = _build_server_entry(provider, use_local, repo_root)
-    mode_label = f"LOCAL mode pointing to {repo_root}" if use_local else f"GLOBAL mode using 'uvx {LIB_NAME}'"
+    config["mcpServers"][server_key] = _build_server_entry(
+        provider, use_local, repo_root
+    )
+    mode_label = (
+        f"LOCAL mode pointing to {repo_root}"
+        if use_local
+        else f"GLOBAL mode using 'uvx {LIB_NAME}'"
+    )
     click.echo(f"Configuring in {mode_label}")
 
     # When setting up the meta provider, automatically register the aggregator
@@ -242,8 +270,12 @@ def setup(provider: str, local: bool, force: bool):
         companion = "opendata_mcp_all"
         companion_key = f"{SERVER_PREFIX}{companion.replace('_', '-')}"
         if companion_key not in config["mcpServers"] or force:
-            config["mcpServers"][companion_key] = _build_server_entry(companion, use_local, repo_root)
-            click.echo(f"  + also registering companion '{companion_key}' (aggregator, all 300+ tools)")
+            config["mcpServers"][companion_key] = _build_server_entry(
+                companion, use_local, repo_root
+            )
+            click.echo(
+                f"  + also registering companion '{companion_key}' (aggregator, all 300+ tools)"
+            )
         else:
             click.echo(f"  ✓ companion '{companion_key}' already configured — skipping")
 
@@ -329,22 +361,19 @@ def remove(provider: str):
 @click.option(
     "--individual-providers",
     is_flag=True,
-    help="Also register every individual provider server (not recommended — prefer the default meta + aggregator setup).",
+    help="[DEPRECATED] Register every individual provider as its own server. Use the default meta + aggregator setup instead.",
 )
 def setup_all(local: bool, force: bool, individual_providers: bool):
     """Setup Claude Desktop for full OpenData MCP access.
 
-    By default registers two servers that together give Claude everything:
+    Registers two servers that together give Claude everything it needs:
 
     \b
       opendata-mcp-meta   — 5 discovery tools (find-providers, describe-provider, …)
       opendata-mcp-all    — 300+ data tools aggregated from all providers
 
-    This is equivalent to: uv run opendata-mcp setup opendata_mcp_meta
-
-    Pass --individual-providers to also register every provider as its own
-    separate server (55+ entries).  Not recommended unless you need to
-    run providers on different ports or with different env vars.
+    Any legacy individual provider entries found in the config are automatically
+    removed and replaced with this recommended two-server setup.
     """
     try:
         system = platform.system()
@@ -378,6 +407,19 @@ def setup_all(local: bool, force: bool, individual_providers: bool):
         if "mcpServers" not in config:
             config["mcpServers"] = {}
 
+        # Transparently remove any legacy individual-provider entries.
+        removed = _migrate_legacy_providers(config)
+        if removed:
+            click.echo(
+                f"Migrated: removed {removed} legacy individual provider entry/entries."
+            )
+
+        if individual_providers:
+            click.echo(
+                "Warning: --individual-providers is deprecated. "
+                "The meta + aggregator setup replaces the need for individual servers."
+            )
+
         repo_root = Path(__file__).parent.parent.resolve()
         is_local_repo = (repo_root / "pyproject.toml").exists()
         use_local = is_local_repo or local
@@ -389,13 +431,17 @@ def setup_all(local: bool, force: bool, individual_providers: bool):
         for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
             key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
             if key in config["mcpServers"] and not force:
-                click.echo(f"Skipping '{key}' (already exists). Use --force to overwrite.")
+                click.echo(
+                    f"Skipping '{key}' (already exists). Use --force to overwrite."
+                )
             else:
-                config["mcpServers"][key] = _build_server_entry(provider, use_local, repo_root)
+                config["mcpServers"][key] = _build_server_entry(
+                    provider, use_local, repo_root
+                )
                 click.echo(f"Registered {key} ({mode_label})")
                 registered.append(key)
 
-        # Optionally register every individual provider too.
+        # Optionally register every individual provider too (deprecated).
         if individual_providers:
             import pkgutil
             import opendata_mcp.providers as providers_pkg
@@ -409,9 +455,13 @@ def setup_all(local: bool, force: bool, individual_providers: bool):
             for provider in sorted(all_providers):
                 key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
                 if key in config["mcpServers"] and not force:
-                    click.echo(f"Skipping '{key}' (already exists). Use --force to overwrite.")
+                    click.echo(
+                        f"Skipping '{key}' (already exists). Use --force to overwrite."
+                    )
                     continue
-                config["mcpServers"][key] = _build_server_entry(provider, use_local, repo_root)
+                config["mcpServers"][key] = _build_server_entry(
+                    provider, use_local, repo_root
+                )
                 click.echo(f"Registered {key} ({mode_label})")
                 registered.append(key)
 
@@ -470,29 +520,27 @@ def cleanup(apply: bool, local: bool):
         with open(config_path, "r") as f:
             config = json.load(f)
     except json.JSONDecodeError:
-        click.echo(f"Error: {config_path} contains invalid JSON. Please fix it manually.")
+        click.echo(
+            f"Error: {config_path} contains invalid JSON. Please fix it manually."
+        )
         sys.exit(1)
 
     servers = config.get("mcpServers", {})
     keep = {f"{SERVER_PREFIX}meta", f"{SERVER_PREFIX}all"}
-
-    legacy = [
-        key for key in servers
-        if key.startswith(SERVER_PREFIX) and key not in keep
-    ]
+    legacy = sorted(k for k in servers if k.startswith(SERVER_PREFIX) and k not in keep)
 
     if not legacy:
         click.echo("No legacy opendata-mcp provider entries found.")
-        has_meta = f"{SERVER_PREFIX}meta" in servers
-        has_all = f"{SERVER_PREFIX}all" in servers
-        if has_meta and has_all:
+        if f"{SERVER_PREFIX}meta" in servers and f"{SERVER_PREFIX}all" in servers:
             click.echo("✓ Already running the recommended meta + aggregator setup.")
         else:
-            click.echo("Tip: run `uv run opendata-mcp setup-all` to install the recommended setup.")
+            click.echo(
+                "Tip: run `uv run opendata-mcp setup-all` to install the recommended setup."
+            )
         return
 
     click.echo(f"Found {len(legacy)} legacy provider entry/entries:")
-    for key in sorted(legacy):
+    for key in legacy:
         click.echo(f"  - {key}")
 
     if not apply:
@@ -502,10 +550,8 @@ def cleanup(apply: bool, local: bool):
         )
         return
 
-    # Remove legacy entries.
-    for key in legacy:
-        del servers[key]
-    click.echo(f"\nRemoved {len(legacy)} legacy entry/entries.")
+    removed = _migrate_legacy_providers(config)
+    click.echo(f"\nRemoved {removed} legacy entry/entries.")
 
     # Install meta + aggregator if not already present.
     repo_root = Path(__file__).parent.parent.resolve()
