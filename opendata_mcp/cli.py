@@ -326,23 +326,27 @@ def remove(provider: str):
     "--local", is_flag=True, help="Force local development mode using absolute paths."
 )
 @click.option("--force", is_flag=True, help="Overwrite existing configurations.")
-def setup_all(local: bool, force: bool):
-    """Setup all MCP servers for use with Claude Desktop"""
+@click.option(
+    "--individual-providers",
+    is_flag=True,
+    help="Also register every individual provider server (not recommended — prefer the default meta + aggregator setup).",
+)
+def setup_all(local: bool, force: bool, individual_providers: bool):
+    """Setup Claude Desktop for full OpenData MCP access.
+
+    By default registers two servers that together give Claude everything:
+
+    \b
+      opendata-mcp-meta   — 5 discovery tools (find-providers, describe-provider, …)
+      opendata-mcp-all    — 300+ data tools aggregated from all providers
+
+    This is equivalent to: uv run opendata-mcp setup opendata_mcp_meta
+
+    Pass --individual-providers to also register every provider as its own
+    separate server (55+ entries).  Not recommended unless you need to
+    run providers on different ports or with different env vars.
+    """
     try:
-        import pkgutil
-        import opendata_mcp.providers as providers_pkg
-
-        providers = [
-            name
-            for finder, name, ispkg in pkgutil.iter_modules(providers_pkg.__path__)
-            if name not in ("__template__", "__init__", "utils")
-        ]
-
-        if not providers:
-            click.echo("No providers available to setup.")
-            return
-
-        # Check platform
         system = platform.system()
         if system == "Darwin":
             config_path = (
@@ -361,7 +365,6 @@ def setup_all(local: bool, force: bool):
             click.echo(f"Claude directory not found at {config_path.parent}")
             sys.exit(1)
 
-        # Load config
         if config_path.exists():
             try:
                 with open(config_path, "r") as f:
@@ -377,44 +380,46 @@ def setup_all(local: bool, force: bool):
 
         repo_root = Path(__file__).parent.parent.resolve()
         is_local_repo = (repo_root / "pyproject.toml").exists()
+        use_local = is_local_repo or local
+        mode_label = "LOCAL" if use_local else "GLOBAL"
 
-        for provider in sorted(providers):
-            server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
-            if server_key in config["mcpServers"] and not force:
-                click.echo(
-                    f"Skipping '{server_key}' (already exists). Use --force to overwrite."
-                )
-                continue
+        registered = []
 
-            if is_local_repo or local:
-                config["mcpServers"][server_key] = {
-                    "command": "uv",
-                    "args": [
-                        "--directory",
-                        str(repo_root),
-                        "run",
-                        "opendata-mcp",
-                        "run",
-                        provider,
-                    ],
-                }
-                click.echo(f"Registered {provider} (LOCAL)")
+        # Always register the meta + aggregator pair.
+        for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
+            key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+            if key in config["mcpServers"] and not force:
+                click.echo(f"Skipping '{key}' (already exists). Use --force to overwrite.")
             else:
-                config["mcpServers"][server_key] = {
-                    "command": "uvx",
-                    "args": [
-                        LIB_NAME,
-                        "run",
-                        provider,
-                    ],
-                }
-                click.echo(f"Registered {provider} (GLOBAL)")
+                config["mcpServers"][key] = _build_server_entry(provider, use_local, repo_root)
+                click.echo(f"Registered {key} ({mode_label})")
+                registered.append(key)
+
+        # Optionally register every individual provider too.
+        if individual_providers:
+            import pkgutil
+            import opendata_mcp.providers as providers_pkg
+
+            skip = {"__template__", "opendata_mcp_meta", "opendata_mcp_all"}
+            all_providers = [
+                name
+                for finder, name, ispkg in pkgutil.iter_modules(providers_pkg.__path__)
+                if name not in skip
+            ]
+            for provider in sorted(all_providers):
+                key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+                if key in config["mcpServers"] and not force:
+                    click.echo(f"Skipping '{key}' (already exists). Use --force to overwrite.")
+                    continue
+                config["mcpServers"][key] = _build_server_entry(provider, use_local, repo_root)
+                click.echo(f"Registered {key} ({mode_label})")
+                registered.append(key)
 
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
         click.echo(
-            f"\nSuccessfully configured {len(providers)} providers. Please restart Claude Desktop."
+            f"\nConfigured {len(registered)} server(s). Please restart Claude Desktop."
         )
 
     except Exception as e:
