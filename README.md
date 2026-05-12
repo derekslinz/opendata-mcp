@@ -44,6 +44,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 | `global_dbnomics` | DBnomics | Global economic data aggregator (IMF, World Bank, etc.) |
 | `global_oecd` | OECD | OECD economic & social statistics (SDMX) |
 | `global_world_bank` | World Bank | Development indicators by country |
+| `global_unesco_uis` | UNESCO UIS | Education, science & culture statistics (SDMX, subscription key) |
 | `nl_cbs` | Statistics Netherlands (CBS) | Dutch statistical datasets (OData v2/v3) |
 | `uk_ons` | UK ONS | UK Office for National Statistics |
 
@@ -125,7 +126,16 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 |---|---|---|
 | `global_met_museum` | Met Museum | Met Museum Open Access (CC0) |
 | `global_open_library` | Open Library | Books, authors, works (Internet Archive) |
+| `global_unesco_heritage` | UNESCO World Heritage Sites | Natural, cultural & mixed World Heritage Sites (WHC API) |
 
+
+### Networking / Internet
+
+| Provider | Name | Description |
+|---|---|---|
+| `global_bgpview` | BGPView | BGP routing data — ASN info, prefixes, peers, upstreams, downstreams (key-less) |
+| `global_cloudflare_radar` | Cloudflare Radar | Internet traffic, BGP hijacks/leaks, route visibility, Internet Quality Index |
+| `global_ripe_stat` | RIPE NCC RIPEstat | Production-grade BGP data — prefix overview, routing history, geolocation (key-less) |
 
 ### Legal
 
@@ -142,7 +152,9 @@ A few providers accept optional API keys for higher rate limits. Set these in yo
 
 | Variable | Provider | Purpose |
 |---|---|---|
+| `CLOUDFLARE_API_TOKEN` | `global_cloudflare_radar` | Required — free token from https://dash.cloudflare.com (Radar:Read permission) |
 | `COURTLISTENER_API_TOKEN` | `us_courtlistener` | Optional — anonymous access works at low volumes |
+| `UNESCO_UIS_SUBSCRIPTION_KEY` | `global_unesco_uis` | Required — free subscription key from https://api.uis.unesco.org/ |
 | `OPENDATA_MCP_CONTACT` | all providers | Optional — your email, used in User-Agent for polite-pool APIs (Crossref, OpenAlex, OSM, SEC EDGAR). Defaults to `opendata-mcp@example.org`. |
 
 ## Usage
