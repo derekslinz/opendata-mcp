@@ -18,7 +18,9 @@ LIB_NAME = "opendata-mcp"
 SERVER_PREFIX = "opendata-mcp-"
 
 
-@click.group()
+@click.group(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
 def cli():
     """OpenDataMCP CLI tool - Build and use open data MCP servers."""
     pass
@@ -26,6 +28,62 @@ def cli():
 
 def _import_provider_module(provider: str):
     return importlib.import_module(f"opendata_mcp.providers.{provider}")
+
+
+def _server_key(provider: str) -> str:
+    """Return the Claude Desktop config key for *provider*.
+
+    Avoids the double-prefix bug: provider names that already begin with
+    ``opendata-mcp`` (e.g. ``opendata_mcp_meta`` → ``opendata-mcp-meta``)
+    are used as-is; all other providers get SERVER_PREFIX prepended.
+    """
+    kebab = provider.replace("_", "-")
+    prefix_stem = SERVER_PREFIX.rstrip("-")  # "opendata-mcp"
+    if kebab.startswith(prefix_stem):
+        return kebab  # e.g. "opendata-mcp-meta", "opendata-mcp-all"
+    return f"{SERVER_PREFIX}{kebab}"  # e.g. "opendata-mcp-ch-sbb"
+
+
+# Canonical config keys for the meta and aggregator servers.
+_META_KEY = _server_key("opendata_mcp_meta")  # "opendata-mcp-meta"
+_ALL_KEY = _server_key("opendata_mcp_all")  # "opendata-mcp-all"
+
+# Legacy double-prefixed keys produced by earlier buggy versions.
+_LEGACY_META_KEY = f"{SERVER_PREFIX}{_META_KEY}"  # "opendata-mcp-opendata-mcp-meta"
+_LEGACY_ALL_KEY = f"{SERVER_PREFIX}{_ALL_KEY}"  # "opendata-mcp-opendata-mcp-all"
+
+
+def _migrate_legacy_providers(config: dict) -> int:
+    """Remove individual provider entries from *config* in place.
+
+    - Renames double-prefixed meta/all keys (from the earlier bug) to the
+      canonical single-prefixed form.
+    - Removes any remaining ``opendata-mcp-*`` entry that is not the meta
+      or aggregator server.
+
+    Returns the total number of entries removed or renamed.
+    """
+    servers = config.get("mcpServers", {})
+    changed = 0
+
+    # Fix double-prefixed meta/all keys created by the earlier bug.
+    for legacy_key, canonical_key in (
+        (_LEGACY_META_KEY, _META_KEY),
+        (_LEGACY_ALL_KEY, _ALL_KEY),
+    ):
+        if legacy_key in servers and canonical_key not in servers:
+            servers[canonical_key] = servers.pop(legacy_key)
+            changed += 1
+        elif legacy_key in servers:
+            del servers[legacy_key]
+            changed += 1
+
+    keep = {_META_KEY, _ALL_KEY}
+    legacy = [k for k in list(servers) if k.startswith(SERVER_PREFIX) and k not in keep]
+    for key in legacy:
+        del servers[key]
+
+    return changed + len(legacy)
 
 
 @cli.command()
@@ -134,14 +192,51 @@ def version():
         sys.exit(1)
 
 
-@cli.command()
-@click.argument("provider")
+def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
+    """Return a Claude Desktop mcpServers entry dict for *provider*."""
+    if is_local:
+        return {
+            "command": "uv",
+            "args": [
+                "--directory",
+                str(repo_root),
+                "run",
+                "opendata-mcp",
+                "run",
+                "--transport",
+                "stdio",
+                provider,
+            ],
+            "env": {"OTEL_SDK_DISABLED": "true"},
+        }
+    return {
+        "command": "uvx",
+        "args": [LIB_NAME, "run", "--transport", "stdio", provider],
+    }
+
+
+@cli.command(
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
+)
+@click.argument("provider", default="opendata_mcp_meta", required=False)
+@click.argument("_extra", nargs=-1)
 @click.option(
     "--local", is_flag=True, help="Force local development mode using absolute paths."
 )
 @click.option("--force", is_flag=True, help="Overwrite existing configuration.")
-def setup(provider: str, local: bool, force: bool):
-    """Setup the MCP server for use with Claude Desktop"""
+def setup(provider: str, _extra: tuple, local: bool, force: bool):
+    """Setup Claude Desktop for OpenData MCP.
+
+    Without arguments, installs the recommended two-server setup:
+
+    \b
+      opendata-mcp-meta  — 5 discovery tools
+      opendata-mcp-all   — 300+ data tools
+
+    Any legacy individual-provider entries are removed automatically.
+
+    Pass an optional PROVIDER name to install a specific provider instead.
+    """
     try:
         _import_provider_module(provider)
     except ImportError as e:
@@ -190,54 +285,56 @@ def setup(provider: str, local: bool, force: bool):
     if "mcpServers" not in config:
         config["mcpServers"] = {}
 
-    server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+    # Transparently remove any legacy individual-provider entries.
+    removed = _migrate_legacy_providers(config)
+    if removed:
+        click.echo(
+            f"Migrated: removed {removed} legacy individual provider entry/entries."
+        )
+
+    server_key = _server_key(provider)
     if server_key in config["mcpServers"] and not force:
         click.confirm(
             f"Server '{server_key}' is already configured. Overwrite?", abort=True
         )
 
-    # Detection logic for local mode
     repo_root = Path(__file__).parent.parent.resolve()
     is_local_repo = (repo_root / "pyproject.toml").exists()
+    use_local = is_local_repo or local
 
-    if is_local_repo or local:
-        # Use local execution via uv run
-        config["mcpServers"][server_key] = {
-            "command": "uv",
-            "args": [
-                "--directory",
-                str(repo_root),
-                "run",
-                "opendata-mcp",
-                "run",
-                "--transport",
-                "stdio",
-                provider,
-            ],
-            "env": {
-                "OTEL_SDK_DISABLED": "true"  # Optional: disable OTEL for cleaner logs if needed
-            },
-        }
-        click.echo(f"Configuring in LOCAL mode pointing to {repo_root}")
-    else:
-        # Use global uvx
-        config["mcpServers"][server_key] = {
-            "command": "uvx",
-            "args": [
-                LIB_NAME,
-                "run",
-                "--transport",
-                "stdio",
-                provider,
-            ],
-        }
-        click.echo(f"Configuring in GLOBAL mode using 'uvx {LIB_NAME}'")
+    config["mcpServers"][server_key] = _build_server_entry(
+        provider, use_local, repo_root
+    )
+    mode_label = (
+        f"LOCAL mode pointing to {repo_root}"
+        if use_local
+        else f"GLOBAL mode using 'uvx {LIB_NAME}'"
+    )
+    click.echo(f"Configuring in {mode_label}")
+
+    # When setting up the meta provider, automatically register the aggregator
+    # companion so Claude has both discovery tools and access to all 300+ data tools.
+    companion_key = None
+    if provider == "opendata_mcp_meta":
+        companion = "opendata_mcp_all"
+        companion_key = _server_key(companion)
+        if companion_key not in config["mcpServers"] or force:
+            config["mcpServers"][companion_key] = _build_server_entry(
+                companion, use_local, repo_root
+            )
+            click.echo(
+                f"  + also registering companion '{companion_key}' (aggregator, all 300+ tools)"
+            )
+        else:
+            click.echo(f"  ✓ companion '{companion_key}' already configured — skipping")
 
     try:
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
+        configured = [server_key] + ([companion_key] if companion_key else [])
         click.echo(
-            f"Successfully configured '{server_key}'. Please restart Claude Desktop."
+            f"Successfully configured {', '.join(repr(k) for k in configured)}. "
+            "Please restart Claude Desktop."
         )
     except Exception as e:
         click.echo(f"Error updating config file: {e}")
@@ -278,7 +375,7 @@ def remove(provider: str):
             config = json.load(f)
 
         # Normalize key to match setup() format
-        server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+        server_key = _server_key(provider)
 
         # Check if mcpServers exists and provider is configured
         if "mcpServers" not in config or server_key not in config["mcpServers"]:
@@ -305,28 +402,32 @@ def remove(provider: str):
         sys.exit(1)
 
 
-@cli.command()
+@cli.command(
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
+)
+@click.argument("_extra", nargs=-1)
 @click.option(
     "--local", is_flag=True, help="Force local development mode using absolute paths."
 )
 @click.option("--force", is_flag=True, help="Overwrite existing configurations.")
-def setup_all(local: bool, force: bool):
-    """Setup all MCP servers for use with Claude Desktop"""
+@click.option(
+    "--individual-providers",
+    is_flag=True,
+    help="[DEPRECATED] Register every individual provider as its own server. Use the default meta + aggregator setup instead.",
+)
+def setup_all(_extra: tuple, local: bool, force: bool, individual_providers: bool):
+    """Setup Claude Desktop for full OpenData MCP access.
+
+    Registers two servers that together give Claude everything it needs:
+
+    \b
+      opendata-mcp-meta   — 5 discovery tools (find-providers, describe-provider, …)
+      opendata-mcp-all    — 300+ data tools aggregated from all providers
+
+    Any legacy individual provider entries found in the config are automatically
+    removed and replaced with this recommended two-server setup.
+    """
     try:
-        import pkgutil
-        import opendata_mcp.providers as providers_pkg
-
-        providers = [
-            name
-            for finder, name, ispkg in pkgutil.iter_modules(providers_pkg.__path__)
-            if name not in ("__template__", "__init__", "utils")
-        ]
-
-        if not providers:
-            click.echo("No providers available to setup.")
-            return
-
-        # Check platform
         system = platform.system()
         if system == "Darwin":
             config_path = (
@@ -345,7 +446,6 @@ def setup_all(local: bool, force: bool):
             click.echo(f"Claude directory not found at {config_path.parent}")
             sys.exit(1)
 
-        # Load config
         if config_path.exists():
             try:
                 with open(config_path, "r") as f:
@@ -359,51 +459,176 @@ def setup_all(local: bool, force: bool):
         if "mcpServers" not in config:
             config["mcpServers"] = {}
 
+        # Transparently remove any legacy individual-provider entries.
+        removed = _migrate_legacy_providers(config)
+        if removed:
+            click.echo(
+                f"Migrated: removed {removed} legacy individual provider entry/entries."
+            )
+
+        if individual_providers:
+            click.echo(
+                "Warning: --individual-providers is deprecated. "
+                "The meta + aggregator setup replaces the need for individual servers."
+            )
+
         repo_root = Path(__file__).parent.parent.resolve()
         is_local_repo = (repo_root / "pyproject.toml").exists()
+        use_local = is_local_repo or local
+        mode_label = "LOCAL" if use_local else "GLOBAL"
 
-        for provider in sorted(providers):
-            server_key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
-            if server_key in config["mcpServers"] and not force:
+        registered = []
+
+        # Always register the meta + aggregator pair.
+        for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
+            key = _server_key(provider)
+            if key in config["mcpServers"] and not force:
                 click.echo(
-                    f"Skipping '{server_key}' (already exists). Use --force to overwrite."
+                    f"Skipping '{key}' (already exists). Use --force to overwrite."
                 )
-                continue
-
-            if is_local_repo or local:
-                config["mcpServers"][server_key] = {
-                    "command": "uv",
-                    "args": [
-                        "--directory",
-                        str(repo_root),
-                        "run",
-                        "opendata-mcp",
-                        "run",
-                        provider,
-                    ],
-                }
-                click.echo(f"Registered {provider} (LOCAL)")
             else:
-                config["mcpServers"][server_key] = {
-                    "command": "uvx",
-                    "args": [
-                        LIB_NAME,
-                        "run",
-                        provider,
-                    ],
-                }
-                click.echo(f"Registered {provider} (GLOBAL)")
+                config["mcpServers"][key] = _build_server_entry(
+                    provider, use_local, repo_root
+                )
+                click.echo(f"Registered {key} ({mode_label})")
+                registered.append(key)
+
+        # Optionally register every individual provider too (deprecated).
+        if individual_providers:
+            import pkgutil
+            import opendata_mcp.providers as providers_pkg
+
+            skip = {"__template__", "opendata_mcp_meta", "opendata_mcp_all"}
+            all_providers = [
+                name
+                for finder, name, ispkg in pkgutil.iter_modules(providers_pkg.__path__)
+                if name not in skip
+            ]
+            for provider in sorted(all_providers):
+                key = _server_key(provider)
+                if key in config["mcpServers"] and not force:
+                    click.echo(
+                        f"Skipping '{key}' (already exists). Use --force to overwrite."
+                    )
+                    continue
+                config["mcpServers"][key] = _build_server_entry(
+                    provider, use_local, repo_root
+                )
+                click.echo(f"Registered {key} ({mode_label})")
+                registered.append(key)
 
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
         click.echo(
-            f"\nSuccessfully configured {len(providers)} providers. Please restart Claude Desktop."
+            f"\nConfigured {len(registered)} server(s). Please restart Claude Desktop."
         )
 
     except Exception as e:
         click.echo(f"Error: {e}")
         sys.exit(1)
+
+
+@cli.command(
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
+)
+@click.argument("_extra", nargs=-1)
+@click.option(
+    "--apply",
+    is_flag=True,
+    help="Remove detected legacy entries and install the meta + aggregator pair.",
+)
+@click.option(
+    "--local", is_flag=True, help="Force local development mode (used with --apply)."
+)
+def cleanup(_extra: tuple, apply: bool, local: bool):
+    """Detect and remove legacy individual provider configurations.
+
+    Scans Claude Desktop config for opendata-mcp-* entries that are individual
+    data providers (not opendata-mcp-meta or opendata-mcp-all) and reports them.
+
+    Without --apply: dry-run — lists what would be removed, no changes made.
+    With --apply:    removes the legacy entries and installs the recommended
+                     opendata-mcp-meta + opendata-mcp-all pair.
+
+    \b
+    Example workflow:
+        uv run opendata-mcp cleanup            # preview changes
+        uv run opendata-mcp cleanup --apply    # apply
+    """
+    system = platform.system()
+    if system not in ["Darwin", "Windows"]:
+        click.echo("This command is only supported on Windows and macOS")
+        sys.exit(1)
+
+    config_path = (
+        Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
+        if system == "Darwin"
+        else Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
+    )
+
+    if not config_path.exists():
+        click.echo("No Claude Desktop config found — nothing to clean up.")
+        return
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except json.JSONDecodeError:
+        click.echo(
+            f"Error: {config_path} contains invalid JSON. Please fix it manually."
+        )
+        sys.exit(1)
+
+    servers = config.get("mcpServers", {})
+    keep = {f"{SERVER_PREFIX}meta", f"{SERVER_PREFIX}all"}
+    legacy = sorted(k for k in servers if k.startswith(SERVER_PREFIX) and k not in keep)
+
+    if not legacy:
+        click.echo("No legacy opendata-mcp provider entries found.")
+        if f"{SERVER_PREFIX}meta" in servers and f"{SERVER_PREFIX}all" in servers:
+            click.echo("✓ Already running the recommended meta + aggregator setup.")
+        else:
+            click.echo(
+                "Tip: run `uv run opendata-mcp setup-all` to install the recommended setup."
+            )
+        return
+
+    click.echo(f"Found {len(legacy)} legacy provider entry/entries:")
+    for key in legacy:
+        click.echo(f"  - {key}")
+
+    if not apply:
+        click.echo(
+            "\nDry run — no changes made. Re-run with --apply to remove these "
+            "and install opendata-mcp-meta + opendata-mcp-all."
+        )
+        return
+
+    removed = _migrate_legacy_providers(config)
+    click.echo(f"\nRemoved {removed} legacy entry/entries.")
+
+    # Install meta + aggregator if not already present.
+    repo_root = Path(__file__).parent.parent.resolve()
+    is_local_repo = (repo_root / "pyproject.toml").exists()
+    use_local = is_local_repo or local
+    mode_label = "LOCAL" if use_local else "GLOBAL"
+
+    installed = []
+    for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
+        key = _server_key(provider)
+        if key not in servers:
+            servers[key] = _build_server_entry(provider, use_local, repo_root)
+            click.echo(f"Installed {key} ({mode_label})")
+            installed.append(key)
+        else:
+            click.echo(f"✓ {key} already present — keeping.")
+
+    config["mcpServers"] = servers
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+    click.echo("\nDone. Please restart Claude Desktop.")
 
 
 @cli.command()
@@ -472,7 +697,33 @@ def inspect(provider: str, local: bool):
         sys.exit(e.returncode)
 
 
+def _strip_injected_server_keys() -> None:
+    """Remove Claude Desktop mcpServers keys injected into sys.argv.
+
+    Something in the environment appends the current Claude Desktop
+    mcpServers keys as positional CLI arguments on every opendata-mcp
+    invocation. Strip them before Click parses sys.argv so commands
+    work correctly regardless of this injection.
+    """
+    try:
+        config_path = (
+            Path.home()
+            / "Library/Application Support/Claude/claude_desktop_config.json"
+            if platform.system() == "Darwin"
+            else Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
+        )
+        if not config_path.exists():
+            return
+        config = json.loads(config_path.read_text())
+        server_keys = set(config.get("mcpServers", {}).keys())
+        if server_keys:
+            sys.argv[1:] = [arg for arg in sys.argv[1:] if arg not in server_keys]
+    except Exception:
+        pass  # Never break the CLI if config can't be read
+
+
 def main():
+    _strip_injected_server_keys()
     cli()
 
 

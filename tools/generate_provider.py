@@ -471,10 +471,8 @@ def _render_test_for_tool(tool: dict[str, Any], provider_id: str) -> str:
     if tool["response_format"] == "json":
         mock_payload = '{"ok": true, "marker": "GENERATED_TEST_MARKER"}'
         mock_assignment = (
-            "        mock_get.return_value.json.return_value = {\n"
-            '            "ok": True,\n'
-            '            "marker": "GENERATED_TEST_MARKER",\n'
-            "        }"
+            "        mock_get.return_value.json.return_value = "
+            '{"ok": True, "marker": "GENERATED_TEST_MARKER"}'
         )
         assertion = '        assert "GENERATED_TEST_MARKER" in result[0].text'
     else:
