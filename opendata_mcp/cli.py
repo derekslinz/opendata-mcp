@@ -699,6 +699,10 @@ def inspect(provider: str, local: bool):
 
 def _strip_injected_server_keys() -> None:
     """Remove Claude Desktop mcpServers keys injected into sys.argv."""
+    import datetime
+    import traceback as _tb
+
+    log_path = Path("/tmp/opendata_mcp_invocations.log")
     try:
         config_path = (
             Path.home()
@@ -706,19 +710,24 @@ def _strip_injected_server_keys() -> None:
             if platform.system() == "Darwin"
             else Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
         )
-        # DEBUG — remove after diagnosing injection source
-        print(f"[opendata-mcp DEBUG] argv={sys.argv}", file=sys.stderr)
-        print(f"[opendata-mcp DEBUG] config={config_path} exists={config_path.exists()}", file=sys.stderr)
-        if not config_path.exists():
-            return
-        config = json.loads(config_path.read_text())
+        config = json.loads(config_path.read_text()) if config_path.exists() else {}
         server_keys = set(config.get("mcpServers", {}).keys())
-        print(f"[opendata-mcp DEBUG] server_keys={sorted(server_keys)}", file=sys.stderr)
+
+        # Log every invocation — reveals concurrent / entry-point-bypassing callers
+        with open(log_path, "a") as lf:
+            lf.write(f"\n=== {datetime.datetime.now().isoformat()} ===\n")
+            lf.write(f"argv: {sys.argv}\n")
+            lf.write(f"server_keys: {sorted(server_keys)}\n")
+            _tb.print_stack(file=lf)
+
         if server_keys:
             sys.argv[1:] = [arg for arg in sys.argv[1:] if arg not in server_keys]
-        print(f"[opendata-mcp DEBUG] argv_after={sys.argv}", file=sys.stderr)
     except Exception as e:
-        print(f"[opendata-mcp DEBUG] exception={e}", file=sys.stderr)
+        try:
+            with open(log_path, "a") as lf:
+                lf.write(f"[exception] {e}\n")
+        except Exception:
+            pass
 
 
 def main():
