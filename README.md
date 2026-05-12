@@ -274,7 +274,25 @@ You can now ask questions to Claude about SBB train network disruption and it wi
    pre-commit install
    ```
 
-#### Publishing Instructions
+#### Quick path: use the provider generator
+
+For most REST/JSON APIs you can scaffold a provider in minutes instead of writing code from scratch.
+
+1. Create a YAML spec describing your API in `tools/specs/{id}.yaml` (copy `tools/specs/example_weather_alert.yaml` as a starting point).
+2. Preview the generated code — no files written:
+   ```bash
+   uv run python tools/generate_provider.py tools/specs/{id}.yaml --dry-run
+   ```
+3. Write the files:
+   ```bash
+   uv run python tools/generate_provider.py tools/specs/{id}.yaml
+   ```
+4. Add a `ProviderEntry` to `opendata_mcp/registry.py` so the meta-aggregator can discover your provider.
+5. Refine the generated files and run `uv run pytest`.
+
+See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field reference and a list of cases the generator doesn't handle (auth headers, POST, multi-step logic, etc.) — those require the manual path below.
+
+#### Manual path: write a provider from scratch
 
 1. **Create a New Provider Module**
 
@@ -282,6 +300,7 @@ You can now ask questions to Claude about SBB train network disruption and it wi
    * Create a new Python module in `opendata_mcp/providers/`.
    * Use a descriptive name following the pattern: `{country_code}_{organization}.py` (e.g., `ch_sbb.py`).
    * Start with our [template file](https://github.com/derekslinz/opendata-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
+   * Use `http_get` from `opendata_mcp.utils` for all outbound requests (sets the required User-Agent automatically).
 2. **Implement Required Components**
 
    * Define your Tools & Resources following the template structure
