@@ -1,0 +1,84 @@
+id: us_nws_alerts
+server_name: us-nws-alerts
+base_url: https://api.weather.gov
+description: |
+  US National Weather Service CAP alerts — active warnings, watches,
+  and advisories by area, point, or zone. No API key required.
+homepage: https://www.weather.gov/documentation/services-web-api
+domains: [weather, earth-science]
+regions: [us]
+keywords: [weather, alerts, nws, noaa, tornado, hurricane, warning]
+requires_env: []
+
+tools:
+  - name: nws-list-alerts
+    description: "List active weather alerts filtered by area, region, or status"
+    endpoint: /alerts/active
+    response_format: json
+    params:
+      - name: area
+        type: str
+        required: false
+        description: "Two-letter state/territory code (e.g. CA, TX)"
+      - name: status
+        type: str
+        required: false
+        default: actual
+        description: "Alert status: actual, exercise, system, test, draft"
+      - name: limit
+        type: int
+        required: false
+        default: 50
+        description: "Max alerts to return (1-500)"
+
+  - name: nws-get-alert
+    description: "Get a specific alert by its ID"
+    endpoint: /alerts/{alert_id}
+    response_format: json
+    params:
+      - name: alert_id
+        type: str
+        required: true
+        description: "The alert ID (e.g. urn:oid:2.49.0.1.840...)"
+
+  - name: nws-get-point-forecast
+    description: "Get gridpoint metadata for a latitude/longitude point"
+    endpoint: /points/{latitude},{longitude}
+    response_format: json
+    params:
+      - name: latitude
+        type: float
+        required: true
+        description: "Decimal latitude (e.g. 39.7456)"
+      - name: longitude
+        type: float
+        required: true
+        description: "Decimal longitude (e.g. -97.0892)"
+
+  - name: nws-list-zones
+    description: "List forecast zones by type and/or state"
+    endpoint: /zones
+    response_format: json
+    params:
+      - name: type
+        type: str
+        required: false
+        description: "Zone type: land, marine, forecast, fire, county, coast, offshore, public"
+      - name: area
+        type: str
+        required: false
+        description: "State code filter"
+
+  - name: nws-get-zone-forecast
+    description: "Get the text forecast for a specific zone"
+    endpoint: /zones/{zone_type}/{zone_id}/forecast
+    response_format: json
+    params:
+      - name: zone_type
+        type: str
+        required: true
+        description: "Zone type (e.g. forecast, land)"
+      - name: zone_id
+        type: str
+        required: true
+        description: "Zone ID (e.g. CAZ006)"

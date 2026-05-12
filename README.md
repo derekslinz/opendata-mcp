@@ -206,6 +206,26 @@ uv run opendata-mcp setup $PROVIDER_NAME
 uv run opendata-mcp remove $PROVIDER_NAME
 ```
 
+> [!WARNING]
+> **Individual provider setup is deprecated.**
+> Setting up 55+ providers one by one (`setup ch_sbb`, `setup us_nasa`, …) is no longer
+> recommended. Use the two-command setup below instead — it gives Claude both discovery and
+> data access through a single pair of servers. Any existing individual provider entries are
+> automatically removed the next time you run `setup`, `setup-all`, or `cleanup`.
+>
+> **Recommended setup (new):**
+> ```bash
+> uv run opendata-mcp setup-all       # installs meta + aggregator, removes legacy entries
+> # — or equivalently —
+> uv run opendata-mcp setup opendata_mcp_meta
+> ```
+>
+> **Migrate existing config:**
+> ```bash
+> uv run opendata-mcp cleanup          # preview what will be removed
+> uv run opendata-mcp cleanup --apply  # remove legacy entries and install meta + aggregator
+> ```
+
 Quickstart for the Switzerland SBB (train company) provider:
 
 ```bash
@@ -274,7 +294,25 @@ You can now ask questions to Claude about SBB train network disruption and it wi
    pre-commit install
    ```
 
-#### Publishing Instructions
+#### Quick path: use the provider generator
+
+For most REST/JSON APIs you can scaffold a provider in minutes instead of writing code from scratch.
+
+1. Create a YAML spec describing your API in `tools/specs/{id}.yaml` (copy `tools/specs/example_weather_alert.yaml` as a starting point).
+2. Preview the generated code — no files written:
+   ```bash
+   uv run python tools/generate_provider.py tools/specs/{id}.yaml --dry-run
+   ```
+3. Write the files:
+   ```bash
+   uv run python tools/generate_provider.py tools/specs/{id}.yaml
+   ```
+4. Add a `ProviderEntry` to `opendata_mcp/registry.py` so the meta-aggregator can discover your provider.
+5. Refine the generated files and run `uv run pytest`.
+
+See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field reference and a list of cases the generator doesn't handle (auth headers, POST, multi-step logic, etc.) — those require the manual path below.
+
+#### Manual path: write a provider from scratch
 
 1. **Create a New Provider Module**
 
@@ -282,6 +320,7 @@ You can now ask questions to Claude about SBB train network disruption and it wi
    * Create a new Python module in `opendata_mcp/providers/`.
    * Use a descriptive name following the pattern: `{country_code}_{organization}.py` (e.g., `ch_sbb.py`).
    * Start with our [template file](https://github.com/derekslinz/opendata-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
+   * Use `http_get` from `opendata_mcp.utils` for all outbound requests (sets the required User-Agent automatically).
 2. **Implement Required Components**
 
    * Define your Tools & Resources following the template structure

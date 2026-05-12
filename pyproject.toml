@@ -45,12 +45,14 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "-ra -q"
+addopts = "-ra -q -m 'not live'"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-# Configure log format
 log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+markers = [
+    "live: marks tests as live integration tests that make real HTTP calls (deselected by default; run with -m live)",
+]
 
 
 [tool.hatch.build.targets.wheel]

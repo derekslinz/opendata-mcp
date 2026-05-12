@@ -108,6 +108,3 @@ async def test_list_providers_pagination():
     text = result[0].text
     assert '"total"' in text
     assert '"limit": 3' in text
-
-
-
