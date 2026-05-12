@@ -1,0 +1,20 @@
+id: us_arcgis_item
+server_name: us-arcgis-item
+base_url: https://www.arcgis.com
+homepage: https://developers.arcgis.com/rest/users-groups-and-items/item/
+description: Generic ArcGIS public item metadata provider.
+tools:
+  - name: us-arcgis-get-item
+    description: Fetch public ArcGIS item metadata by item id.
+    endpoint: /sharing/rest/content/items/{item_id}
+    response_format: json
+    params:
+      - name: item_id
+        type: string
+        required: true
+        description: ArcGIS item id.
+      - name: f
+        type: string
+        required: false
+        default: json
+        description: ArcGIS response format.

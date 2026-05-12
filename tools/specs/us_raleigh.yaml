@@ -1,0 +1,29 @@
+id: us_raleigh
+server_name: us-raleigh
+base_url: https://data.raleighnc.gov
+homepage: https://data.raleighnc.gov
+description: City of Raleigh Socrata-backed open data provider.
+tools:
+  - name: us-raleigh-search-catalog
+    description: Search Raleigh open data catalog metadata.
+    endpoint: /api/views
+    response_format: json
+    params:
+      - name: q
+        type: string
+        required: false
+        description: Free-text catalog query.
+      - name: limit
+        type: int
+        required: false
+        default: 20
+        description: Maximum catalog results.
+  - name: us-raleigh-get-metadata
+    description: Fetch Raleigh dataset metadata by Socrata dataset id.
+    endpoint: /api/views/{dataset_id}
+    response_format: json
+    params:
+      - name: dataset_id
+        type: string
+        required: true
+        description: Socrata dataset id.
