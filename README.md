@@ -125,7 +125,15 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 |---|---|---|
 | `global_met_museum` | Met Museum | Met Museum Open Access (CC0) |
 | `global_open_library` | Open Library | Books, authors, works (Internet Archive) |
+| `global_unesco_heritage` | UNESCO World Heritage Sites | Natural, cultural & mixed World Heritage Sites (WHC API) |
 
+
+### Networking / Internet
+
+| Provider | Name | Description |
+|---|---|---|
+| `global_bgpview` | BGPView | BGP routing data — ASN info, prefixes, peers, upstreams, downstreams (key-less) |
+| `global_ripe_stat` | RIPE NCC RIPEstat | Production-grade BGP data — prefix overview, routing history, geolocation (key-less) |
 
 ### Legal
 
