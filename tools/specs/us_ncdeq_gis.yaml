@@ -1,0 +1,20 @@
+id: us_ncdeq_gis
+server_name: us-ncdeq-gis
+base_url: https://data-ncdenr.opendata.arcgis.com
+homepage: https://data-ncdenr.opendata.arcgis.com
+description: NCDEQ / NC DENR ArcGIS Hub environmental GIS open data.
+tools:
+  - name: us-ncdeq-search-catalog
+    description: Search NCDEQ / NC DENR ArcGIS Hub catalog.
+    endpoint: /api/search/v1
+    response_format: json
+    params:
+      - name: q
+        type: string
+        required: false
+        description: Free-text catalog query.
+      - name: num
+        type: int
+        required: false
+        default: 20
+        description: Maximum search results.

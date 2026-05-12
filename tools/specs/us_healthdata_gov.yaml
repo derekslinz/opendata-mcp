@@ -1,0 +1,29 @@
+id: us_healthdata_gov
+server_name: us-healthdata-gov
+base_url: https://healthdata.gov
+homepage: https://healthdata.gov
+description: HealthData.gov / HHS Socrata-backed open data catalog.
+tools:
+  - name: us-healthdata-search-catalog
+    description: Search HealthData.gov catalog metadata.
+    endpoint: /api/views
+    response_format: json
+    params:
+      - name: q
+        type: string
+        required: false
+        description: Free-text catalog query.
+      - name: limit
+        type: int
+        required: false
+        default: 20
+        description: Maximum catalog results.
+  - name: us-healthdata-get-metadata
+    description: Fetch HealthData.gov dataset metadata by Socrata dataset id.
+    endpoint: /api/views/{dataset_id}
+    response_format: json
+    params:
+      - name: dataset_id
+        type: string
+        required: true
+        description: Socrata dataset id.
