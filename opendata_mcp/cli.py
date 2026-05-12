@@ -18,7 +18,9 @@ LIB_NAME = "opendata-mcp"
 SERVER_PREFIX = "opendata-mcp-"
 
 
-@click.group()
+@click.group(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
 def cli():
     """OpenDataMCP CLI tool - Build and use open data MCP servers."""
     pass
@@ -213,13 +215,16 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
     }
 
 
-@cli.command()
+@cli.command(
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
+)
 @click.argument("provider", default="opendata_mcp_meta", required=False)
+@click.argument("_extra", nargs=-1)
 @click.option(
     "--local", is_flag=True, help="Force local development mode using absolute paths."
 )
 @click.option("--force", is_flag=True, help="Overwrite existing configuration.")
-def setup(provider: str, local: bool, force: bool):
+def setup(provider: str, _extra: tuple, local: bool, force: bool):
     """Setup Claude Desktop for OpenData MCP.
 
     Without arguments, installs the recommended two-server setup:
@@ -397,7 +402,10 @@ def remove(provider: str):
         sys.exit(1)
 
 
-@cli.command()
+@cli.command(
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
+)
+@click.argument("_extra", nargs=-1)
 @click.option(
     "--local", is_flag=True, help="Force local development mode using absolute paths."
 )
@@ -407,7 +415,7 @@ def remove(provider: str):
     is_flag=True,
     help="[DEPRECATED] Register every individual provider as its own server. Use the default meta + aggregator setup instead.",
 )
-def setup_all(local: bool, force: bool, individual_providers: bool):
+def setup_all(_extra: tuple, local: bool, force: bool, individual_providers: bool):
     """Setup Claude Desktop for full OpenData MCP access.
 
     Registers two servers that together give Claude everything it needs:
@@ -521,7 +529,10 @@ def setup_all(local: bool, force: bool, individual_providers: bool):
         sys.exit(1)
 
 
-@cli.command()
+@cli.command(
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
+)
+@click.argument("_extra", nargs=-1)
 @click.option(
     "--apply",
     is_flag=True,
@@ -530,7 +541,7 @@ def setup_all(local: bool, force: bool, individual_providers: bool):
 @click.option(
     "--local", is_flag=True, help="Force local development mode (used with --apply)."
 )
-def cleanup(apply: bool, local: bool):
+def cleanup(_extra: tuple, apply: bool, local: bool):
     """Detect and remove legacy individual provider configurations.
 
     Scans Claude Desktop config for opendata-mcp-* entries that are individual
