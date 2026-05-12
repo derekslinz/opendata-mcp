@@ -214,20 +214,23 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
 
 
 @cli.command()
-@click.argument("provider")
+@click.argument("provider", default="opendata_mcp_meta", required=False)
 @click.option(
     "--local", is_flag=True, help="Force local development mode using absolute paths."
 )
 @click.option("--force", is_flag=True, help="Overwrite existing configuration.")
 def setup(provider: str, local: bool, force: bool):
-    """Setup the MCP server for use with Claude Desktop.
+    """Setup Claude Desktop for OpenData MCP.
 
-    When PROVIDER is 'opendata_mcp_meta', the companion aggregator server
-    'opendata_mcp_all' is registered automatically alongside it.  This gives
-    Claude both provider discovery (meta) and access to all 300+ tools (all)
-    from a single command:
+    Without arguments, installs the recommended two-server setup:
 
-        uv run opendata-mcp setup opendata_mcp_meta
+    \b
+      opendata-mcp-meta  — 5 discovery tools
+      opendata-mcp-all   — 300+ data tools
+
+    Any legacy individual-provider entries are removed automatically.
+
+    Pass an optional PROVIDER name to install a specific provider instead.
     """
     try:
         _import_provider_module(provider)
