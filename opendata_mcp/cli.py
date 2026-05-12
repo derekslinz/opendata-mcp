@@ -698,11 +698,13 @@ def inspect(provider: str, local: bool):
 
 
 def _strip_injected_server_keys() -> None:
-    """Remove Claude Desktop mcpServers keys injected into sys.argv."""
-    import datetime
-    import traceback as _tb
+    """Remove Claude Desktop mcpServers keys injected into sys.argv.
 
-    log_path = Path("/tmp/opendata_mcp_invocations.log")
+    Something in the environment appends the current Claude Desktop
+    mcpServers keys as positional CLI arguments on every opendata-mcp
+    invocation. Strip them before Click parses sys.argv so commands
+    work correctly regardless of this injection.
+    """
     try:
         config_path = (
             Path.home()
@@ -710,24 +712,14 @@ def _strip_injected_server_keys() -> None:
             if platform.system() == "Darwin"
             else Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
         )
-        config = json.loads(config_path.read_text()) if config_path.exists() else {}
+        if not config_path.exists():
+            return
+        config = json.loads(config_path.read_text())
         server_keys = set(config.get("mcpServers", {}).keys())
-
-        # Log every invocation — reveals concurrent / entry-point-bypassing callers
-        with open(log_path, "a") as lf:
-            lf.write(f"\n=== {datetime.datetime.now().isoformat()} ===\n")
-            lf.write(f"argv: {sys.argv}\n")
-            lf.write(f"server_keys: {sorted(server_keys)}\n")
-            _tb.print_stack(file=lf)
-
         if server_keys:
             sys.argv[1:] = [arg for arg in sys.argv[1:] if arg not in server_keys]
-    except Exception as e:
-        try:
-            with open(log_path, "a") as lf:
-                lf.write(f"[exception] {e}\n")
-        except Exception:
-            pass
+    except Exception:
+        pass  # Never break the CLI if config can't be read
 
 
 def main():
