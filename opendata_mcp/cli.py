@@ -134,6 +134,29 @@ def version():
         sys.exit(1)
 
 
+def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
+    """Return a Claude Desktop mcpServers entry dict for *provider*."""
+    if is_local:
+        return {
+            "command": "uv",
+            "args": [
+                "--directory",
+                str(repo_root),
+                "run",
+                "opendata-mcp",
+                "run",
+                "--transport",
+                "stdio",
+                provider,
+            ],
+            "env": {"OTEL_SDK_DISABLED": "true"},
+        }
+    return {
+        "command": "uvx",
+        "args": [LIB_NAME, "run", "--transport", "stdio", provider],
+    }
+
+
 @cli.command()
 @click.argument("provider")
 @click.option(
@@ -141,7 +164,15 @@ def version():
 )
 @click.option("--force", is_flag=True, help="Overwrite existing configuration.")
 def setup(provider: str, local: bool, force: bool):
-    """Setup the MCP server for use with Claude Desktop"""
+    """Setup the MCP server for use with Claude Desktop.
+
+    When PROVIDER is 'opendata_mcp_meta', the companion aggregator server
+    'opendata_mcp_all' is registered automatically alongside it.  This gives
+    Claude both provider discovery (meta) and access to all 300+ tools (all)
+    from a single command:
+
+        uv run opendata-mcp setup opendata_mcp_meta
+    """
     try:
         _import_provider_module(provider)
     except ImportError as e:
@@ -196,48 +227,33 @@ def setup(provider: str, local: bool, force: bool):
             f"Server '{server_key}' is already configured. Overwrite?", abort=True
         )
 
-    # Detection logic for local mode
     repo_root = Path(__file__).parent.parent.resolve()
     is_local_repo = (repo_root / "pyproject.toml").exists()
+    use_local = is_local_repo or local
 
-    if is_local_repo or local:
-        # Use local execution via uv run
-        config["mcpServers"][server_key] = {
-            "command": "uv",
-            "args": [
-                "--directory",
-                str(repo_root),
-                "run",
-                "opendata-mcp",
-                "run",
-                "--transport",
-                "stdio",
-                provider,
-            ],
-            "env": {
-                "OTEL_SDK_DISABLED": "true"  # Optional: disable OTEL for cleaner logs if needed
-            },
-        }
-        click.echo(f"Configuring in LOCAL mode pointing to {repo_root}")
-    else:
-        # Use global uvx
-        config["mcpServers"][server_key] = {
-            "command": "uvx",
-            "args": [
-                LIB_NAME,
-                "run",
-                "--transport",
-                "stdio",
-                provider,
-            ],
-        }
-        click.echo(f"Configuring in GLOBAL mode using 'uvx {LIB_NAME}'")
+    config["mcpServers"][server_key] = _build_server_entry(provider, use_local, repo_root)
+    mode_label = f"LOCAL mode pointing to {repo_root}" if use_local else f"GLOBAL mode using 'uvx {LIB_NAME}'"
+    click.echo(f"Configuring in {mode_label}")
+
+    # When setting up the meta provider, automatically register the aggregator
+    # companion so Claude has both discovery tools and access to all 300+ data tools.
+    companion_key = None
+    if provider == "opendata_mcp_meta":
+        companion = "opendata_mcp_all"
+        companion_key = f"{SERVER_PREFIX}{companion.replace('_', '-')}"
+        if companion_key not in config["mcpServers"] or force:
+            config["mcpServers"][companion_key] = _build_server_entry(companion, use_local, repo_root)
+            click.echo(f"  + also registering companion '{companion_key}' (aggregator, all 300+ tools)")
+        else:
+            click.echo(f"  ✓ companion '{companion_key}' already configured — skipping")
 
     try:
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
+        configured = [server_key] + ([companion_key] if companion_key else [])
         click.echo(
-            f"Successfully configured '{server_key}'. Please restart Claude Desktop."
+            f"Successfully configured {', '.join(repr(k) for k in configured)}. "
+            "Please restart Claude Desktop."
         )
     except Exception as e:
         click.echo(f"Error updating config file: {e}")
