@@ -428,6 +428,109 @@ def setup_all(local: bool, force: bool, individual_providers: bool):
 
 
 @cli.command()
+@click.option(
+    "--apply",
+    is_flag=True,
+    help="Remove detected legacy entries and install the meta + aggregator pair.",
+)
+@click.option(
+    "--local", is_flag=True, help="Force local development mode (used with --apply)."
+)
+def cleanup(apply: bool, local: bool):
+    """Detect and remove legacy individual provider configurations.
+
+    Scans Claude Desktop config for opendata-mcp-* entries that are individual
+    data providers (not opendata-mcp-meta or opendata-mcp-all) and reports them.
+
+    Without --apply: dry-run — lists what would be removed, no changes made.
+    With --apply:    removes the legacy entries and installs the recommended
+                     opendata-mcp-meta + opendata-mcp-all pair.
+
+    \b
+    Example workflow:
+        uv run opendata-mcp cleanup            # preview changes
+        uv run opendata-mcp cleanup --apply    # apply
+    """
+    system = platform.system()
+    if system not in ["Darwin", "Windows"]:
+        click.echo("This command is only supported on Windows and macOS")
+        sys.exit(1)
+
+    config_path = (
+        Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
+        if system == "Darwin"
+        else Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
+    )
+
+    if not config_path.exists():
+        click.echo("No Claude Desktop config found — nothing to clean up.")
+        return
+
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except json.JSONDecodeError:
+        click.echo(f"Error: {config_path} contains invalid JSON. Please fix it manually.")
+        sys.exit(1)
+
+    servers = config.get("mcpServers", {})
+    keep = {f"{SERVER_PREFIX}meta", f"{SERVER_PREFIX}all"}
+
+    legacy = [
+        key for key in servers
+        if key.startswith(SERVER_PREFIX) and key not in keep
+    ]
+
+    if not legacy:
+        click.echo("No legacy opendata-mcp provider entries found.")
+        has_meta = f"{SERVER_PREFIX}meta" in servers
+        has_all = f"{SERVER_PREFIX}all" in servers
+        if has_meta and has_all:
+            click.echo("✓ Already running the recommended meta + aggregator setup.")
+        else:
+            click.echo("Tip: run `uv run opendata-mcp setup-all` to install the recommended setup.")
+        return
+
+    click.echo(f"Found {len(legacy)} legacy provider entry/entries:")
+    for key in sorted(legacy):
+        click.echo(f"  - {key}")
+
+    if not apply:
+        click.echo(
+            f"\nDry run — no changes made. Re-run with --apply to remove these "
+            f"and install opendata-mcp-meta + opendata-mcp-all."
+        )
+        return
+
+    # Remove legacy entries.
+    for key in legacy:
+        del servers[key]
+    click.echo(f"\nRemoved {len(legacy)} legacy entry/entries.")
+
+    # Install meta + aggregator if not already present.
+    repo_root = Path(__file__).parent.parent.resolve()
+    is_local_repo = (repo_root / "pyproject.toml").exists()
+    use_local = is_local_repo or local
+    mode_label = "LOCAL" if use_local else "GLOBAL"
+
+    installed = []
+    for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
+        key = f"{SERVER_PREFIX}{provider.replace('_', '-')}"
+        if key not in servers:
+            servers[key] = _build_server_entry(provider, use_local, repo_root)
+            click.echo(f"Installed {key} ({mode_label})")
+            installed.append(key)
+        else:
+            click.echo(f"✓ {key} already present — keeping.")
+
+    config["mcpServers"] = servers
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+    click.echo("\nDone. Please restart Claude Desktop.")
+
+
+@cli.command()
 @click.argument("provider")
 @click.option(
     "--local", is_flag=True, help="Force local development mode using absolute paths."
