@@ -697,7 +697,33 @@ def inspect(provider: str, local: bool):
         sys.exit(e.returncode)
 
 
+def _strip_injected_server_keys() -> None:
+    """Remove Claude Desktop mcpServers keys injected into sys.argv.
+
+    Something in the environment appends the current Claude Desktop
+    mcpServers keys as positional CLI arguments on every opendata-mcp
+    invocation. Strip them before Click parses sys.argv so commands
+    work correctly regardless of this injection.
+    """
+    try:
+        config_path = (
+            Path.home()
+            / "Library/Application Support/Claude/claude_desktop_config.json"
+            if platform.system() == "Darwin"
+            else Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
+        )
+        if not config_path.exists():
+            return
+        config = json.loads(config_path.read_text())
+        server_keys = set(config.get("mcpServers", {}).keys())
+        if server_keys:
+            sys.argv[1:] = [arg for arg in sys.argv[1:] if arg not in server_keys]
+    except Exception:
+        pass  # Never break the CLI if config can't be read
+
+
 def main():
+    _strip_injected_server_keys()
     cli()
 
 
