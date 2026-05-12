@@ -698,13 +698,7 @@ def inspect(provider: str, local: bool):
 
 
 def _strip_injected_server_keys() -> None:
-    """Remove Claude Desktop mcpServers keys injected into sys.argv.
-
-    Something in the environment appends the current Claude Desktop
-    mcpServers keys as positional CLI arguments on every opendata-mcp
-    invocation. Strip them before Click parses sys.argv so commands
-    work correctly regardless of this injection.
-    """
+    """Remove Claude Desktop mcpServers keys injected into sys.argv."""
     try:
         config_path = (
             Path.home()
@@ -712,14 +706,19 @@ def _strip_injected_server_keys() -> None:
             if platform.system() == "Darwin"
             else Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
         )
+        # DEBUG — remove after diagnosing injection source
+        print(f"[opendata-mcp DEBUG] argv={sys.argv}", file=sys.stderr)
+        print(f"[opendata-mcp DEBUG] config={config_path} exists={config_path.exists()}", file=sys.stderr)
         if not config_path.exists():
             return
         config = json.loads(config_path.read_text())
         server_keys = set(config.get("mcpServers", {}).keys())
+        print(f"[opendata-mcp DEBUG] server_keys={sorted(server_keys)}", file=sys.stderr)
         if server_keys:
             sys.argv[1:] = [arg for arg in sys.argv[1:] if arg not in server_keys]
-    except Exception:
-        pass  # Never break the CLI if config can't be read
+        print(f"[opendata-mcp DEBUG] argv_after={sys.argv}", file=sys.stderr)
+    except Exception as e:
+        print(f"[opendata-mcp DEBUG] exception={e}", file=sys.stderr)
 
 
 def main():
