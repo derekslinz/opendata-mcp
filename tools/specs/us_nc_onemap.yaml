@@ -1,0 +1,16 @@
+id: us_nc_onemap
+server_name: us-nc-onemap
+base_url: https://services.nconemap.gov/secure/rest/services
+homepage: https://www.nconemap.gov/
+description: NC OneMap ArcGIS REST services provider.
+tools:
+  - name: us-nc-onemap-list-services
+    description: List NC OneMap ArcGIS REST services.
+    endpoint: /
+    response_format: json
+    params:
+      - name: f
+        type: string
+        required: false
+        default: json
+        description: ArcGIS response format.
