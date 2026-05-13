@@ -4,10 +4,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from opendata_mcp.providers.meta_data_mcp import (
+    RESOURCES,
     PROMPTS,
     PROMPTS_HANDLERS,
     RESOURCES_HANDLERS,
     TOOLS,
+    TOOLS_HANDLERS,
     handle_describe_provider,
     handle_discover_providers,
     handle_explain_choice,
@@ -144,63 +146,79 @@ async def test_list_providers_pagination():
 
 # Exception handler coverage tests
 @pytest.mark.anyio
-async def test_find_providers_exception_handling():
+async def test_find_providers_exception_handling(caplog):
     """Test that exceptions in find_providers are logged and re-raised."""
     with patch("opendata_mcp.providers.meta_data_mcp.RoutingEngine") as mock_engine:
         mock_instance = AsyncMock()
         mock_instance.route.side_effect = RuntimeError("Test error")
         mock_engine.return_value = mock_instance
 
-        with pytest.raises(RuntimeError, match="Test error"):
-            await handle_find_providers({"query": "test"})
+        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+            with pytest.raises(RuntimeError, match="Test error"):
+                await handle_find_providers({"query": "test"})
+
+        assert "Error in opendata-find-providers: Test error" in caplog.text
 
 
 @pytest.mark.anyio
-async def test_explain_choice_exception_handling():
+async def test_explain_choice_exception_handling(caplog):
     """Test that exceptions in explain_choice are logged and re-raised."""
     with patch("opendata_mcp.providers.meta_data_mcp.RoutingEngine") as mock_engine:
         mock_instance = AsyncMock()
         mock_instance.route.side_effect = ValueError("Bad params")
         mock_engine.return_value = mock_instance
 
-        with pytest.raises(ValueError, match="Bad params"):
-            await handle_explain_choice({"query": "test"})
+        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+            with pytest.raises(ValueError, match="Bad params"):
+                await handle_explain_choice({"query": "test"})
+
+        assert "Error in opendata-explain-choice: Bad params" in caplog.text
 
 
 @pytest.mark.anyio
-async def test_list_domains_exception_handling():
+async def test_list_domains_exception_handling(caplog):
     """Test that exceptions in list_domains are logged and re-raised."""
     with patch("opendata_mcp.providers.meta_data_mcp.list_domains") as mock_list:
         mock_list.side_effect = RuntimeError("Domain list error")
 
-        with pytest.raises(RuntimeError, match="Domain list error"):
-            await handle_list_domains({})
+        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+            with pytest.raises(RuntimeError, match="Domain list error"):
+                await handle_list_domains({})
+
+        assert "Error in opendata-list-domains: Domain list error" in caplog.text
 
 
 @pytest.mark.anyio
-async def test_list_regions_exception_handling():
+async def test_list_regions_exception_handling(caplog):
     """Test that exceptions in list_regions are logged and re-raised."""
     with patch("opendata_mcp.providers.meta_data_mcp.list_regions") as mock_list:
         mock_list.side_effect = RuntimeError("Region list error")
 
-        with pytest.raises(RuntimeError, match="Region list error"):
-            await handle_list_regions({})
+        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+            with pytest.raises(RuntimeError, match="Region list error"):
+                await handle_list_regions({})
+
+        assert "Error in opendata-list-regions: Region list error" in caplog.text
 
 
 @pytest.mark.anyio
-async def test_list_providers_exception_handling():
+async def test_list_providers_exception_handling(caplog):
     """Test that exceptions in list_providers are logged and re-raised."""
     with patch("opendata_mcp.providers.meta_data_mcp.REGISTRY") as mock_registry:
         mock_registry.__getitem__.side_effect = RuntimeError("Registry error")
 
-        with pytest.raises(RuntimeError, match="Registry error"):
-            await handle_list_providers({"limit": 10})
+        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+            with pytest.raises(RuntimeError, match="Registry error"):
+                await handle_list_providers({"limit": 10})
+
+        assert "Error in opendata-list-providers: Registry error" in caplog.text
 
 
 # Resource handler coverage tests
 def test_read_all_providers_returns_serialized_registry():
     """Test that resource handler returns serialized registry as string."""
     from pydantic import AnyUrl
+
     uri = AnyUrl("registry://all-providers")
     result = handle_read_all_providers(uri)
     # Verify it's a string and starts with JSON array
@@ -210,14 +228,35 @@ def test_read_all_providers_returns_serialized_registry():
 
 
 def test_read_all_providers_includes_provider_data():
-    """Test that resource handler includes provider IDs and names."""
+    """Test that resource handler includes expected provider fields."""
     from pydantic import AnyUrl
+
     uri = AnyUrl("registry://all-providers")
-    result = handle_read_all_providers(uri)
-    # Verify the output contains expected provider references
-    assert isinstance(result, str)
-    # Check for some common provider IDs in the output
-    assert ("us_nasa" in result or "global_gbif" in result or "eu_copernicus" in result)
+    with patch(
+        "opendata_mcp.providers.meta_data_mcp.serialize_for_llm",
+        side_effect=lambda payload: json.dumps(payload),
+    ):
+        result = handle_read_all_providers(uri)
+    payload = json.loads(result)
+
+    assert isinstance(payload, list)
+    assert payload
+
+    provider = payload[0]
+    assert set(
+        [
+            "id",
+            "server_name",
+            "title",
+            "description",
+            "domains",
+            "regions",
+            "keywords",
+            "homepage",
+            "license_note",
+            "requires_env",
+        ]
+    ).issubset(provider.keys())
 
 
 # Prompt handler coverage tests
@@ -263,7 +302,10 @@ async def test_financial_research_use_case():
     """Test financial research use case prompt handler."""
     handler = PROMPTS_HANDLERS["usecase-financial-research"]
     result = await handler(None)
-    assert "financial" in result.description.lower() or "research" in result.description.lower()
+    assert (
+        "financial" in result.description.lower()
+        or "research" in result.description.lower()
+    )
     assert "financial research tool" in result.messages[0].content.text.lower()
 
 
@@ -272,7 +314,10 @@ async def test_climate_dashboard_use_case():
     """Test climate dashboard use case prompt handler."""
     handler = PROMPTS_HANDLERS["usecase-climate-dashboard"]
     result = await handler(None)
-    assert "climate" in result.description.lower() or "environment" in result.description.lower()
+    assert (
+        "climate" in result.description.lower()
+        or "environment" in result.description.lower()
+    )
     assert "climate" in result.messages[0].content.text.lower()
 
 
@@ -281,7 +326,10 @@ async def test_healthcare_analytics_use_case():
     """Test healthcare analytics use case prompt handler."""
     handler = PROMPTS_HANDLERS["usecase-healthcare-analytics"]
     result = await handler(None)
-    assert "health" in result.description.lower() or "epidemiology" in result.description.lower()
+    assert (
+        "health" in result.description.lower()
+        or "epidemiology" in result.description.lower()
+    )
     assert "healthcare" in result.messages[0].content.text.lower()
 
 
@@ -290,7 +338,10 @@ async def test_academic_literature_use_case():
     """Test academic literature use case prompt handler."""
     handler = PROMPTS_HANDLERS["usecase-academic-literature"]
     result = await handler(None)
-    assert "literature" in result.description.lower() or "academic" in result.description.lower()
+    assert (
+        "literature" in result.description.lower()
+        or "academic" in result.description.lower()
+    )
     assert "literature review" in result.messages[0].content.text.lower()
 
 
@@ -320,9 +371,7 @@ async def test_explain_choice_with_region_filter():
 @pytest.mark.anyio
 async def test_explain_choice_without_query():
     """Test explain_choice with just domain filter, no query."""
-    result = await handle_explain_choice(
-        {"domain": "finance", "limit": 2}
-    )
+    result = await handle_explain_choice({"domain": "finance", "limit": 2})
     payload = json.loads(result[0].text)
     assert payload["domain_filter"] == "finance"
     assert payload["results"]
@@ -336,23 +385,22 @@ async def test_main_function_creates_server():
 
     with patch("opendata_mcp.utils.create_mcp_server") as mock_create:
         with patch("opendata_mcp.utils.run_server") as mock_run:
-            mock_server = AsyncMock()
+            mock_server = object()
             mock_create.return_value = mock_server
-            mock_run.return_value = AsyncMock()
 
             # Call main with mocked functions
             await main(transport="stdio", port=8000, host="127.0.0.1")
 
             # Verify the server was created with correct parameters
-            mock_create.assert_called_once()
-            call_args = mock_create.call_args
-            assert call_args[0][0] == "opendata-mcp-meta"  # Server name
-            assert "resources" in call_args[1]
-            assert "tools" in call_args[1]
-            assert "prompts" in call_args[1]
-            assert "resources_handlers" in call_args[1]
-            assert "tools_handlers" in call_args[1]
-            assert "prompts_handlers" in call_args[1]
+            mock_create.assert_called_once_with(
+                "opendata-mcp-meta",
+                resources=RESOURCES,
+                resources_handlers=RESOURCES_HANDLERS,
+                tools=TOOLS,
+                tools_handlers=TOOLS_HANDLERS,
+                prompts=PROMPTS,
+                prompts_handlers=PROMPTS_HANDLERS,
+            )
 
             # Verify run_server was called
-            mock_run.assert_called_once()
+            mock_run.assert_awaited_once_with(mock_server, "stdio", 8000, "127.0.0.1")
