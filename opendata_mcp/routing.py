@@ -14,6 +14,7 @@ with configurable weights for flexible tuning.
 
 from __future__ import annotations
 
+import asyncio
 import difflib
 import hashlib
 import logging
@@ -219,6 +220,7 @@ class RoutingEngine:
         self.cache: OrderedDict[str, tuple[list[ScoredProvider], float]] = OrderedDict()
         self.cache_size = cache_size
         self.cache_ttl = cache_ttl_seconds
+        self._cache_lock = asyncio.Lock()
 
     def _cache_key(
         self,
@@ -255,18 +257,19 @@ class RoutingEngine:
         Returns:
             List of ScoredProvider ranked by score.
         """
-        # Check cache
         cache_key = self._cache_key(query, domain, region, explain)
-        if cache_key in self.cache:
-            cached_results, cached_time = self.cache[cache_key]
-            if time.time() - cached_time < self.cache_ttl:
-                log.debug(f"Cache hit for key {cache_key}")
-                self.cache.move_to_end(cache_key)
-                return cached_results[:limit]
-            else:
-                del self.cache[cache_key]
 
-        # Apply hard filters
+        async with self._cache_lock:
+            if cache_key in self.cache:
+                cached_results, cached_time = self.cache[cache_key]
+                if time.monotonic() - cached_time < self.cache_ttl:
+                    log.debug(f"Cache hit for key {cache_key}")
+                    self.cache.move_to_end(cache_key)
+                    return cached_results[:limit]
+                else:
+                    del self.cache[cache_key]
+
+        # Apply hard filters (outside lock — read-only REGISTRY access)
         filtered = [p for p in REGISTRY if self._passes_filters(p, domain, region)]
 
         # Score each provider
@@ -293,10 +296,10 @@ class RoutingEngine:
         # Sort by score descending, then by id for stability
         scored.sort(key=lambda x: (-x.score, x.entry.id))
 
-        # Cache the full scored results
-        if len(self.cache) >= self.cache_size:
-            self.cache.popitem(last=False)
-        self.cache[cache_key] = (scored, time.time())
+        async with self._cache_lock:
+            if len(self.cache) >= self.cache_size:
+                self.cache.popitem(last=False)
+            self.cache[cache_key] = (scored, time.monotonic())
 
         return scored[:limit]
 

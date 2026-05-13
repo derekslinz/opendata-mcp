@@ -30,11 +30,12 @@ class _TTLCache:
     """Thread-safe in-memory TTL cache for HTTP responses.
 
     Evicts the oldest entry when the cache is full. Entries older than
-    ``ttl`` seconds are treated as absent and evicted on next access.
+    their individual TTL (or the default TTL) are treated as absent and
+    evicted on next access.
     """
 
     def __init__(self, maxsize: int = _CACHE_MAX_SIZE, ttl: float = 60.0) -> None:
-        self._cache: dict[str, tuple[float, Any]] = {}
+        self._cache: dict[str, tuple[float, Any, float]] = {}
         self._maxsize = maxsize
         self._ttl = ttl
         self._lock = threading.Lock()
@@ -44,18 +45,18 @@ class _TTLCache:
             entry = self._cache.get(key)
             if entry is None:
                 return None
-            ts, val = entry
-            if time.monotonic() - ts > self._ttl:
+            ts, val, entry_ttl = entry
+            if time.monotonic() - ts > entry_ttl:
                 del self._cache[key]
                 return None
             return val
 
-    def set(self, key: str, val: Any) -> None:
+    def set(self, key: str, val: Any, ttl: float | None = None) -> None:
         with self._lock:
             if len(self._cache) >= self._maxsize:
                 oldest = min(self._cache, key=lambda k: self._cache[k][0])
                 del self._cache[oldest]
-            self._cache[key] = (time.monotonic(), val)
+            self._cache[key] = (time.monotonic(), val, ttl if ttl is not None else self._ttl)
 
     def clear(self) -> None:
         with self._lock:
@@ -140,10 +141,7 @@ def http_get(
     response.raise_for_status()
 
     if effective_ttl > 0:
-        # Update TTL on the shared cache instance if caller specified a different one.
-        if cache_ttl is not None and cache_ttl != _response_cache._ttl:
-            _response_cache._ttl = cache_ttl
-        _response_cache.set(key, response)  # type: ignore[possibly-undefined]
+        _response_cache.set(key, response, ttl=effective_ttl)  # type: ignore[possibly-undefined]
 
     return response
 

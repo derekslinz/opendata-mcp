@@ -39,6 +39,9 @@ from opendata_mcp.routing import RoutingEngine
 
 log = logging.getLogger(__name__)
 
+# Module-level singleton — cache survives across tool calls within the same server process.
+_engine = RoutingEngine()
+
 # Registration Variables
 RESOURCES: List[Any] = []
 RESOURCES_HANDLERS: dict[str, Any] = {}
@@ -85,9 +88,7 @@ async def handle_find_providers(
     try:
         params = FindProvidersParams(**(arguments or {}))
 
-        # Use sophisticated routing engine
-        engine = RoutingEngine()
-        scored_results = await engine.route(
+        scored_results = await _engine.route(
             query=params.query,
             domain=params.domain,
             region=params.region,
@@ -157,9 +158,7 @@ async def handle_explain_choice(
     try:
         params = ExplainChoiceParams(**(arguments or {}))
 
-        # Use routing engine with explanation enabled
-        engine = RoutingEngine()
-        scored_results = await engine.route(
+        scored_results = await _engine.route(
             query=params.query,
             domain=params.domain,
             region=params.region,
