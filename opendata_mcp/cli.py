@@ -14,7 +14,8 @@ import anyio  # noqa: E402
 import click  # noqa: E402
 from opendata_mcp import __version__  # noqa: E402
 
-LIB_NAME = "meta-data-mcp"
+LIB_NAME = "meta-data-mcp"        # CLI entry-point name (what users type)
+PACKAGE_NAME = "opendata-mcp"     # PyPI distribution name (what uvx installs)
 SERVER_PREFIX = "opendata-mcp-"
 
 
@@ -33,15 +34,19 @@ def _import_provider_module(provider: str):
 def _server_key(provider: str) -> str:
     """Return the Claude Desktop config key for *provider*.
 
-    Avoids the double-prefix bug: provider names that already begin with
-    ``opendata-mcp`` (e.g. ``meta_data_mcp`` → ``meta-data-mcp``)
-    are used as-is; all other providers get SERVER_PREFIX prepended.
+    Two pass-through cases (returned as-is):
+    - ``meta_data_mcp`` → ``"meta-data-mcp"``  (matches the CLI package name)
+    - Names already starting with ``opendata-mcp`` (e.g. ``opendata_mcp_all``
+      → ``"opendata-mcp-all"``)
+
+    All other providers get SERVER_PREFIX prepended:
+    e.g. ``ch_sbb`` → ``"opendata-mcp-ch-sbb"``
     """
     kebab = provider.replace("_", "-")
     prefix_stem = SERVER_PREFIX.rstrip("-")  # "opendata-mcp"
-    if kebab.startswith(prefix_stem):
-        return kebab  # e.g. "opendata-mcp-meta", "opendata-mcp-all"
-    return f"{SERVER_PREFIX}{kebab}"  # e.g. "opendata-mcp-ch-sbb"
+    if kebab == LIB_NAME or kebab.startswith(prefix_stem):
+        return kebab
+    return f"{SERVER_PREFIX}{kebab}"
 
 
 # Canonical config keys for the meta and aggregator servers.
@@ -49,7 +54,7 @@ _META_KEY = _server_key("meta_data_mcp")  # "meta-data-mcp"
 _ALL_KEY = _server_key("opendata_mcp_all")  # "opendata-mcp-all"
 
 # Legacy double-prefixed keys produced by earlier buggy versions.
-_LEGACY_META_KEY = f"{SERVER_PREFIX}{_META_KEY}"  # "opendata-mcp-opendata-mcp-meta"
+_LEGACY_META_KEY = f"{SERVER_PREFIX}{_META_KEY}"  # "opendata-mcp-meta-data-mcp"
 _LEGACY_ALL_KEY = f"{SERVER_PREFIX}{_ALL_KEY}"  # "opendata-mcp-opendata-mcp-all"
 
 
@@ -209,9 +214,11 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
             ],
             "env": {"OTEL_SDK_DISABLED": "true"},
         }
+    # uvx installs by PACKAGE_NAME but runs the LIB_NAME command.
+    # These differ when the PyPI package name != CLI entry-point name.
     return {
         "command": "uvx",
-        "args": [LIB_NAME, "run", "--transport", "stdio", provider],
+        "args": ["--from", PACKAGE_NAME, LIB_NAME, "run", "--transport", "stdio", provider],
     }
 
 
@@ -308,7 +315,7 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
     mode_label = (
         f"LOCAL mode pointing to {repo_root}"
         if use_local
-        else f"GLOBAL mode using 'uvx {LIB_NAME}'"
+        else f"GLOBAL mode using 'uvx --from {PACKAGE_NAME} {LIB_NAME}'"
     )
     click.echo(f"Configuring in {mode_label}")
 
@@ -581,16 +588,16 @@ def cleanup(_extra: tuple, apply: bool, local: bool):
         sys.exit(1)
 
     servers = config.get("mcpServers", {})
-    keep = {f"{SERVER_PREFIX}meta", f"{SERVER_PREFIX}all"}
+    keep = {_META_KEY, _ALL_KEY}
     legacy = sorted(k for k in servers if k.startswith(SERVER_PREFIX) and k not in keep)
 
     if not legacy:
         click.echo("No legacy opendata-mcp provider entries found.")
-        if f"{SERVER_PREFIX}meta" in servers and f"{SERVER_PREFIX}all" in servers:
+        if _META_KEY in servers and _ALL_KEY in servers:
             click.echo("✓ Already running the recommended meta + aggregator setup.")
         else:
             click.echo(
-                "Tip: run `uv run opendata-mcp setup-all` to install the recommended setup."
+                f"Tip: run `uv run {LIB_NAME} setup-all` to install the recommended setup."
             )
         return
 
@@ -600,8 +607,8 @@ def cleanup(_extra: tuple, apply: bool, local: bool):
 
     if not apply:
         click.echo(
-            "\nDry run — no changes made. Re-run with --apply to remove these "
-            "and install opendata-mcp-meta + opendata-mcp-all."
+            f"\nDry run — no changes made. Re-run with --apply to remove these "
+            f"and install {_META_KEY} + {_ALL_KEY}."
         )
         return
 
@@ -680,7 +687,7 @@ def inspect(provider: str, local: bool):
             provider,
         ]
     else:
-        server_cmd = ["uvx", LIB_NAME, "run", "--transport", "stdio", provider]
+        server_cmd = ["uvx", "--from", PACKAGE_NAME, LIB_NAME, "run", "--transport", "stdio", provider]
 
     click.echo(f"Starting MCP Inspector for provider '{provider}'…")
     click.echo("Open http://localhost:5173 in your browser (Ctrl-C to stop).")
