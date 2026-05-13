@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_wikidata import (
+from meta_data_mcp.providers.global_wikidata import (
     TOOLS,
     TOOLS_HANDLERS,
     handle_wikidata_get_entities,

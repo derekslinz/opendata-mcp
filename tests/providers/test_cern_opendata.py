@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.cern_opendata import (
+from meta_data_mcp.providers.cern_opendata import (
     handle_search_records,
     handle_get_record,
     handle_list_collections,

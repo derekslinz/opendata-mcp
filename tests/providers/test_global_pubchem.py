@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from opendata_mcp.providers.global_pubchem import (
+from meta_data_mcp.providers.global_pubchem import (
     handle_pubchem_compound,
     handle_pubchem_substance,
 )

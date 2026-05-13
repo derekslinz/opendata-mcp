@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from opendata_mcp.providers.meta_data_mcp import (
+from meta_data_mcp.providers.meta_data_mcp import (
     RESOURCES,
     PROMPTS,
     PROMPTS_HANDLERS,
@@ -161,10 +161,10 @@ async def test_list_providers_pagination():
 @pytest.mark.anyio
 async def test_find_providers_exception_handling(caplog):
     """Test that exceptions in find_providers are logged and re-raised."""
-    with patch("opendata_mcp.providers.meta_data_mcp._engine") as mock_engine:
+    with patch("meta_data_mcp.providers.meta_data_mcp._engine") as mock_engine:
         mock_engine.route = AsyncMock(side_effect=RuntimeError("Test error"))
 
-        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+        with caplog.at_level("ERROR", logger="meta_data_mcp.providers.meta_data_mcp"):
             with pytest.raises(RuntimeError, match="Test error"):
                 await handle_find_providers({"query": "test"})
 
@@ -174,10 +174,10 @@ async def test_find_providers_exception_handling(caplog):
 @pytest.mark.anyio
 async def test_explain_choice_exception_handling(caplog):
     """Test that exceptions in explain_choice are logged and re-raised."""
-    with patch("opendata_mcp.providers.meta_data_mcp._engine") as mock_engine:
+    with patch("meta_data_mcp.providers.meta_data_mcp._engine") as mock_engine:
         mock_engine.route = AsyncMock(side_effect=ValueError("Bad params"))
 
-        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+        with caplog.at_level("ERROR", logger="meta_data_mcp.providers.meta_data_mcp"):
             with pytest.raises(ValueError, match="Bad params"):
                 await handle_explain_choice({"query": "test"})
 
@@ -187,10 +187,10 @@ async def test_explain_choice_exception_handling(caplog):
 @pytest.mark.anyio
 async def test_list_domains_exception_handling(caplog):
     """Test that exceptions in list_domains are logged and re-raised."""
-    with patch("opendata_mcp.providers.meta_data_mcp.list_domains") as mock_list:
+    with patch("meta_data_mcp.providers.meta_data_mcp.list_domains") as mock_list:
         mock_list.side_effect = RuntimeError("Domain list error")
 
-        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+        with caplog.at_level("ERROR", logger="meta_data_mcp.providers.meta_data_mcp"):
             with pytest.raises(RuntimeError, match="Domain list error"):
                 await handle_list_domains({})
 
@@ -200,10 +200,10 @@ async def test_list_domains_exception_handling(caplog):
 @pytest.mark.anyio
 async def test_list_regions_exception_handling(caplog):
     """Test that exceptions in list_regions are logged and re-raised."""
-    with patch("opendata_mcp.providers.meta_data_mcp.list_regions") as mock_list:
+    with patch("meta_data_mcp.providers.meta_data_mcp.list_regions") as mock_list:
         mock_list.side_effect = RuntimeError("Region list error")
 
-        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+        with caplog.at_level("ERROR", logger="meta_data_mcp.providers.meta_data_mcp"):
             with pytest.raises(RuntimeError, match="Region list error"):
                 await handle_list_regions({})
 
@@ -213,10 +213,10 @@ async def test_list_regions_exception_handling(caplog):
 @pytest.mark.anyio
 async def test_list_providers_exception_handling(caplog):
     """Test that exceptions in list_providers are logged and re-raised."""
-    with patch("opendata_mcp.providers.meta_data_mcp.REGISTRY") as mock_registry:
+    with patch("meta_data_mcp.providers.meta_data_mcp.REGISTRY") as mock_registry:
         mock_registry.__getitem__.side_effect = RuntimeError("Registry error")
 
-        with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
+        with caplog.at_level("ERROR", logger="meta_data_mcp.providers.meta_data_mcp"):
             with pytest.raises(RuntimeError, match="Registry error"):
                 await handle_list_providers({"limit": 10})
 
@@ -242,7 +242,7 @@ def test_read_all_providers_includes_provider_data():
 
     uri = AnyUrl("registry://all-providers")
     with patch(
-        "opendata_mcp.providers.meta_data_mcp.serialize_for_llm",
+        "meta_data_mcp.providers.meta_data_mcp.serialize_for_llm",
         side_effect=lambda payload: json.dumps(payload),
     ):
         result = handle_read_all_providers(uri)
@@ -377,10 +377,10 @@ async def test_explain_choice_without_query():
 @pytest.mark.anyio
 async def test_main_function_creates_server():
     """Test that main function creates MCP server with all resources/tools/prompts."""
-    from opendata_mcp.providers.meta_data_mcp import main
+    from meta_data_mcp.providers.meta_data_mcp import main
 
-    with patch("opendata_mcp.utils.create_mcp_server") as mock_create:
-        with patch("opendata_mcp.utils.run_server") as mock_run:
+    with patch("meta_data_mcp.utils.create_mcp_server") as mock_create:
+        with patch("meta_data_mcp.utils.run_server") as mock_run:
             mock_server = object()
             mock_create.return_value = mock_server
 

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from opendata_mcp.providers.eu_eurostat import (
+from meta_data_mcp.providers.eu_eurostat import (
     list_eurostat_datasets,
     EurostatListDatasetsParams,
     handle_eurostat_list_datasets,

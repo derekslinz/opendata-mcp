@@ -3,7 +3,7 @@ from unittest.mock import patch, Mock
 import httpx
 from urllib.parse import urlparse
 
-from opendata_mcp.providers.global_wikipedia import (
+from meta_data_mcp.providers.global_wikipedia import (
     TOOLS,
     TOOLS_HANDLERS,
     handle_wikipedia_get_summary,

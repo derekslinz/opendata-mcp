@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_europepmc import (
+from meta_data_mcp.providers.global_europepmc import (
     handle_europepmc_search,
     handle_europepmc_get_article,
     handle_europepmc_references,

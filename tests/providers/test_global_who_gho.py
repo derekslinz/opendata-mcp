@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
 import httpx
-from opendata_mcp.providers.global_who_gho import (
+from meta_data_mcp.providers.global_who_gho import (
     handle_list_indicators,
     handle_get_indicator_data,
     handle_list_dimensions,

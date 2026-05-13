@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_oecd import (
+from meta_data_mcp.providers.global_oecd import (
     handle_list_dataflows,
     handle_get_dataflow,
     handle_get_datastructure,

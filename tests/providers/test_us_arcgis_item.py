@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from opendata_mcp.providers.us_arcgis_item import (
+from meta_data_mcp.providers.us_arcgis_item import (
     handle_us_arcgis_get_item,
 )
 

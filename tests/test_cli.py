@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from opendata_mcp.cli import cli
+from meta_data_mcp.cli import cli
 
 
 @pytest.fixture
@@ -18,8 +18,8 @@ def test_run_valid_provider(runner):
 
     mock_module = type("Module", (), {"main": mock_main})
 
-    with patch("opendata_mcp.cli._import_provider_module", return_value=mock_module):
-        with patch("opendata_mcp.cli.anyio.run") as mock_run:
+    with patch("meta_data_mcp.cli._import_provider_module", return_value=mock_module):
+        with patch("meta_data_mcp.cli.anyio.run") as mock_run:
             result = runner.invoke(cli, ["run", "test_provider"])
 
     assert result.exit_code == 0
@@ -84,7 +84,7 @@ def test_info_invalid_provider(runner):
 
 
 def test_version_command(runner):
-    with patch("opendata_mcp.cli.__version__", "1.0.0"):
+    with patch("meta_data_mcp.cli.__version__", "1.0.0"):
         result = runner.invoke(cli, ["version"])
 
     assert result.exit_code == 0
@@ -96,8 +96,8 @@ def test_setup_invalid_provider_does_not_write_config(runner, tmp_path):
     claude_dir.mkdir(parents=True)
     config_path = claude_dir / "claude_desktop_config.json"
 
-    with patch("opendata_mcp.cli.platform.system", return_value="Darwin"):
-        with patch("opendata_mcp.cli.Path.home", return_value=tmp_path):
+    with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
             result = runner.invoke(cli, ["setup", "nonexistent_provider"])
 
     assert result.exit_code == 1

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.eu_copernicus import (
+from meta_data_mcp.providers.eu_copernicus import (
     list_copernicus_collections,
     ListCollectionsParams,
     handle_list_collections,

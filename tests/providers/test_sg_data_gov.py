@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.sg_data_gov import (
+from meta_data_mcp.providers.sg_data_gov import (
     handle_sg_datagov_list_datasets,
     handle_sg_datagov_get_dataset,
     handle_sg_datagov_list_collections,

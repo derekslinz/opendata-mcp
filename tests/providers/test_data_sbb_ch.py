@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
 
-from opendata_mcp.providers.ch_sbb import (
+from meta_data_mcp.providers.ch_sbb import (
     fetch_rail_traffic_info,
     TrafficInfoParams,
     handle_rail_traffic_info,

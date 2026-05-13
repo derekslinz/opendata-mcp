@@ -1,7 +1,7 @@
 import json
 import pytest
 from unittest.mock import patch, Mock
-from opendata_mcp.providers.nl_cbs import (
+from meta_data_mcp.providers.nl_cbs import (
     fetch_cbs_data,
     CBSDataParams,
     handle_cbs_data,

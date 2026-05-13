@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import httpx
 
-from opendata_mcp import utils
+from meta_data_mcp import utils
 
 
 def _response(name: str) -> Mock:

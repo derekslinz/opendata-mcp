@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_opensky import (
+from meta_data_mcp.providers.global_opensky import (
     handle_get_states_all,
     handle_get_states_by_aircraft,
     handle_get_flights_aircraft,
