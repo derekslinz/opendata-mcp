@@ -243,20 +243,18 @@ def test_read_all_providers_includes_provider_data():
     assert payload
 
     provider = payload[0]
-    assert set(
-        [
-            "id",
-            "server_name",
-            "title",
-            "description",
-            "domains",
-            "regions",
-            "keywords",
-            "homepage",
-            "license_note",
-            "requires_env",
-        ]
-    ).issubset(provider.keys())
+    assert {
+        "id",
+        "server_name",
+        "title",
+        "description",
+        "domains",
+        "regions",
+        "keywords",
+        "homepage",
+        "license_note",
+        "requires_env",
+    }.issubset(provider.keys())
 
 
 # Prompt handler coverage tests
