@@ -133,7 +133,7 @@ TOOLS_HANDLERS["courtlistener-search"] = handle_courtlistener_search
 class CourtListenerListCourtsParams(BaseModel):
     """Parameters for listing CourtListener courts."""
 
-    page: int = Field(default=1, description="Results page (1-indexed).")
+    page: int = Field(default=1, ge=1, description="Results page (1-indexed).")
 
 
 def fetch_courtlistener_list_courts(params: CourtListenerListCourtsParams) -> dict:

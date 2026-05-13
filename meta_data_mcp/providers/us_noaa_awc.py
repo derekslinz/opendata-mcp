@@ -37,7 +37,7 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 class AWCMetarParams(BaseModel):
     """Parameters for fetching METAR data."""
 
-    ids: str = Field(..., description="Station IDs (e.g. 'KJFK,EGLL')")
+    ids: str = Field(..., min_length=1, description="Station IDs (e.g. 'KJFK,EGLL')")
 
 
 def fetch_awc_metar(params: AWCMetarParams) -> Any:
