@@ -34,7 +34,7 @@ def _server_key(provider: str) -> str:
     """Return the Claude Desktop config key for *provider*.
 
     Avoids the double-prefix bug: provider names that already begin with
-    ``opendata-mcp`` (e.g. ``opendata_mcp_meta`` → ``opendata-mcp-meta``)
+    ``opendata-mcp`` (e.g. ``meta_data_mcp`` → ``meta-data-mcp``)
     are used as-is; all other providers get SERVER_PREFIX prepended.
     """
     kebab = provider.replace("_", "-")
@@ -45,7 +45,7 @@ def _server_key(provider: str) -> str:
 
 
 # Canonical config keys for the meta and aggregator servers.
-_META_KEY = _server_key("opendata_mcp_meta")  # "opendata-mcp-meta"
+_META_KEY = _server_key("meta_data_mcp")  # "meta-data-mcp"
 _ALL_KEY = _server_key("opendata_mcp_all")  # "opendata-mcp-all"
 
 # Legacy double-prefixed keys produced by earlier buggy versions.
@@ -218,7 +218,7 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
 @cli.command(
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
 )
-@click.argument("provider", default="opendata_mcp_meta", required=False)
+@click.argument("provider", default="meta_data_mcp", required=False)
 @click.argument("_extra", nargs=-1)
 @click.option(
     "--local", is_flag=True, help="Force local development mode using absolute paths."
@@ -315,7 +315,7 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
     # When setting up the meta provider, automatically register the aggregator
     # companion so Claude has both discovery tools and access to all 300+ data tools.
     companion_key = None
-    if provider == "opendata_mcp_meta":
+    if provider == "meta_data_mcp":
         companion = "opendata_mcp_all"
         companion_key = _server_key(companion)
         if companion_key not in config["mcpServers"] or force:
@@ -480,7 +480,7 @@ def setup_all(_extra: tuple, local: bool, force: bool, individual_providers: boo
         registered = []
 
         # Always register the meta + aggregator pair.
-        for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
+        for provider in ("meta_data_mcp", "opendata_mcp_all"):
             key = _server_key(provider)
             if key in config["mcpServers"] and not force:
                 click.echo(
@@ -498,7 +498,7 @@ def setup_all(_extra: tuple, local: bool, force: bool, individual_providers: boo
             import pkgutil
             import opendata_mcp.providers as providers_pkg
 
-            skip = {"__template__", "opendata_mcp_meta", "opendata_mcp_all"}
+            skip = {"__template__", "meta_data_mcp", "opendata_mcp_all"}
             all_providers = [
                 name
                 for finder, name, ispkg in pkgutil.iter_modules(providers_pkg.__path__)
@@ -615,7 +615,7 @@ def cleanup(_extra: tuple, apply: bool, local: bool):
     mode_label = "LOCAL" if use_local else "GLOBAL"
 
     installed = []
-    for provider in ("opendata_mcp_meta", "opendata_mcp_all"):
+    for provider in ("meta_data_mcp", "opendata_mcp_all"):
         key = _server_key(provider)
         if key not in servers:
             servers[key] = _build_server_entry(provider, use_local, repo_root)

@@ -57,7 +57,7 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 _SKIP_MODULES: frozenset[str] = frozenset(
     {
         "__template__",
-        "opendata_mcp_meta",
+        "meta_data_mcp",
         "opendata_mcp_all",
     }
 )
