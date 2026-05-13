@@ -24,7 +24,10 @@ def anyio_backend():
 async def test_us_raleigh_search_catalog_success():
     """Smoke test: us-raleigh-search-catalog returns success payload."""
     with patch("httpx.get") as mock_get:
-        mock_get.return_value.json.return_value = {"ok": True, "marker": "GENERATED_TEST_MARKER"}
+        mock_get.return_value.json.return_value = {
+            "ok": True,
+            "marker": "GENERATED_TEST_MARKER",
+        }
         mock_get.return_value.raise_for_status = Mock()
         mock_get.return_value.status_code = 200
         result = await handle_us_raleigh_search_catalog({})
@@ -45,10 +48,13 @@ async def test_us_raleigh_search_catalog_http_error():
 async def test_us_raleigh_get_metadata_success():
     """Smoke test: us-raleigh-get-metadata returns success payload."""
     with patch("httpx.get") as mock_get:
-        mock_get.return_value.json.return_value = {"ok": True, "marker": "GENERATED_TEST_MARKER"}
+        mock_get.return_value.json.return_value = {
+            "ok": True,
+            "marker": "GENERATED_TEST_MARKER",
+        }
         mock_get.return_value.raise_for_status = Mock()
         mock_get.return_value.status_code = 200
-        result = await handle_us_raleigh_get_metadata({'dataset_id': 'test'})
+        result = await handle_us_raleigh_get_metadata({"dataset_id": "test"})
         assert len(result) == 1
         assert "GENERATED_TEST_MARKER" in result[0].text
 
@@ -59,4 +65,4 @@ async def test_us_raleigh_get_metadata_http_error():
     with patch("httpx.get") as mock_get:
         mock_get.side_effect = httpx.HTTPError("Network down")
         with pytest.raises(httpx.HTTPError):
-            await handle_us_raleigh_get_metadata({'dataset_id': 'test'})
+            await handle_us_raleigh_get_metadata({"dataset_id": "test"})

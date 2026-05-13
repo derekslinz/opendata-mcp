@@ -909,6 +909,35 @@ REGISTRY: tuple[ProviderEntry, ...] = (
 )
 
 
+# Plugins added at runtime by the autonomous-creation flow (or by tests).
+# Held separately from the static REGISTRY tuple so that the source-of-truth
+# tuple stays immutable and reloadable.
+DYNAMIC_REGISTRY: list[ProviderEntry] = []
+
+
+def register_plugin(entry: ProviderEntry) -> None:
+    """Register a plugin discovered at runtime.
+
+    Used by the autonomous-creation flow after `generate_provider.py` has
+    materialized a new plugin module. Subsequent calls to `find_providers`,
+    `get_provider`, `all_ids`, `list_domains`, and `list_regions` will
+    include the new entry.
+
+    Idempotent — re-registering the same id is a no-op.
+    """
+    if any(e.id == entry.id for e in REGISTRY):
+        return
+    if any(e.id == entry.id for e in DYNAMIC_REGISTRY):
+        return
+    DYNAMIC_REGISTRY.append(entry)
+
+
+def iter_registry() -> Iterable[ProviderEntry]:
+    """Iterate over the static + dynamically-registered plugin entries."""
+    yield from REGISTRY
+    yield from DYNAMIC_REGISTRY
+
+
 def _normalize(text: str) -> str:
     return text.lower().strip()
 
@@ -930,7 +959,7 @@ def find_providers(
     reg = _normalize(region) if region else None
 
     scored: list[tuple[int, ProviderEntry]] = []
-    for entry in REGISTRY:
+    for entry in iter_registry():
         if dom and dom not in entry.domains:
             continue
         if reg and reg not in entry.regions:
@@ -972,7 +1001,7 @@ def find_providers(
 def get_provider(provider_id: str) -> ProviderEntry | None:
     """Return the registry entry for `provider_id`, or None if not present."""
     needle = _normalize(provider_id)
-    for entry in REGISTRY:
+    for entry in iter_registry():
         if entry.id.lower() == needle:
             return entry
     return None
@@ -981,7 +1010,7 @@ def get_provider(provider_id: str) -> ProviderEntry | None:
 def list_domains() -> list[str]:
     """Distinct domains actually used by registered providers."""
     found: set[str] = set()
-    for entry in REGISTRY:
+    for entry in iter_registry():
         found.update(entry.domains)
     return sorted(found)
 
@@ -989,19 +1018,19 @@ def list_domains() -> list[str]:
 def list_regions() -> list[str]:
     """Distinct regions actually used by registered providers."""
     found: set[str] = set()
-    for entry in REGISTRY:
+    for entry in iter_registry():
         found.update(entry.regions)
     return sorted(found)
 
 
 def all_ids() -> list[str]:
-    return [entry.id for entry in REGISTRY]
+    return [entry.id for entry in iter_registry()]
 
 
 def _check_registry_vocabulary() -> Iterable[str]:
     """Yield human-readable warnings for any registry entries that use a
     domain or region outside the controlled vocabularies. Intended for tests."""
-    for entry in REGISTRY:
+    for entry in iter_registry():
         for d in entry.domains:
             if d not in DOMAINS:
                 yield f"{entry.id}: unknown domain '{d}'"
