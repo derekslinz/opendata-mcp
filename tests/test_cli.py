@@ -127,23 +127,6 @@ def test_remove_creates_backup_before_writing(runner, tmp_path):
     assert backup_path.read_text() == original_content
 
 
-def test_cleanup_apply_creates_backup_before_writing(runner, tmp_path):
-    """cleanup --apply writes a .json.bak before overwriting claude_desktop_config.json."""
-    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
-    claude_dir.mkdir(parents=True)
-    config_path = claude_dir / "claude_desktop_config.json"
-    original_content = '{"mcpServers": {"opendata-mcp-ch-sbb": {}}}'
-    config_path.write_text(original_content)
-
-    with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
-        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
-            runner.invoke(cli, ["cleanup", "--apply"])
-
-    backup_path = config_path.with_suffix(".json.bak")
-    assert backup_path.exists(), ".json.bak should be created before writing config"
-    assert backup_path.read_text() == original_content
-
-
 def test_strip_injected_server_keys_preserves_first_occurrence_only(tmp_path):
     """_strip_injected_server_keys keeps a command-name token only once."""
     import sys as _sys

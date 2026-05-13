@@ -221,10 +221,6 @@ uv run meta-data-mcp setup
 
 # remove meta-data-mcp from Claude Desktop
 uv run meta-data-mcp remove meta-data-mcp
-
-# clean up any legacy individual-provider entries
-uv run meta-data-mcp cleanup
-uv run meta-data-mcp cleanup --apply
 ```
 
 > [!WARNING]
@@ -232,17 +228,11 @@ uv run meta-data-mcp cleanup --apply
 > Setting up 66+ providers one by one (`setup ch_sbb`, `setup us_nasa`, …) is no longer
 > recommended. Use the single setup command below instead — it gives Claude both discovery and
 > data access through a single pair of servers. Any existing individual provider entries are
-> automatically removed the next time you run `setup` or `cleanup`.
+> automatically removed the next time you run `setup`.
 >
 > **Recommended setup:**
 > ```bash
 > uv run meta-data-mcp setup
-> ```
->
-> **Migrate existing config:**
-> ```bash
-> uv run meta-data-mcp cleanup          # preview what will be removed
-> uv run meta-data-mcp cleanup --apply  # remove legacy entries and install meta + aggregator
 > ```
 
 Quickstart — install the meta server and restart Claude Desktop:
