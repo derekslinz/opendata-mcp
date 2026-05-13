@@ -1,15 +1,23 @@
-# Open Data Model Context Protocol
-Inspired by/born out of  https://github.com/grll 's project, it's grown into a sort of window into the world of amazing open data sources.
+# meta-data-mcp server is a meta model context protocol server 
 
+The (meta)-data-mcp is an mmcp server: it acts as an intelligent gateway to an ever-growing library of open data sources, keeping track of vast lakes of data so you don't have to. 
+
+Never heard of an mmcp before? Don't feel bad, I made it up while writing this just now. Originally this was the opendata-mcp—but as the sources grew from one to dozens and more, the tools available quickly exceeded 300, and the list of installed sources was just ridiculous.
+
+So I decided to take a hard left, rename the project, and focus on the tricky part. There's an absurd amount of data available --finding data isn't the hard part, it's finding the data that you need, when you need it. 
+
+To illustrate the point: I love the overpass API from [OpenStreetMap](https://wiki.openstreetmap.org/wiki/Overpass_API) --I've spent hours playing with it...but I've never once used it for any actual purpose. Finding the tool that you need is hard enough, finding it when you need it is magical.
+
+This project aims to be magical.
 
 ## Available Providers
 
 > [!IMPORTANT]
 > **Start Here: The Meta Provider (`meta_data_mcp`)**
 >
-> With 56 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
+> With 59 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
 >
-> It acts as a search engine and discovery gateway, equipped with pre-populated Prompts and specialized Tools (`find-providers`, `list-domains`) that allow your LLM to dynamically discover the exact dataset it needs and instruct you on how to install it.
+> It acts as a search engine and discovery gateway, equipped with pre-populated Prompts and specialized Tools (`find-providers`, `explain-choice`, `list-domains`, `list-regions`, `describe-provider`, `list-providers`) that allow your LLM to dynamically discover the exact dataset it needs and instruct you on how to install it.
 >
 > **Install it now:**
 > ```bash
@@ -21,7 +29,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 
 | Provider | Name | Description |
 |---|---|---|
-| `meta_data_mcp` | OpenData MCP Meta | Aggregator: `find-providers`, `describe-provider`, `list-domains`, `list-regions`, `list-providers`. Set this up FIRST; it tells the LLM which other providers to install. |
+| `meta_data_mcp` | OpenData MCP Meta | Aggregator: `find-providers`, `explain-choice`, `list-domains`, `list-regions`, `describe-provider`, `list-providers`. Set this up FIRST; it tells the LLM which other providers to install. |
 
 ### Government / Civic
 
@@ -180,7 +188,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 #### The "Install Meta + Run Everything" Pattern
 
-With 56 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
+With 59 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
 
 1. **Install Meta**: Set up the meta-aggregator provider FIRST.
    ```bash
@@ -327,7 +335,7 @@ See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field r
    * Each data source needs its own python module.
    * Create a new Python module in `opendata_mcp/providers/`.
    * Use a descriptive name following the pattern: `{country_code}_{organization}.py` (e.g., `ch_sbb.py`).
-   * Start with our [template file](https://github.com/derekslinz/opendata-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
+   * Start with our [template file](https://github.com/derekslinz/meta-data-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
    * Use `http_get` from `opendata_mcp.utils` for all outbound requests (sets the required User-Agent automatically).
 2. **Implement Required Components**
 
