@@ -460,7 +460,9 @@ TOOLS.append(
         inputSchema=RIPEStatASNNeighboursHistoryParams.model_json_schema(),
     )
 )
-TOOLS_HANDLERS["ripestat-asn-neighbours-history"] = handle_ripestat_asn_neighbours_history
+TOOLS_HANDLERS["ripestat-asn-neighbours-history"] = (
+    handle_ripestat_asn_neighbours_history
+)
 
 
 ###################

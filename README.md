@@ -1,39 +1,92 @@
-# meta-data-mcp server is a meta model context protocol server 
+# meta-data-mcp
 
-The (meta)-data-mcp is an mmcp server: it acts as an intelligent gateway to an ever-growing library of open data sources, keeping track of vast lakes of data so you don't have to. 
+> A single MCP server that transparently routes user requests to ~60 open-data sources.
 
-Never heard of an mmcp before? Don't feel bad, I made it up while writing this just now. Originally this was the opendata-mcp—but as the sources grew from one to dozens and more, the tools available quickly exceeded 300, and the list of installed sources was just ridiculous.
+`meta-data-mcp` is one MCP server — not many. Under the hood it bundles ~60 *plugins*, each wrapping a different open-data API. The plugins are an implementation detail; from your LLM's perspective there is one server, one set of tools, and one place to ask "where can I find data about X?"
 
-So I decided to take a hard left, rename the project, and focus on the tricky part. There's an absurd amount of data available --finding data isn't the hard part, it's finding the data that you need, when you need it. 
+You install one server. You get all the data, discoverable through built-in routing tools.
 
-To illustrate the point: I love the overpass API from [OpenStreetMap](https://wiki.openstreetmap.org/wiki/Overpass_API) --I've spent hours playing with it...but I've never once used it for any actual purpose. Finding the tool that you need is hard enough, finding it when you need it is magical.
+## Why "meta"?
 
-This project aims to be magical.
+Finding open data isn't the hard part — there's an absurd amount of it available. The hard part is finding the right dataset *when you need it*. `meta-data-mcp` makes that automatic:
 
-## Available Providers
+- The LLM calls `opendata-find-providers` ("FX rates", "court rulings", "earthquakes near Lisbon") and the server routes the query against an internal registry of every bundled plugin.
+- The LLM then calls the matching tool directly. No setup step in between, no separate servers, no per-provider install rituals.
 
-> [!IMPORTANT]
-> **Start Here: The Meta Provider (`meta_data_mcp`)**
->
-> With 59 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
->
-> It acts as a search engine and discovery gateway, equipped with pre-populated Prompts and specialized Tools (`find-providers`, `explain-choice`, `list-domains`, `list-regions`, `describe-provider`, `list-providers`) that allow your LLM to dynamically discover the exact dataset it needs and instruct you on how to install it.
->
-> **Install it now:**
-> ```bash
-> uv run meta-data-mcp setup meta_data_mcp
-> ```
-<img width="1779" height="1092" alt="Screenshot 2026-05-11 at 21 50 39" src="https://github.com/user-attachments/assets/6173d926-769a-4fc8-bf4a-07669033719b" />
+This project was forked from [opendata-mcp](https://github.com/OpenDataMCP/OpenDataMCP) and reshaped around the single-server idea once the catalogue passed a few dozen plugins.
 
-### Meta / Discovery
+## Installation
 
-| Provider | Name | Description |
-|---|---|---|
-| `meta_data_mcp` | OpenData MCP Meta | Aggregator: `find-providers`, `explain-choice`, `list-domains`, `list-regions`, `describe-provider`, `list-providers`. Set this up FIRST; it tells the LLM which other providers to install. |
+You'll need [Claude Desktop](https://claude.ai/download) and `uv` (a Python package manager).
+
+```bash
+# macOS — install uv via Homebrew so Claude Desktop can find it
+brew install uv
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Then register the server with Claude Desktop:
+
+```bash
+uv run meta-data-mcp setup
+```
+
+That single command:
+
+- Adds **one** entry to `claude_desktop_config.json` — the key is `meta-data-mcp`.
+- Removes any legacy entries left over from earlier multi-server setups (`opendata-mcp-meta`, `opendata-mcp-all`, and any individual `opendata-mcp-*` provider entries).
+- Backs up your existing config to `claude_desktop_config.json.bak` before writing.
+
+Restart Claude Desktop and you'll see one new server with discovery tools + every plugin's tools available under it.
+
+## CLI
+
+There is one server, so the CLI takes no "provider" argument. Every command operates on the one `meta-data-mcp` server.
+
+| Command | What it does |
+|---|---|
+| `uv run meta-data-mcp run` | Run the server (default SSE; pass `--transport stdio` for Claude Desktop). |
+| `uv run meta-data-mcp setup` | Register the server in Claude Desktop's config. |
+| `uv run meta-data-mcp remove` | Unregister the server from Claude Desktop. |
+| `uv run meta-data-mcp cleanup` | Detect and remove legacy multi-server entries (`--apply` to commit). |
+| `uv run meta-data-mcp inspect` | Launch [mcp-inspector](https://modelcontextprotocol.io/docs/tools/inspector) against the server. |
+| `uv run meta-data-mcp list` | Informational: list the internal plugins bundled in this server. |
+| `uv run meta-data-mcp info` | Informational: show server overview. Pass `--plugin <name>` for plugin-level details. |
+| `uv run meta-data-mcp version` | Print the package version. |
+
+The `list` command exists for transparency about what's bundled — **plugins are not separately installable, runnable, or addressable**. They are loaded automatically when the server starts.
+
+## Migrating from earlier multi-server setups
+
+If you used an older version of this project that installed one MCP server per provider (or the two-server `opendata-mcp-meta` + `opendata-mcp-all` pattern), `setup` cleans those up automatically the next time you run it. To preview what will be removed without changing anything:
+
+```bash
+uv run meta-data-mcp cleanup            # preview
+uv run meta-data-mcp cleanup --apply    # apply
+```
+
+## Discovery tools (exposed to the LLM)
+
+These are the tools that make the routing transparent — the LLM uses them to find the right plugin without you having to tell it which tool to call:
+
+| Tool | Purpose |
+|---|---|
+| `opendata-find-providers` | Free-text search over the registry. Returns ranked plugin matches. |
+| `opendata-explain-choice` | Show the scoring breakdown for a search (useful for debugging). |
+| `opendata-list-domains` | Enumerate the controlled domain vocabulary (`health`, `legal`, `finance`, `earth-science`, …). |
+| `opendata-list-regions` | Enumerate the controlled region vocabulary (`us`, `eu`, `uk`, `global`, …). |
+| `opendata-describe-provider` | Full metadata for one plugin by id. |
+| `opendata-list-providers` | Paginated dump of the whole registry. |
+
+## Bundled plugins (~60)
+
+This is what's inside the one server. You don't install these individually — they all come along.
 
 ### Government / Civic
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `au_data_gov` | Australian Government Open Data | CKAN catalog at data.gov.au |
 | `ca_open_gov` | Canada Open Data | CKAN catalog at open.canada.ca |
@@ -45,7 +98,7 @@ This project aims to be magical.
 
 ### Statistics / Economics
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `eu_eurostat` | Eurostat | European Union statistics |
 | `global_imf` | International Monetary Fund | IMF SDMX 2.1 statistical data |
@@ -55,10 +108,9 @@ This project aims to be magical.
 | `nl_cbs` | Statistics Netherlands (CBS) | Dutch statistical datasets (OData v2/v3) |
 | `uk_ons` | UK ONS | UK Office for National Statistics |
 
-
 ### Finance / Markets
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `eu_ecb` | European Central Bank | ECB data portal (SDMX) — FX, monetary, banking |
 | `global_coingecko` | CoinGecko | Cryptocurrency market data |
@@ -68,7 +120,7 @@ This project aims to be magical.
 
 ### Health & Life Sciences
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `global_disease_sh` | disease.sh | COVID-19, influenza, vaccine aggregator |
 | `global_pubchem` | NCBI PubChem | Chemical compounds and substances |
@@ -80,7 +132,7 @@ This project aims to be magical.
 
 ### Earth Science / Weather / Environment
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
 | `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
@@ -90,7 +142,7 @@ This project aims to be magical.
 
 ### Biodiversity / Space / Physics
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `cern_opendata` | CERN Open Data | Particle physics datasets and software |
 | `global_gbif` | GBIF | Global biodiversity occurrence records |
@@ -100,7 +152,7 @@ This project aims to be magical.
 
 ### Geo / Mapping / Knowledge
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `global_osm_nominatim` | OSM Nominatim | Geocoding / reverse-geocoding (1 req/sec) |
 | `global_overpass` | OSM Overpass | Query OpenStreetMap with Overpass QL |
@@ -110,7 +162,7 @@ This project aims to be magical.
 
 ### Transit / Aviation
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `ch_sbb` | Swiss Federal Railways | Swiss train disruptions and service data |
 | `de_db` | Deutsche Bahn | German railway open data |
@@ -120,7 +172,7 @@ This project aims to be magical.
 
 ### Scholarly Literature
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `global_arxiv` | arXiv | Preprint metadata (Atom XML) |
 | `global_crossref` | Crossref | DOI metadata, citations, journals |
@@ -129,285 +181,102 @@ This project aims to be magical.
 
 ### Culture / Books
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `global_met_museum` | Met Museum | Met Museum Open Access (CC0) |
 | `global_open_library` | Open Library | Books, authors, works (Internet Archive) |
-| `global_unesco_heritage` | UNESCO World Heritage Sites | Natural, cultural & mixed World Heritage Sites (WHC API) |
-
+| `global_unesco_heritage` | UNESCO World Heritage Sites | Natural, cultural & mixed World Heritage Sites |
 
 ### Networking / Internet
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
-| `global_bgpview` | BGPView | BGP routing data — ASN info, prefixes, peers, upstreams, downstreams (key-less) |
-| `global_ripe_stat` | RIPE NCC RIPEstat | Production-grade BGP data — prefix overview, routing history, geolocation (key-less) |
+| `global_bgpview` | BGPView | BGP routing data — ASN info, prefixes, peers (key-less) |
+| `global_ripe_stat` | RIPE NCC RIPEstat | Production-grade BGP data (key-less) |
 
 ### Legal
 
-| Provider | Name | Description |
+| Plugin | Source | Description |
 |---|---|---|
 | `nl_rechtspraak` | Dutch Rechtspraak | Dutch court rulings and case law (ECLI) |
 | `uk_legislation` | UK legislation.gov.uk | UK Acts, statutory instruments (XML/Atom) |
 | `us_courtlistener` | CourtListener | US court opinions, dockets, judges (Free Law Project) |
 | `us_federal_register` | US Federal Register | Daily rules, notices, executive orders |
 
-### Environment variables
+## Optional environment variables
 
-A few providers accept optional API keys for higher rate limits. Set these in your shell or in the Claude Desktop server config's `env` block:
+A few bundled plugins accept optional API keys for higher rate limits. Set these in your shell or in the Claude Desktop server config's `env` block:
 
-| Variable | Provider | Purpose |
+| Variable | Plugin | Purpose |
 |---|---|---|
-| `COURTLISTENER_API_TOKEN` | `us_courtlistener` | Optional — anonymous access works at low volumes |
-| `OPENDATA_MCP_CONTACT` | all providers | Optional — your email, used in User-Agent for polite-pool APIs (Crossref, OpenAlex, OSM, SEC EDGAR). Defaults to `opendata-mcp@example.org`. |
+| `COURTLISTENER_API_TOKEN` | `us_courtlistener` | Anonymous access works at low volumes |
+| `OPENDATA_MCP_CONTACT` | all | Your email, used in User-Agent for polite-pool APIs (Crossref, OpenAlex, OSM, SEC EDGAR). Defaults to `opendata-mcp@example.org`. |
 
-## Usage
+## Transports
 
-### Access: Access Open Data using Open Data MCP CLI Tool
-
-#### Prerequisites
-
-If you want to use Open Data MCP with Claude Desktop app client you need to install the [Claude Desktop app](https://claude.ai/download).
-
-You will also need `uv` to easily run our CLI and MCP servers.
-
-##### macOS
+`run` defaults to **SSE** (HTTP, port 8000) so you can connect from the MCP Inspector or remote clients. For Claude Desktop (which the `setup` command targets), the spawned process uses **stdio**:
 
 ```bash
-# you need to install uv through homebrew as using the install shell script 
-# will install it locally to your user which make it unavailable in the Claude Desktop app context.
-brew install uv
+uv run meta-data-mcp run                                  # SSE on 127.0.0.1:8000
+uv run meta-data-mcp run --transport stdio                # stdio
+uv run meta-data-mcp run --host 0.0.0.0 --port 3001       # SSE bound to all interfaces
 ```
 
-##### Windows
+## Contributing a new plugin
+
+A "plugin" here is a Python module under `meta_data_mcp/providers/` plus an entry in `meta_data_mcp/registry.py`. The unified server picks it up automatically at startup. Plugins are *not* MCP servers — they expose a `TOOLS` list and a `TOOLS_HANDLERS` dict that the meta server merges into its own tool namespace.
+
+### Setup
 
 ```bash
-# (UNTESTED)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+git clone https://github.com/derekslinz/meta-data-mcp.git
+cd meta-data-mcp
+uv venv && source .venv/bin/activate
+uv sync
+pre-commit install
 ```
 
-#### The "Install Meta + Run Everything" Pattern
+### Quick path: use the provider generator
 
-With 59 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
+For most REST/JSON APIs you can scaffold a plugin in minutes instead of writing it from scratch.
 
-1. **Install Meta**: Set up the meta-aggregator provider FIRST.
+1. Copy `tools/specs/example_weather_alert.yaml` and edit it to describe your API.
+2. Dry-run to preview the generated files:
    ```bash
-   uv run meta-data-mcp setup meta_data_mcp
-   ```
-2. **Restart Client**: Restart your Claude Desktop app so it can access the meta tools and prompts shown in the client.
-3. **Use the Prompts**: In the Claude Desktop app, click the attachment/prompt icon and select one of the pre-populated **Meta Prompts** (like "Financial & Economic Research" or "Climate & Environment Dashboard"). This will automatically inject the perfect instructions for Claude to discover the best datasets for your use-case.
-4. **Run Everything**: If Claude needs another provider to complete your request, it will use the meta tools (`opendata-find-providers`) to discover it, and then instruct you to run `uv run meta-data-mcp setup <provider_name>`. 
-
-> [!TIP]
-> **For developers building multi-agent systems:** Check out the `system_prompt.md` file for a highly optimized system prompt you can give to your orchestrator agent to enforce this exact pattern.
-
-##### Overview
-
-For local development and testing, use **`uv run meta-data-mcp`**:
-
-```bash
-# show available commands
-uv run meta-data-mcp 
-
-# show available providers
-uv run meta-data-mcp list
-
-# show info about a provider
-uv run meta-data-mcp info $PROVIDER_NAME
-```
-
-> [!WARNING]
-> **Individual provider setup is deprecated.**
-> **Seriously, pretend it never existed**
-> **You don't want to see 60 mcp servers in claude**
-> **especially when none of them start and notifications***
-> **spam claude desktop.***
-> 
-> Setting up 55+ providers one by one (`setup ch_sbb`, `setup us_nasa`, …) is no longer
-> recommended. Use the two-command setup below instead — it gives Claude both discovery and
-> data access through a single pair of servers. Any existing individual provider entries are
-> automatically removed the next time you run `setup`, `setup-all`, or `cleanup`.
->
-> **Recommended setup:**
-> ```bash
->  # installs meta + aggregator, removes legacy entries
-> 
-> uv run meta-data-mcp setup
-> ```
-
-
-
-Restart Claude and you should see a new hammer icon at the bottom right of the chat.
-
-#### Alternative Transports (SSE)
-
-By default, the `run` command uses the **SSE (HTTP)** transport. This launches an HTTP server suitable for remote connections or browser-based tools like the MCP Inspector.
-
-```bash
-# start the server using default SSE transport on port 8000
-uv run meta-data-mcp run 
-
-# specify host and port
-uv run meta-data-mcp run --host 0.0.0.0 --port 3001
-```
-
-If you need to run a provider via **stdio** (standard input/output), use the `--transport stdio` flag:
-
-```bash
-uv run meta-data-mcp run --transport stdio
-```
-
-
-#### Quick path: use the provider generator
-
-For most REST/JSON APIs you can scaffold a provider in minutes instead of writing code from scratch.
-
-1. Create a YAML spec describing your API in `tools/specs/{id}.yaml` (copy `tools/specs/example_weather_alert.yaml` as a starting point).
-2. Preview the generated code — no files written:
-   ```bash
-   uv run python tools/generate_provider.py tools/specs/{id}.yaml --dry-run
+   uv run python tools/generate_provider.py tools/specs/{your_spec}.yaml --dry-run
    ```
 3. Write the files:
    ```bash
-   uv run python tools/generate_provider.py tools/specs/{id}.yaml
+   uv run python tools/generate_provider.py tools/specs/{your_spec}.yaml
    ```
-4. Add a `ProviderEntry` to `opendata_mcp/registry.py` so the meta-aggregator can discover your provider.
-5. Refine the generated files and run `uv run pytest`.
+4. Add a `ProviderEntry` to `meta_data_mcp/registry.py` so the discovery layer can find your plugin.
+5. Run `uv run pytest`. The generated tests should pass on the first try if the spec matches the live API.
 
-See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field reference and a list of cases the generator doesn't handle (auth headers, POST, multi-step logic, etc.) — those require the manual path below.
+See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field reference and the cases the generator doesn't handle (auth headers, POST, multi-step logic) — those still need the manual path below.
 
-#### Manual path: write a provider from scratch
+### Manual path: write a plugin from scratch
 
-1. **Create a New Provider Module**
-
-   * Each data source needs its own python module.
-   * Create a new Python module in `opendata_mcp/providers/`.
-   * Use a descriptive name following the pattern: `{country_code}_{organization}.py` (e.g., `ch_sbb.py`).
-   * Start with our [template file](https://github.com/derekslinz/meta-data-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
-   * Use `http_get` from `opendata_mcp.utils` for all outbound requests (sets the required User-Agent automatically).
-2. **Implement Required Components**
-
-   * Define your Tools & Resources following the template structure
-   * Each Tool or Resource should have:
-     - Clear description of its purpose
-     - Well-defined input/output schemas using Pydantic models
-     - Proper error handling
-     - Documentation strings
-3. **Tool vs Resource**
-
-   * Choose **Tool** implementation if your data needs:
-     - Active querying or computation
-     - Parameter-based filtering
-     - Complex transformations
-   * Choose **Resource** implementation if your data is:
-     - Static or rarely changing
-     - Small enough to be loaded into memory
-     - Simple file-based content
-     - Reference documentation or lookup tables
-   * Reference the [MCP documentation](https://github.com/modelcontextprotocol/python-sdk?tab=readme-ov-file#primitives) for guidance
-4. **Testing**
-
-   * Add tests in the `tests/` directory
-   * Follow existing test patterns (see other provider tests)
-   * Required test coverage:
-     - Basic functionality
-     - Edge cases
-     - Error handling
-5. **Validation**
-
-   * Test your MCP server using our experimental client: `uv run opendata_mcp/client.py`
-   * Verify all endpoints respond correctly
-   * Ensure error messages are helpful
-   * Check performance with typical query loads
-
-For other examples, check our existing providers in the `opendata_mcp/providers/` directory.
-
-## Contributing
-
-We have an ambitious roadmap and we want this project to scale with the community. The ultimate goal is to make the millions of datasets publicly available to all LLM applications.
-
-For that we need your help!
-
-### Discord
-
-We want to build a helping community around the challenge of bringing open data to LLM's. Join us on discord to start chatting: [https://discord.gg/QPFFZWKW](https://discord.gg/hDg4ZExjGs)
-
-### Our Core Guidelines
-
-Because of our target scale we want to keep things simple and pragmatic at first. Tackle issues with the community as they come along.
-
-1. **Simplicity and Maintainability**
-
-   * Minimize abstractions to keep codebase simple and scalable
-   * Focus on clear, straightforward implementations
-   * Avoid unnecessary complexity
-2. **Standardization / Templates**
-
-   * Follow provided templates and guidelines consistently
-   * Maintain uniform structure across providers
-   * Use common patterns for similar functionality
-3. **Dependencies**
-
-   * Keep external dependencies to a minimum
-   * Prioritize single repository/package setup
-   * Carefully evaluate necessity of new dependencies
-4. **Code Quality**
-
-   * Format code using ruff (it's pre-commit hook, you can't not do it)
-   * Maintain comprehensive test coverage with pytest
-   * Follow consistent code style
-     
-5. **Type Safety**
-
-   * Use Python type hints throughout
-   * Leverage Pydantic models for API request/response validation
-   * Ensure type safety in data handling
-
-### Tactical Topics (our current priorities)
-
-* [X] Initialize repository with guidelines, testing framework, and contribution workflow
-* [X] Implement CI/CD pipeline with automated PyPI releases
-* [X] Develop provider template and first reference implementation
-* [X] **Implement and harden NASA, Copernicus, and DB providers**
-* [X] Integrate additional open datasets (actively seeking contributors)
-* [X] Implement additional MCP protocol features (prompts, resource templates)
-* [X] Add support for alternative transport protocols beyond stdio (SSE)
-* [ ] Ultimately, the goal is for the meta mcp server to be capable of adding new sources autonomously.
-* [ ] For now, tools/generate_provider.py generates new providers as needed.
+1. **Create a new plugin module** under `meta_data_mcp/providers/`, using `{country_code}_{org}.py` naming (e.g. `ch_sbb.py`). Start from `meta_data_mcp/providers/__template__.py`.
+2. **Use `http_get` from `meta_data_mcp.utils`** for all outbound HTTP. It sets the required User-Agent and handles the TTL cache.
+3. **Declare your tools** by populating module-level `TOOLS: list[types.Tool]` and `TOOLS_HANDLERS: dict[str, Callable]`. Use Pydantic for parameter schemas and clear, action-oriented `description=` strings — the LLM relies on those.
+4. **Add a `ProviderEntry`** to `meta_data_mcp/registry.py` with accurate `domains`, `regions`, and `keywords` so the routing layer can find your plugin.
+5. **Add tests** in `tests/providers/test_{your_plugin}.py`. Mock HTTP at the `http_get` boundary; add a live test under `tests/live/` if the API is keyless and stable.
+6. **Run `uv run pytest`** to verify.
 
 ## Roadmap
 
-Let’s build an infrastructure that makes mcp servers invisible (magic).
-
-* [ ] Deploy hosted MCP servers for improved accessibility
-* [ ] Develop scalable repository architecture for long-term growth
-* [ ] Expand MCP SDK parameter support (authentication, rate limiting, etc.)
-
-### Access:
-
-* Make Open Data available to all LLM applications (kind of moot because they're all starting to cross import, + sse)
-* Make Open Data data sources searchable in a scalable way
+- Autonomous plugin generation: when `opendata-find-providers` doesn't match the user's query, automatically search the web for an appropriate open API, scaffold a new plugin via `generate_provider.py`, register it, and answer the original query — all in one round-trip.
+- Public hosted deployment with SSE so non-Claude clients can use the server remotely.
+- Multi-language SDK clients for the discovery tools so non-MCP integrations get the same routing benefits.
 
 
-### Publish:
+## Credits
 
-* There can be only one. Or at least, there should only be one. We would all drown in a sea of open data, so lets keep that pandora's
-* box closed and put a little door on the box just for the meta mcp.
-* Don't build more mcp servers--build more provider plugins.
-* Make it even easier to *use* Open Data --even if it hasn't been added yet.
+- Originally conceived by [grll](https://github.com/grll) as `opendata-mcp`.
+- Forked and reshaped around the single-server "meta-mcp" model.
+- Built on [Anthropic's open-source MCP spec](https://spec.modelcontextprotocol.io/).
 
-
-## Limitations
-
-* All data served by Open Data MCP servers should be Open.
-* It doesn't strictly need to be OData format, but it needs to be standardized.
-* Please oblige to the data licenses of the data providers.
-* Our License must be quoted in commercial applications.
-
-## References
-
-* This was born from https://github.com/OpenDataMCP/OpenDataMCP --credit to the origin.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+MIT — see [LICENSE](LICENSE).

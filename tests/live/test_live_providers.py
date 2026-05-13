@@ -64,7 +64,10 @@ def test_live_wikipedia_summary():
 
 @pytest.mark.live
 def test_live_wikipedia_onthisday():
-    from meta_data_mcp.providers.global_wikipedia import fetch_onthisday, OnThisDayParams
+    from meta_data_mcp.providers.global_wikipedia import (
+        fetch_onthisday,
+        OnThisDayParams,
+    )
 
     data = fetch_onthisday(OnThisDayParams(month="01", day="01"))
     # Returns text (API endpoint may vary by provider implementation)
@@ -265,7 +268,10 @@ def test_live_nominatim_search():
 
 @pytest.mark.live
 def test_live_nominatim_reverse():
-    from meta_data_mcp.providers.global_osm_nominatim import fetch_reverse, ReverseParams
+    from meta_data_mcp.providers.global_osm_nominatim import (
+        fetch_reverse,
+        ReverseParams,
+    )
 
     data = fetch_reverse(ReverseParams(lat=46.9481, lon=7.4474))
     assert "display_name" in data or "address" in data

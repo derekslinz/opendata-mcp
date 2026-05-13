@@ -56,7 +56,11 @@ class _TTLCache:
             if len(self._cache) >= self._maxsize:
                 oldest = min(self._cache, key=lambda k: self._cache[k][0])
                 del self._cache[oldest]
-            self._cache[key] = (time.monotonic(), val, ttl if ttl is not None else self._ttl)
+            self._cache[key] = (
+                time.monotonic(),
+                val,
+                ttl if ttl is not None else self._ttl,
+            )
 
     def clear(self) -> None:
         with self._lock:

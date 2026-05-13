@@ -9,7 +9,7 @@ ripestat-asn-neighbours, and ripestat-asn-neighbours-history instead.
 """
 
 import logging
-from typing import Any, List, Sequence
+from typing import Any, List
 
 import mcp.types as types
 from pydantic import BaseModel, Field
@@ -32,7 +32,11 @@ _UNAVAILABLE_MSG = (
 
 
 def _unavailable() -> list[types.TextContent]:
-    return [types.TextContent(type="text", text=serialize_for_llm({"error": _UNAVAILABLE_MSG}))]
+    return [
+        types.TextContent(
+            type="text", text=serialize_for_llm({"error": _UNAVAILABLE_MSG})
+        )
+    ]
 
 
 class BGPViewASNParams(BaseModel):
@@ -65,12 +69,17 @@ class BGPViewPrefixParams(BaseModel):
 
 
 class BGPViewSearchParams(BaseModel):
-    query_term: str = Field(..., description="ASN number, network name, IP, or description.")
+    query_term: str = Field(
+        ..., description="ASN number, network name, IP, or description."
+    )
 
 
 _DEPRECATED_NOTE = " [SERVICE UNAVAILABLE — use ripestat-* tools instead]"
 
-async def _handle_unavailable(arguments: dict[str, Any] | None = None) -> list[types.TextContent]:
+
+async def _handle_unavailable(
+    arguments: dict[str, Any] | None = None,
+) -> list[types.TextContent]:
     return _unavailable()
 
 
@@ -87,15 +96,39 @@ handle_bgpview_search = _handle_unavailable
 
 for _name, _desc, _schema in [
     ("bgpview-asn-info", "ASN details" + _DEPRECATED_NOTE, BGPViewASNParams),
-    ("bgpview-asn-prefixes", "ASN announced prefixes" + _DEPRECATED_NOTE, BGPViewASNPrefixesParams),
+    (
+        "bgpview-asn-prefixes",
+        "ASN announced prefixes" + _DEPRECATED_NOTE,
+        BGPViewASNPrefixesParams,
+    ),
     ("bgpview-asn-peers", "ASN BGP peers" + _DEPRECATED_NOTE, BGPViewASNPeersParams),
-    ("bgpview-asn-upstreams", "ASN upstream providers" + _DEPRECATED_NOTE, BGPViewASNUpstreamsParams),
-    ("bgpview-asn-downstreams", "ASN downstream customers" + _DEPRECATED_NOTE, BGPViewASNDownstreamsParams),
+    (
+        "bgpview-asn-upstreams",
+        "ASN upstream providers" + _DEPRECATED_NOTE,
+        BGPViewASNUpstreamsParams,
+    ),
+    (
+        "bgpview-asn-downstreams",
+        "ASN downstream customers" + _DEPRECATED_NOTE,
+        BGPViewASNDownstreamsParams,
+    ),
     ("bgpview-ip-info", "IP address BGP info" + _DEPRECATED_NOTE, BGPViewIPParams),
-    ("bgpview-prefix-info", "IP prefix BGP info" + _DEPRECATED_NOTE, BGPViewPrefixParams),
-    ("bgpview-search", "Search ASNs and prefixes" + _DEPRECATED_NOTE, BGPViewSearchParams),
+    (
+        "bgpview-prefix-info",
+        "IP prefix BGP info" + _DEPRECATED_NOTE,
+        BGPViewPrefixParams,
+    ),
+    (
+        "bgpview-search",
+        "Search ASNs and prefixes" + _DEPRECATED_NOTE,
+        BGPViewSearchParams,
+    ),
 ]:
-    TOOLS.append(types.Tool(name=_name, description=_desc, inputSchema=_schema.model_json_schema()))
+    TOOLS.append(
+        types.Tool(
+            name=_name, description=_desc, inputSchema=_schema.model_json_schema()
+        )
+    )
     TOOLS_HANDLERS[_name] = _handle_unavailable
 
 

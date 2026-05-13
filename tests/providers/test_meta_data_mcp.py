@@ -40,15 +40,21 @@ def anyio_backend():
 
 
 def test_meta_tools_registered():
+    """The six discovery tools plus the autonomous plugin-creation tool must
+    be registered at module-import time (before main() merges plugins)."""
     names = {tool.name for tool in TOOLS}
-    assert names == {
+    expected = {
         "opendata-explain-choice",
         "opendata-find-providers",
         "opendata-list-domains",
         "opendata-list-regions",
         "opendata-describe-provider",
         "opendata-list-providers",
+        "opendata-create-plugin",
     }
+    # The set must contain (at least) all of the above. Plugin tools may
+    # have been hot-loaded earlier in this test session — that's fine.
+    assert expected.issubset(names), f"missing: {expected - names}"
 
 
 @pytest.mark.anyio
@@ -108,7 +114,107 @@ async def test_find_providers_combined_filters():
 @pytest.mark.anyio
 async def test_find_providers_no_match_returns_empty():
     result = await handle_find_providers({"query": "zzzzzzzz_no_such_topic"})
-    assert '"count": 0' in result[0].text
+    text = result[0].text
+    assert '"count": 0' in text
+    # The no-match response must steer the LLM toward autonomous creation.
+    payload = json.loads(text)
+    assert payload.get("no_match") is True
+    assert "opendata-create-plugin" in payload.get("next_step", "")
+
+
+@pytest.mark.anyio
+async def test_create_plugin_end_to_end(tmp_path, monkeypatch):
+    """Drive opendata-create-plugin through a real generator invocation.
+
+    Confirms the pipeline: validate spec → write to tools/specs/ → run
+    generate_provider.py → import module → register in dynamic registry →
+    hot-load tools onto the running server.
+    """
+    import meta_data_mcp.providers.meta_data_mcp as srv
+    from meta_data_mcp.providers.meta_data_mcp import (
+        handle_create_plugin,
+        TOOLS_HANDLERS as live_handlers,
+    )
+    from meta_data_mcp.registry import (
+        DYNAMIC_REGISTRY,
+        get_provider,
+    )
+
+    # Use a unique id so this test is hermetic even if files leak.
+    pid = "autotest_unique_plugin_xyz"
+
+    spec_yaml = f"""id: {pid}
+server_name: autotest-unique-plugin-xyz
+title: Autonomous Test Plugin
+base_url: https://api.example.com
+description: Test plugin materialized by create-plugin end-to-end.
+homepage: https://example.com/
+tools:
+  - name: autotest-fetch-thing
+    description: Fetch a thing.
+    endpoint: /v1/thing
+    params:
+      - {{name: id, type: str, required: false, description: thing id}}
+"""
+
+    saved_dynamic = list(DYNAMIC_REGISTRY)
+    saved_handlers = dict(live_handlers)
+    saved_tools = list(srv.TOOLS)
+    try:
+        result = await handle_create_plugin(
+            {
+                "spec_yaml": spec_yaml,
+                "domains": ["finance"],
+                "regions": ["global"],
+                "keywords": ["test", "autonomous"],
+            }
+        )
+        payload = json.loads(result[0].text)
+        assert payload.get("status") == "ok", payload
+        assert payload["plugin_id"] == pid
+        assert "autotest-fetch-thing" in payload["new_tool_names"]
+        # Registry entry should be addressable through get_provider()
+        entry = get_provider(pid)
+        assert entry is not None
+        assert "finance" in entry.domains
+        # Tool should be live in the running server's handler table
+        assert "autotest-fetch-thing" in live_handlers
+    finally:
+        # Tear down to keep other tests hermetic.
+        DYNAMIC_REGISTRY[:] = saved_dynamic
+        live_handlers.clear()
+        live_handlers.update(saved_handlers)
+        srv.TOOLS[:] = saved_tools
+        # Best-effort cleanup of files materialized on disk.
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parents[2]
+        for path in (
+            repo_root / "tools" / "specs" / f"{pid}.yaml",
+            repo_root / "meta_data_mcp" / "providers" / f"{pid}.py",
+            repo_root / "tests" / "providers" / f"test_{pid}.py",
+        ):
+            if path.exists():
+                path.unlink()
+
+
+@pytest.mark.anyio
+async def test_create_plugin_rejects_invalid_yaml():
+    from meta_data_mcp.providers.meta_data_mcp import handle_create_plugin
+
+    result = await handle_create_plugin({"spec_yaml": "::not valid yaml :::"})
+    payload = json.loads(result[0].text)
+    assert "error" in payload
+
+
+@pytest.mark.anyio
+async def test_create_plugin_rejects_missing_required_keys():
+    from meta_data_mcp.providers.meta_data_mcp import handle_create_plugin
+
+    result = await handle_create_plugin({"spec_yaml": "id: only_id\n"})
+    payload = json.loads(result[0].text)
+    assert "error" in payload
+    assert "missing required keys" in payload["error"].lower()
 
 
 @pytest.mark.anyio
@@ -387,16 +493,17 @@ async def test_main_function_creates_server():
             # Call main with mocked functions
             await main(transport="stdio", port=8000, host="127.0.0.1")
 
-            # Verify the server was created with correct parameters
-            mock_create.assert_called_once_with(
-                "opendata-mcp-meta",
-                resources=RESOURCES,
-                resources_handlers=RESOURCES_HANDLERS,
-                tools=TOOLS,
-                tools_handlers=TOOLS_HANDLERS,
-                prompts=PROMPTS,
-                prompts_handlers=PROMPTS_HANDLERS,
-            )
+            # Verify the server was created with the unified server name
+            # and that the merged TOOLS/HANDLERS were passed through.
+            mock_create.assert_called_once()
+            call_kwargs = mock_create.call_args.kwargs
+            assert mock_create.call_args.args[0] == "meta-data-mcp"
+            assert call_kwargs["resources"] is RESOURCES
+            assert call_kwargs["resources_handlers"] is RESOURCES_HANDLERS
+            assert call_kwargs["tools"] is TOOLS
+            assert call_kwargs["tools_handlers"] is TOOLS_HANDLERS
+            assert call_kwargs["prompts"] is PROMPTS
+            assert call_kwargs["prompts_handlers"] is PROMPTS_HANDLERS
 
             # Verify run_server was called
             mock_run.assert_awaited_once_with(mock_server, "stdio", 8000, "127.0.0.1")
