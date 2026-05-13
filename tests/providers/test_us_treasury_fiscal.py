@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_treasury_fiscal import (
+from meta_data_mcp.providers.us_treasury_fiscal import (
     TOOLS,
     TOOLS_HANDLERS,
     handle_treasury_get_debt_to_penny,

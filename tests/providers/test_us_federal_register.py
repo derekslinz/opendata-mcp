@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_federal_register import (
+from meta_data_mcp.providers.us_federal_register import (
     handle_fedreg_search_documents,
     handle_fedreg_get_document,
     handle_fedreg_list_agencies,

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_osm_nominatim import (
+from meta_data_mcp.providers.global_osm_nominatim import (
     fetch_search,
     NominatimSearchParams,
     handle_search,

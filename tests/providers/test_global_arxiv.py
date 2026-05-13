@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_arxiv import (
+from meta_data_mcp.providers.global_arxiv import (
     handle_arxiv_query,
     handle_arxiv_search_by_title,
     handle_arxiv_search_by_author,

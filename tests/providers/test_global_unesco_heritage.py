@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_unesco_heritage import (
+from meta_data_mcp.providers.global_unesco_heritage import (
     handle_unesco_heritage_list_sites,
     handle_unesco_heritage_get_site,
     handle_unesco_heritage_search,

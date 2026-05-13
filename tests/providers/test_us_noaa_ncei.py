@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_noaa_ncei import (
+from meta_data_mcp.providers.us_noaa_ncei import (
     handle_ncei_get_daily_summaries,
     handle_ncei_get_global_summary,
     handle_ncei_search_stations,

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_noaa_tides import (
+from meta_data_mcp.providers.us_noaa_tides import (
     handle_noaa_tides_water_level,
     handle_noaa_tides_predictions,
     handle_noaa_tides_air_temperature,

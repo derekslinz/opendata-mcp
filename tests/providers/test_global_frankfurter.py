@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_frankfurter import (
+from meta_data_mcp.providers.global_frankfurter import (
     handle_frankfurter_latest,
     handle_frankfurter_historical,
     handle_frankfurter_time_series,

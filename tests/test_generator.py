@@ -150,7 +150,7 @@ def test_rendered_provider_contains_key_identifiers(rendered):
 
     # http_get + serialize_for_llm + run_server + create_mcp_server are
     # imported from utils.
-    assert "from opendata_mcp.utils import (" in src
+    assert "from meta_data_mcp.utils import (" in src
     assert "http_get" in src
     assert "serialize_for_llm" in src
     assert "run_server" in src
@@ -168,7 +168,7 @@ def test_rendered_tests_contains_key_identifiers(rendered):
     assert "from unittest.mock import" in src
     assert "import httpx" in src
     assert "import pytest" in src
-    assert "from opendata_mcp.providers.us_nws_alerts import" in src
+    assert "from meta_data_mcp.providers.us_nws_alerts import" in src
 
     # One success + one error test per tool
     expected_tests = [
@@ -217,14 +217,14 @@ def test_dry_run_prints_both_files_to_stdout():
     )
     stdout = result.stdout
     assert "WOULD WRITE" in stdout
-    assert "opendata_mcp/providers/us_nws_alerts.py" in stdout
+    assert "meta_data_mcp/providers/us_nws_alerts.py" in stdout
     assert "tests/providers/test_us_nws_alerts.py" in stdout
     assert 'BASE_URL = "https://api.weather.gov"' in stdout
     assert "class NwsGetAlertParams(BaseModel)" in stdout
     assert "async def handle_nws_get_alert" in stdout
 
     # Sanity-check: no files were created.
-    provider_target = REPO_ROOT / "opendata_mcp" / "providers" / "us_nws_alerts.py"
+    provider_target = REPO_ROOT / "meta_data_mcp" / "providers" / "us_nws_alerts.py"
     test_target = REPO_ROOT / "tests" / "providers" / "test_us_nws_alerts.py"
     assert not provider_target.exists()
     assert not test_target.exists()

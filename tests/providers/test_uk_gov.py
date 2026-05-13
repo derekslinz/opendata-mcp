@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.uk_gov import (
+from meta_data_mcp.providers.uk_gov import (
     handle_uk_gov_search_datasets,
     handle_uk_gov_get_dataset,
     handle_uk_gov_list_organizations,

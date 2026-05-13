@@ -1,7 +1,7 @@
 import pkgutil
 
-import opendata_mcp.providers as providers_pkg
-from opendata_mcp.registry import (
+import meta_data_mcp.providers as providers_pkg
+from meta_data_mcp.registry import (
     DOMAINS,
     REGIONS,
     REGISTRY,
@@ -51,13 +51,13 @@ def test_every_provider_module_has_a_registry_entry():
         name
         for _, name, _ in pkgutil.iter_modules(providers_pkg.__path__)
         if not name.startswith("__")
-        and name not in ("meta_data_mcp", "opendata_mcp_all")
+        and name not in ("meta_data_mcp", "meta_data_mcp_all")
     }
     registry_ids = set(all_ids())
     orphaned = sorted(discovered - registry_ids)
     assert orphaned == [], (
         f"Provider modules missing from registry: {orphaned}. "
-        "Add an entry to opendata_mcp/registry.py REGISTRY tuple."
+        "Add an entry to meta_data_mcp/registry.py REGISTRY tuple."
     )
 
 

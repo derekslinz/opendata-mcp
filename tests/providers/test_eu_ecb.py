@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.eu_ecb import (
+from meta_data_mcp.providers.eu_ecb import (
     handle_ecb_list_dataflows,
     handle_ecb_get_dataflow,
     handle_ecb_get_data,

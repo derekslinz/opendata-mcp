@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from opendata_mcp.providers.us_healthdata_gov import (
+from meta_data_mcp.providers.us_healthdata_gov import (
     handle_us_healthdata_search_catalog,
     handle_us_healthdata_get_metadata,
 )

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_faa_nasstatus import (
+from meta_data_mcp.providers.us_faa_nasstatus import (
     handle_faa_airport_status,
     handle_faa_ground_stops,
     handle_faa_departure_delays,

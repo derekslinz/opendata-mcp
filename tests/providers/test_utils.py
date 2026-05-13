@@ -9,7 +9,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server.stdio import stdio_server
 
-from opendata_mcp.utils import create_mcp_server
+from meta_data_mcp.utils import create_mcp_server
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[2]

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from opendata_mcp.providers.us_noaa_awc import (
+from meta_data_mcp.providers.us_noaa_awc import (
     handle_awc_metar,
     handle_awc_taf,
     handle_awc_station,

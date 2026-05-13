@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from opendata_mcp.providers.us_nc_onemap import (
+from meta_data_mcp.providers.us_nc_onemap import (
     handle_us_nc_onemap_list_services,
 )
 
