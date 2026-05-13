@@ -14,7 +14,7 @@ import anyio  # noqa: E402
 import click  # noqa: E402
 from opendata_mcp import __version__  # noqa: E402
 
-LIB_NAME = "opendata-mcp"
+LIB_NAME = "meta-data-mcp"
 SERVER_PREFIX = "opendata-mcp-"
 
 
@@ -184,9 +184,9 @@ def info(provider: str):
 
 @cli.command()
 def version():
-    """Show the version of opendata-mcp"""
+    """Show the version of meta-data-mcp"""
     try:
-        click.echo(f"opendata-mcp version: {__version__}")
+        click.echo(f"meta-data-mcp version: {__version__}")
     except Exception as e:
         click.echo(f"Error getting version: {e}")
         sys.exit(1)
@@ -201,7 +201,7 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
                 "--directory",
                 str(repo_root),
                 "run",
-                "opendata-mcp",
+                LIB_NAME,
                 "run",
                 "--transport",
                 "stdio",
