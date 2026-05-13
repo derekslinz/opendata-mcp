@@ -31,11 +31,11 @@ from opendata_mcp.utils import serialize_for_llm
 
 from opendata_mcp.registry import (
     REGISTRY,
-    find_providers,
     get_provider,
     list_domains,
     list_regions,
 )
+from opendata_mcp.routing import RoutingEngine
 
 log = logging.getLogger(__name__)
 
@@ -77,15 +77,27 @@ class FindProvidersParams(BaseModel):
 async def handle_find_providers(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the opendata-find-providers tool call."""
+    """Handle the opendata-find-providers tool call.
+
+    Uses sophisticated multi-criteria routing for intelligent provider ranking.
+    Falls back to original token-based search if needed.
+    """
     try:
         params = FindProvidersParams(**(arguments or {}))
-        matches = find_providers(
+
+        # Use sophisticated routing engine
+        engine = RoutingEngine()
+        scored_results = await engine.route(
             query=params.query,
             domain=params.domain,
             region=params.region,
             limit=params.limit,
+            explain=False,
         )
+
+        # Extract entries for compatibility
+        matches = [result.entry for result in scored_results]
+
         payload = {
             "count": len(matches),
             "providers": [entry.to_dict() for entry in matches],
@@ -104,6 +116,90 @@ TOOLS.append(
     )
 )
 TOOLS_HANDLERS["opendata-find-providers"] = handle_find_providers
+
+
+###################
+# explain-choice
+###################
+
+
+class ExplainChoiceParams(BaseModel):
+    """Parameters for explain-choice tool."""
+
+    query: Optional[str] = Field(
+        None,
+        description="The original search query to explain scoring for.",
+    )
+    domain: Optional[str] = Field(
+        None,
+        description="Domain filter used in search.",
+    )
+    region: Optional[str] = Field(
+        None,
+        description="Region filter used in search.",
+    )
+    limit: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of top providers to explain (1-20, default 5).",
+    )
+
+
+async def handle_explain_choice(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Explain the scoring breakdown for a provider search query.
+
+    Shows how each provider was ranked, including the contribution of
+    token matching, fuzzy matching, semantic similarity, and metadata filters.
+    """
+    try:
+        params = ExplainChoiceParams(**(arguments or {}))
+
+        # Use routing engine with explanation enabled
+        engine = RoutingEngine()
+        scored_results = await engine.route(
+            query=params.query,
+            domain=params.domain,
+            region=params.region,
+            limit=params.limit,
+            explain=True,
+        )
+
+        # Format explanation
+        explanations = []
+        for i, result in enumerate(scored_results, 1):
+            explanation = {
+                "rank": i,
+                "provider_id": result.entry.id,
+                "provider_title": result.entry.title,
+                "overall_score": round(result.score, 3),
+                "scoring_breakdown": result.breakdown,
+            }
+            explanations.append(explanation)
+
+        payload = {
+            "query": params.query,
+            "domain_filter": params.domain,
+            "region_filter": params.region,
+            "results": explanations,
+        }
+
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+    except Exception as e:
+        log.error(f"Error in opendata-explain-choice: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="opendata-explain-choice",
+        description="Explain the scoring breakdown for a provider search. Shows how each provider was ranked using token matching, fuzzy matching, semantic similarity, and metadata filters.",
+        inputSchema=ExplainChoiceParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["opendata-explain-choice"] = handle_explain_choice
 
 
 ###################
