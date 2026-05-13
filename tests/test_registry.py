@@ -51,7 +51,7 @@ def test_every_provider_module_has_a_registry_entry():
         name
         for _, name, _ in pkgutil.iter_modules(providers_pkg.__path__)
         if not name.startswith("__")
-        and name not in ("opendata_mcp_meta", "opendata_mcp_all")
+        and name not in ("meta_data_mcp", "opendata_mcp_all")
     }
     registry_ids = set(all_ids())
     orphaned = sorted(discovered - registry_ids)
