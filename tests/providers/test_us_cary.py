@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from opendata_mcp.providers.us_cary import (
+from meta_data_mcp.providers.us_cary import (
     handle_us_cary_search_catalog,
     handle_us_cary_get_metadata,
 )

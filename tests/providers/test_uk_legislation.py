@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.uk_legislation import (
+from meta_data_mcp.providers.uk_legislation import (
     handle_uk_legislation_search,
     handle_uk_legislation_list_by_year,
     handle_uk_legislation_get_document_xml,

@@ -47,17 +47,17 @@ Repository = "https://github.com/derekslinz/meta-data-mcp"
 "Bug Tracker" = "https://github.com/derekslinz/meta-data-mcp/issues"
 
 [tool.hatch.version]
-path = "opendata_mcp/__init__.py"
+path = "meta_data_mcp/__init__.py"
 
 [project.scripts]
-meta-data-mcp = "opendata_mcp.cli:main"
+meta-data-mcp = "meta_data_mcp.cli:main"
 
 [tool.ruff]
 line-length = 88
 target-version = "py312"
 
 [tool.pyright]
-include = ["opendata_mcp", "tests"]
+include = ["meta_data_mcp", "tests"]
 venvPath = "."
 venv = ".venv"
 
@@ -83,4 +83,4 @@ markers = [
 
 
 [tool.hatch.build]
-packages = ["opendata_mcp"]
+packages = ["meta_data_mcp"]

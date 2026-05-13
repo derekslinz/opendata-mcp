@@ -27,7 +27,7 @@ import pytest
 
 @pytest.mark.live
 def test_live_frankfurter_latest():
-    from opendata_mcp.providers.global_frankfurter import fetch_latest, LatestParams
+    from meta_data_mcp.providers.global_frankfurter import fetch_latest, LatestParams
 
     data = fetch_latest(LatestParams(base="USD"))
     assert "rates" in data
@@ -37,7 +37,7 @@ def test_live_frankfurter_latest():
 
 @pytest.mark.live
 def test_live_frankfurter_currencies():
-    from opendata_mcp.providers.global_frankfurter import (
+    from meta_data_mcp.providers.global_frankfurter import (
         fetch_currencies,
         CurrenciesParams,
     )
@@ -55,7 +55,7 @@ def test_live_frankfurter_currencies():
 
 @pytest.mark.live
 def test_live_wikipedia_summary():
-    from opendata_mcp.providers.global_wikipedia import fetch_summary, SummaryParams
+    from meta_data_mcp.providers.global_wikipedia import fetch_summary, SummaryParams
 
     data = fetch_summary(SummaryParams(title="Python_(programming_language)"))
     assert data.get("title") or data.get("displaytitle")
@@ -64,7 +64,7 @@ def test_live_wikipedia_summary():
 
 @pytest.mark.live
 def test_live_wikipedia_onthisday():
-    from opendata_mcp.providers.global_wikipedia import fetch_onthisday, OnThisDayParams
+    from meta_data_mcp.providers.global_wikipedia import fetch_onthisday, OnThisDayParams
 
     data = fetch_onthisday(OnThisDayParams(month="01", day="01"))
     # Returns text (API endpoint may vary by provider implementation)
@@ -78,7 +78,7 @@ def test_live_wikipedia_onthisday():
 
 @pytest.mark.live
 def test_live_usgs_significant_day_feed():
-    from opendata_mcp.providers.us_usgs_earthquake import (
+    from meta_data_mcp.providers.us_usgs_earthquake import (
         handle_usgs_eq_feed_significant_week,
     )
     import asyncio
@@ -94,7 +94,7 @@ def test_live_usgs_significant_day_feed():
 
 @pytest.mark.live
 def test_live_usgs_query_count():
-    from opendata_mcp.providers.us_usgs_earthquake import fetch_count, CountParams
+    from meta_data_mcp.providers.us_usgs_earthquake import fetch_count, CountParams
 
     data = fetch_count(
         CountParams(starttime="2024-01-01", endtime="2024-01-07", minmagnitude=5.0)
@@ -109,7 +109,7 @@ def test_live_usgs_query_count():
 
 @pytest.mark.live
 def test_live_open_library_search():
-    from opendata_mcp.providers.global_open_library import (
+    from meta_data_mcp.providers.global_open_library import (
         fetch_search_books,
         SearchBooksParams,
     )
@@ -120,7 +120,7 @@ def test_live_open_library_search():
 
 @pytest.mark.live
 def test_live_open_library_isbn():
-    from opendata_mcp.providers.global_open_library import (
+    from meta_data_mcp.providers.global_open_library import (
         fetch_isbn_lookup,
         IsbnLookupParams,
     )
@@ -136,7 +136,7 @@ def test_live_open_library_isbn():
 
 @pytest.mark.live
 def test_live_who_gho_list_indicators():
-    from opendata_mcp.providers.global_who_gho import (
+    from meta_data_mcp.providers.global_who_gho import (
         fetch_list_indicators,
         ListIndicatorsParams,
     )
@@ -152,7 +152,7 @@ def test_live_who_gho_list_indicators():
 
 @pytest.mark.live
 def test_live_world_bank_list_countries():
-    from opendata_mcp.providers.global_world_bank import (
+    from meta_data_mcp.providers.global_world_bank import (
         fetch_list_countries,
         ListCountriesParams,
     )
@@ -167,7 +167,7 @@ def test_live_world_bank_list_countries():
 
 @pytest.mark.live
 def test_live_world_bank_indicator():
-    from opendata_mcp.providers.global_world_bank import (
+    from meta_data_mcp.providers.global_world_bank import (
         fetch_get_indicator_data,
         GetIndicatorDataParams,
     )
@@ -187,7 +187,7 @@ def test_live_world_bank_indicator():
 
 @pytest.mark.live
 def test_live_clinicaltrials_search():
-    from opendata_mcp.providers.us_clinicaltrials import (
+    from meta_data_mcp.providers.us_clinicaltrials import (
         fetch_search_studies,
         SearchStudiesParams,
     )
@@ -203,7 +203,7 @@ def test_live_clinicaltrials_search():
 
 @pytest.mark.live
 def test_live_disease_sh_global():
-    from opendata_mcp.providers.global_disease_sh import fetch_global, GlobalParams
+    from meta_data_mcp.providers.global_disease_sh import fetch_global, GlobalParams
 
     data = fetch_global(GlobalParams())
     assert "cases" in data
@@ -212,7 +212,7 @@ def test_live_disease_sh_global():
 
 @pytest.mark.live
 def test_live_disease_sh_country():
-    from opendata_mcp.providers.global_disease_sh import fetch_country, CountryParams
+    from meta_data_mcp.providers.global_disease_sh import fetch_country, CountryParams
 
     data = fetch_country(CountryParams(country="USA"))
     assert "country" in data or "cases" in data
@@ -225,7 +225,7 @@ def test_live_disease_sh_country():
 
 @pytest.mark.live
 def test_live_met_museum_get_object():
-    from opendata_mcp.providers.global_met_museum import (
+    from meta_data_mcp.providers.global_met_museum import (
         fetch_get_object,
         GetObjectParams,
     )
@@ -237,7 +237,7 @@ def test_live_met_museum_get_object():
 
 @pytest.mark.live
 def test_live_met_museum_departments():
-    from opendata_mcp.providers.global_met_museum import (
+    from meta_data_mcp.providers.global_met_museum import (
         fetch_list_departments,
         ListDepartmentsParams,
     )
@@ -254,7 +254,7 @@ def test_live_met_museum_departments():
 
 @pytest.mark.live
 def test_live_nominatim_search():
-    from opendata_mcp.providers.global_osm_nominatim import fetch_search, SearchParams
+    from meta_data_mcp.providers.global_osm_nominatim import fetch_search, SearchParams
 
     data = fetch_search(SearchParams(q="Bern, Switzerland", limit=1))
     assert isinstance(data, list)
@@ -265,7 +265,7 @@ def test_live_nominatim_search():
 
 @pytest.mark.live
 def test_live_nominatim_reverse():
-    from opendata_mcp.providers.global_osm_nominatim import fetch_reverse, ReverseParams
+    from meta_data_mcp.providers.global_osm_nominatim import fetch_reverse, ReverseParams
 
     data = fetch_reverse(ReverseParams(lat=46.9481, lon=7.4474))
     assert "display_name" in data or "address" in data

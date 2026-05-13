@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from opendata_mcp.providers.us_ncdeq_gis import (
+from meta_data_mcp.providers.us_ncdeq_gis import (
     handle_us_ncdeq_search_catalog,
 )
 

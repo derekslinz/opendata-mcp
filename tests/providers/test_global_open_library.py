@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_open_library import (
+from meta_data_mcp.providers.global_open_library import (
     handle_openlibrary_search_books,
     handle_openlibrary_search_authors,
     handle_openlibrary_get_work,

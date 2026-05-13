@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_courtlistener import (
+from meta_data_mcp.providers.us_courtlistener import (
     handle_courtlistener_search,
     handle_courtlistener_list_courts,
     handle_courtlistener_get_opinion,

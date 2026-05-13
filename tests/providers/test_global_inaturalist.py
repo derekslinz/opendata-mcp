@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_inaturalist import (
+from meta_data_mcp.providers.global_inaturalist import (
     handle_inaturalist_search_observations,
     handle_inaturalist_get_observation,
     handle_inaturalist_search_taxa,

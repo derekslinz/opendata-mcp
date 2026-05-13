@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from opendata_mcp.providers.global_dbnomics import (
+from meta_data_mcp.providers.global_dbnomics import (
     handle_dbnomics_search,
     handle_dbnomics_list_providers,
     handle_dbnomics_series,

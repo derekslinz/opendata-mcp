@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_ripe_stat import (
+from meta_data_mcp.providers.global_ripe_stat import (
     handle_ripestat_network_info,
     handle_ripestat_bgp_state,
     handle_ripestat_prefix_overview,
