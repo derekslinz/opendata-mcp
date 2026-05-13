@@ -245,37 +245,23 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
     }
 
 
-@cli.command(
-    context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
-)
-@click.argument("provider", default="meta_data_mcp", required=False)
-@click.argument("_extra", nargs=-1)
+@cli.command()
 @click.option(
     "--local", is_flag=True, help="Force local development mode using absolute paths."
 )
 @click.option("--force", is_flag=True, help="Overwrite existing configuration.")
-def setup(provider: str, _extra: tuple, local: bool, force: bool):
-    """Setup Claude Desktop for OpenData MCP.
+def setup(local: bool, force: bool):
+    """Configure Claude Desktop to use meta-data-mcp.
 
-    Without arguments, installs the recommended two-server setup:
+    Registers two servers in claude_desktop_config.json:
 
     \b
-      opendata-mcp-meta  — 5 discovery tools
-      opendata-mcp-all   — 300+ data tools
+      meta-data-mcp     — discovery tools (find-providers, explain-choice, …)
+      opendata-mcp-all  — 300+ data tools from all providers
 
     Any legacy individual-provider entries are removed automatically.
-
-    Pass an optional PROVIDER name to install a specific provider instead.
+    A backup of the existing config is written to claude_desktop_config.json.bak.
     """
-    try:
-        _import_provider_module(provider)
-    except ImportError as e:
-        click.echo(
-            f"Provider '{provider}' not found or has missing dependencies.", err=True
-        )
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
     # Check platform
     system = platform.system()
     if system not in ["Darwin", "Windows"]:
@@ -322,7 +308,7 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
             f"Migrated: removed {removed} legacy individual provider entry/entries."
         )
 
-    server_key = _server_key(provider)
+    server_key = _META_KEY  # "meta-data-mcp"
     if server_key in config["mcpServers"] and not force:
         click.confirm(
             f"Server '{server_key}' is already configured. Overwrite?", abort=True
@@ -333,7 +319,7 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
     use_local = is_local_repo or local
 
     config["mcpServers"][server_key] = _build_server_entry(
-        provider, use_local, repo_root
+        "meta_data_mcp", use_local, repo_root
     )
     mode_label = (
         f"LOCAL mode pointing to {repo_root}"
@@ -342,21 +328,17 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
     )
     click.echo(f"Configuring in {mode_label}")
 
-    # When setting up the meta provider, automatically register the aggregator
-    # companion so Claude has both discovery tools and access to all 300+ data tools.
-    companion_key = None
-    if provider == "meta_data_mcp":
-        companion = "meta_data_mcp_all"
-        companion_key = _ALL_KEY  # "opendata-mcp-all" — stable; don't derive via _server_key
-        if companion_key not in config["mcpServers"] or force:
-            config["mcpServers"][companion_key] = _build_server_entry(
-                companion, use_local, repo_root
-            )
-            click.echo(
-                f"  + also registering companion '{companion_key}' (aggregator, all 300+ tools)"
-            )
-        else:
-            click.echo(f"  ✓ companion '{companion_key}' already configured — skipping")
+    # Always register the all-providers aggregator alongside the meta server.
+    companion_key = _ALL_KEY  # "opendata-mcp-all"
+    if companion_key not in config["mcpServers"] or force:
+        config["mcpServers"][companion_key] = _build_server_entry(
+            "meta_data_mcp_all", use_local, repo_root
+        )
+        click.echo(
+            f"  + also registering companion '{companion_key}' (aggregator, all 300+ tools)"
+        )
+    else:
+        click.echo(f"  ✓ companion '{companion_key}' already configured — skipping")
 
     try:
         _backup_config(config_path)

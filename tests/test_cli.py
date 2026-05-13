@@ -87,21 +87,10 @@ def test_version_command(runner):
     assert "meta-data-mcp version: 1.0.0" in result.output
 
 
-def test_setup_invalid_provider_does_not_write_config(runner, tmp_path):
-    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
-    claude_dir.mkdir(parents=True)
-    config_path = claude_dir / "claude_desktop_config.json"
-
-    with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
-        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
-            result = runner.invoke(cli, ["setup", "nonexistent_provider"])
-
-    assert result.exit_code == 1
-    assert (
-        "Provider 'nonexistent_provider' not found or has missing dependencies."
-        in result.output
-    )
-    assert not config_path.exists()
+def test_setup_rejects_extra_args(runner):
+    # setup takes no positional arguments — extra args are a usage error
+    result = runner.invoke(cli, ["setup", "some_provider"])
+    assert result.exit_code == 2
 
 
 def test_setup_creates_backup_before_writing(runner, tmp_path):
@@ -112,14 +101,9 @@ def test_setup_creates_backup_before_writing(runner, tmp_path):
     original_content = '{"mcpServers": {}}'
     config_path.write_text(original_content)
 
-    mock_module = type("Module", (), {})
-
     with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
         with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
-            with patch(
-                "meta_data_mcp.cli._import_provider_module", return_value=mock_module
-            ):
-                runner.invoke(cli, ["setup", "--force", "meta_data_mcp"])
+            runner.invoke(cli, ["setup", "--force"])
 
     backup_path = config_path.with_suffix(".json.bak")
     assert backup_path.exists(), ".json.bak should be created before writing config"

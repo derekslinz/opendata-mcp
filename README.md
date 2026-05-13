@@ -214,19 +214,17 @@ For local development and testing, use **`uv run meta-data-mcp`**:
 
 ```bash
 # show available commands
-uv run meta-data-mcp 
+uv run meta-data-mcp
 
-# show available providers
-uv run meta-data-mcp list
+# install meta-data-mcp in Claude Desktop (the only setup you need)
+uv run meta-data-mcp setup
 
-# show info about a provider
-uv run meta-data-mcp info $PROVIDER_NAME
+# remove meta-data-mcp from Claude Desktop
+uv run meta-data-mcp remove meta-data-mcp
 
-# setup a provider's MCP server on your Claude Desktop app
-uv run meta-data-mcp setup $PROVIDER_NAME
-
-# remove a provider's MCP server from your Claude Desktop app
-uv run meta-data-mcp remove $PROVIDER_NAME
+# clean up any legacy individual-provider entries
+uv run meta-data-mcp cleanup
+uv run meta-data-mcp cleanup --apply
 ```
 
 > [!WARNING]
