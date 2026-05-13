@@ -15,7 +15,7 @@ This project aims to be magical.
 > [!IMPORTANT]
 > **Start Here: The Meta Provider (`meta_data_mcp`)**
 >
-> With 59 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
+> With 66 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
 >
 > It acts as a search engine and discovery gateway, equipped with pre-populated Prompts and specialized Tools (`find-providers`, `explain-choice`, `list-domains`, `list-regions`, `describe-provider`, `list-providers`) that allow your LLM to dynamically discover the exact dataset it needs and instruct you on how to install it.
 >
@@ -41,7 +41,10 @@ This project aims to be magical.
 | `nl_tweedekamer` | Tweede Kamer | Dutch Parliament open data |
 | `sg_data_gov` | Singapore Open Data | data.gov.sg datasets and collections |
 | `uk_gov` | data.gov.uk | UK government CKAN catalog |
+| `us_cary` | Town of Cary Open Data | Cary, NC open data via Socrata |
 | `us_data_gov` | Data.gov | US federal government open datasets |
+| `us_fayetteville` | City of Fayetteville Open Data | Fayetteville, NC open data via Socrata |
+| `us_raleigh` | City of Raleigh Open Data | Raleigh, NC open data via Socrata |
 
 ### Statistics / Economics
 
@@ -77,6 +80,7 @@ This project aims to be magical.
 | `us_cdc_socrata` | US CDC | CDC open data via Socrata |
 | `us_clinicaltrials` | ClinicalTrials.gov | NIH/NLM clinical trials registry v2 |
 | `us_fda_openfda` | openFDA | FDA adverse events, recalls, labels |
+| `us_healthdata_gov` | HealthData.gov | HHS open health data catalog via Socrata |
 
 ### Earth Science / Weather / Environment
 
@@ -84,6 +88,7 @@ This project aims to be magical.
 |---|---|---|
 | `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
 | `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
+| `us_ncdeq_gis` | NC DEQ Environmental GIS | NC Dept of Environmental Quality ArcGIS Hub — air, water, hazardous waste |
 | `us_noaa_ncei` | NOAA NCEI | Climate data access services (key-less) |
 | `us_noaa_tides` | NOAA Tides & Currents | Water levels, tides, currents |
 | `us_usgs_earthquake` | USGS Earthquakes | Real-time and historical seismic events |
@@ -106,7 +111,9 @@ This project aims to be magical.
 | `global_overpass` | OSM Overpass | Query OpenStreetMap with Overpass QL |
 | `global_wikidata` | Wikidata | Structured knowledge graph + SPARQL |
 | `global_wikipedia` | Wikipedia | Article summaries, related, page views |
+| `us_arcgis_item` | ArcGIS Public Item | Fetch public ArcGIS item metadata by item ID |
 | `us_census_geocoder` | US Census Geocoder | Address ⇄ coordinates ⇄ geographies |
+| `us_nc_onemap` | NC OneMap | North Carolina statewide GIS data (ArcGIS REST) |
 
 ### Transit / Aviation
 
@@ -140,8 +147,8 @@ This project aims to be magical.
 
 | Provider | Name | Description |
 |---|---|---|
-| `global_bgpview` | BGPView | BGP routing data — ASN info, prefixes, peers, upstreams, downstreams (key-less) |
-| `global_ripe_stat` | RIPE NCC RIPEstat | Production-grade BGP data — prefix overview, routing history, geolocation (key-less) |
+| `global_bgpview` | BGPView ⚠️ DEPRECATED | Service shut down — all tools return an error redirecting to `ripestat-*` |
+| `global_ripe_stat` | RIPE NCC RIPEstat | Production-grade BGP data — network info, BGP state, announced prefixes, ASN neighbors, routing history, geolocation (key-less) |
 
 ### Legal
 
@@ -188,7 +195,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 #### The "Install Meta + Run Everything" Pattern
 
-With 59 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
+With 66 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
 
 1. **Install Meta**: Set up the meta-aggregator provider FIRST.
    ```bash
@@ -224,16 +231,14 @@ uv run meta-data-mcp remove $PROVIDER_NAME
 
 > [!WARNING]
 > **Individual provider setup is deprecated.**
-> Setting up 55+ providers one by one (`setup ch_sbb`, `setup us_nasa`, …) is no longer
-> recommended. Use the two-command setup below instead — it gives Claude both discovery and
+> Setting up 66+ providers one by one (`setup ch_sbb`, `setup us_nasa`, …) is no longer
+> recommended. Use the single setup command below instead — it gives Claude both discovery and
 > data access through a single pair of servers. Any existing individual provider entries are
-> automatically removed the next time you run `setup`, `setup-all`, or `cleanup`.
+> automatically removed the next time you run `setup` or `cleanup`.
 >
-> **Recommended setup (new):**
+> **Recommended setup:**
 > ```bash
-> uv run meta-data-mcp setup-all       # installs meta + aggregator, removes legacy entries
-> # — or equivalently —
-> uv run meta-data-mcp setup meta_data_mcp
+> uv run meta-data-mcp setup
 > ```
 >
 > **Migrate existing config:**
@@ -242,34 +247,31 @@ uv run meta-data-mcp remove $PROVIDER_NAME
 > uv run meta-data-mcp cleanup --apply  # remove legacy entries and install meta + aggregator
 > ```
 
-Quickstart for the Switzerland SBB (train company) provider:
+Quickstart — install the meta server and restart Claude Desktop:
 
 ```bash
-# make sure claude is installed
-uv run meta-data-mcp setup ch_sbb
+uv run meta-data-mcp setup
 ```
 
 Restart Claude and you should see a new hammer icon at the bottom right of the chat.
 
-#### Alternative Transports (SSE)
+#### Running the server directly
 
-By default, the `run` command uses the **SSE (HTTP)** transport. This launches an HTTP server suitable for remote connections or browser-based tools like the MCP Inspector.
+`meta-data-mcp run` starts the meta-data-mcp discovery server. By default it uses the **SSE (HTTP)** transport on port 8000, which is suitable for direct interaction and tools like the MCP Inspector.
 
 ```bash
-# start the server using default SSE transport on port 8000
-uv run meta-data-mcp run ch_sbb
+# start the meta server using SSE (default)
+uv run meta-data-mcp run
 
 # specify host and port
-uv run meta-data-mcp run ch_sbb --host 0.0.0.0 --port 3001
+uv run meta-data-mcp run --host 0.0.0.0 --port 3001
 ```
 
-If you need to run a provider via **stdio** (standard input/output), use the `--transport stdio` flag:
+Claude Desktop uses `--transport stdio` automatically (configured by `setup`). You can pass it manually for debugging:
 
 ```bash
-uv run meta-data-mcp run ch_sbb --transport stdio
+uv run meta-data-mcp run --transport stdio
 ```
-
-You can now ask questions to Claude about SBB train network disruption and it will answer based on data collected on `data.sbb.ch`.
 
 ### `<u>`Publish`</u>`: Contribute by building and publishing public datasets
 
@@ -291,8 +293,8 @@ You can now ask questions to Claude about SBB train network disruption and it wi
 
    ```bash
    # Clone the repository
-   git clone https://github.com/derekslinz/opendata-mcp.git
-   cd opendata-mcp
+   git clone https://github.com/derekslinz/meta-data-mcp.git
+   cd meta-data-mcp
 
    # Create and activate virtual environment
    uv venv
@@ -323,7 +325,7 @@ For most REST/JSON APIs you can scaffold a provider in minutes instead of writin
    ```bash
    uv run python tools/generate_provider.py tools/specs/{id}.yaml
    ```
-4. Add a `ProviderEntry` to `opendata_mcp/registry.py` so the meta-aggregator can discover your provider.
+4. Add a `ProviderEntry` to `meta_data_mcp/registry.py` so the meta-aggregator can discover your provider.
 5. Refine the generated files and run `uv run pytest`.
 
 See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field reference and a list of cases the generator doesn't handle (auth headers, POST, multi-step logic, etc.) — those require the manual path below.
@@ -333,10 +335,10 @@ See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field r
 1. **Create a New Provider Module**
 
    * Each data source needs its own python module.
-   * Create a new Python module in `opendata_mcp/providers/`.
+   * Create a new Python module in `meta_data_mcp/providers/`.
    * Use a descriptive name following the pattern: `{country_code}_{organization}.py` (e.g., `ch_sbb.py`).
-   * Start with our [template file](https://github.com/derekslinz/meta-data-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
-   * Use `http_get` from `opendata_mcp.utils` for all outbound requests (sets the required User-Agent automatically).
+   * Start with our [template file](https://github.com/derekslinz/meta-data-mcp/blob/main/meta_data_mcp/providers/__template__.py) as your base.
+   * Use `http_get` from `meta_data_mcp.utils` for all outbound requests (sets the required User-Agent automatically).
 2. **Implement Required Components**
 
    * Define your Tools & Resources following the template structure
@@ -367,12 +369,12 @@ See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field r
      - Error handling
 5. **Validation**
 
-   * Test your MCP server using our experimental client: `uv run opendata_mcp/client.py`
+   * Test your MCP server using our experimental client: `uv run meta_data_mcp/client.py`
    * Verify all endpoints respond correctly
    * Ensure error messages are helpful
    * Check performance with typical query loads
 
-For other examples, check our existing providers in the `opendata_mcp/providers/` directory.
+For other examples, check our existing providers in the `meta_data_mcp/providers/` directory.
 
 ## Contributing
 
@@ -425,7 +427,7 @@ Because of our target scale we want to keep things simple and pragmatic at first
 * [ ] Develop scalable repository architecture for long-term growth
 * [ ] Expand MCP SDK parameter support (authentication, rate limiting, etc.)
 * [ ] Implement additional MCP protocol features (prompts, resource templates)
-* [ ] Add support for alternative transport protocols beyond stdio (SSE)
+* [X] Add support for alternative transport protocols beyond stdio (SSE)
 * [ ] Deploy hosted MCP servers for improved accessibility
 
 ## Roadmap
