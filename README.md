@@ -15,9 +15,9 @@ This project aims to be magical.
 > [!IMPORTANT]
 > **Start Here: The Meta Provider (`meta_data_mcp`)**
 >
-> With 56 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
+> With 59 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
 >
-> It acts as a search engine and discovery gateway, equipped with pre-populated Prompts and specialized Tools (`find-providers`, `list-domains`) that allow your LLM to dynamically discover the exact dataset it needs and instruct you on how to install it.
+> It acts as a search engine and discovery gateway, equipped with pre-populated Prompts and specialized Tools (`find-providers`, `explain-choice`, `list-domains`, `list-regions`, `describe-provider`, `list-providers`) that allow your LLM to dynamically discover the exact dataset it needs and instruct you on how to install it.
 >
 > **Install it now:**
 > ```bash
