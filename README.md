@@ -291,8 +291,8 @@ You can now ask questions to Claude about SBB train network disruption and it wi
 
    ```bash
    # Clone the repository
-   git clone https://github.com/derekslinz/opendata-mcp.git
-   cd opendata-mcp
+   git clone https://github.com/derekslinz/meta-data-mcp.git
+   cd meta-data-mcp
 
    # Create and activate virtual environment
    uv venv
