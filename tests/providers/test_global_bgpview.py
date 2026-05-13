@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_bgpview import (
+from meta_data_mcp.providers.global_bgpview import (
     handle_bgpview_asn,
     handle_bgpview_asn_prefixes,
     handle_bgpview_asn_peers,

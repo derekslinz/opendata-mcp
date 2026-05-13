@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_openalex import (
+from meta_data_mcp.providers.global_openalex import (
     handle_openalex_search_works,
     handle_openalex_get_work,
     handle_openalex_search_authors,

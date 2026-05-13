@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from opendata_mcp.providers.us_fayetteville import (
+from meta_data_mcp.providers.us_fayetteville import (
     handle_us_fayetteville_search_catalog,
     handle_us_fayetteville_get_metadata,
 )

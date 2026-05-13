@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_met_museum import (
+from meta_data_mcp.providers.global_met_museum import (
     handle_met_list_objects,
     handle_met_get_object,
     handle_met_search,

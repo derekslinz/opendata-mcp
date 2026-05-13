@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from opendata_mcp.utils import to_json_text
+from meta_data_mcp.utils import to_json_text
 
 
 def test_to_json_text_serializes_datetime():

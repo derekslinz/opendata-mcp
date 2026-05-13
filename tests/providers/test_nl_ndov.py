@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from opendata_mcp.providers.nl_ndov import (
+from meta_data_mcp.providers.nl_ndov import (
     list_ndov_path,
     handle_ndov_list_path,
 )

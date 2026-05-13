@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.ca_open_gov import (
+from meta_data_mcp.providers.ca_open_gov import (
     handle_ca_opengov_search_datasets,
     handle_ca_opengov_get_dataset,
     handle_ca_opengov_list_organizations,

@@ -7,13 +7,13 @@ Usage:
 
 The generator produces two files (or prints them to stdout with --dry-run):
 
-    opendata_mcp/providers/{spec.id}.py    — the provider module
+    meta_data_mcp/providers/{spec.id}.py    — the provider module
     tests/providers/test_{spec.id}.py      — test stubs for each tool
 
 The output follows the canonical pattern established by
-``opendata_mcp/providers/us_nasa.py`` and uses the shared helpers
+``meta_data_mcp/providers/us_nasa.py`` and uses the shared helpers
 ``http_get`` / ``serialize_for_llm`` / ``run_server`` / ``create_mcp_server``
-from ``opendata_mcp.utils``.
+from ``meta_data_mcp.utils``.
 
 The generator is intentionally narrow: it handles the common case of a
 provider that exposes one or more HTTP GET endpoints with simple query and
@@ -40,7 +40,7 @@ import yaml
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PROVIDERS_DIR = REPO_ROOT / "opendata_mcp" / "providers"
+PROVIDERS_DIR = REPO_ROOT / "meta_data_mcp" / "providers"
 TESTS_DIR = REPO_ROOT / "tests" / "providers"
 
 # Map YAML scalar type names to Python type annotations used in Pydantic models.
@@ -148,7 +148,7 @@ def _py_literal(value: Any) -> str:
     """Return a safe Python literal for a YAML scalar value.
 
     Strings are emitted with double quotes (matching the existing provider
-    style in opendata_mcp/providers/) when they contain no double quotes;
+    style in meta_data_mcp/providers/) when they contain no double quotes;
     otherwise we fall back to Python's ``repr`` which picks the safer
     quoting automatically.
     """
@@ -393,7 +393,7 @@ def render_provider(spec: dict[str, Any]) -> str:
             "import mcp.types as types",
             "from pydantic import BaseModel, Field",
             "",
-            "from opendata_mcp.utils import (",
+            "from meta_data_mcp.utils import (",
             "    create_mcp_server,",
             "    http_get,",
             "    run_server,",
@@ -521,7 +521,7 @@ def render_tests(spec: dict[str, Any]) -> str:
         "from unittest.mock import Mock, patch\n\n"
         "import httpx\n"
         "import pytest\n\n"
-        f"from opendata_mcp.providers.{provider_id} import (\n"
+        f"from meta_data_mcp.providers.{provider_id} import (\n"
         + "".join(f"    {n},\n" for n in handler_names)
         + ")\n\n\n"
         "@pytest.fixture\n"

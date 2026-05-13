@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_fda_openfda import (
+from meta_data_mcp.providers.us_fda_openfda import (
     handle_drug_events,
     handle_drug_labels,
     handle_drug_enforcement,

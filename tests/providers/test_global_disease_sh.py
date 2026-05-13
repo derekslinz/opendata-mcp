@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
 import httpx
-from opendata_mcp.providers.global_disease_sh import (
+from meta_data_mcp.providers.global_disease_sh import (
     handle_global,
     handle_countries,
     handle_country,

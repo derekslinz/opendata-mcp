@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_crossref import (
+from meta_data_mcp.providers.global_crossref import (
     handle_crossref_works_search,
     handle_crossref_get_work,
     handle_crossref_works_by_author,

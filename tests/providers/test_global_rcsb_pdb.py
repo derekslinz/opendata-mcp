@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, Mock
-from opendata_mcp.providers.global_rcsb_pdb import (
+from meta_data_mcp.providers.global_rcsb_pdb import (
     handle_pdb_entry,
     handle_pdb_polymer,
 )

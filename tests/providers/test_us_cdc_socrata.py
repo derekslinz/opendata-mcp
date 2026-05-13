@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_cdc_socrata import (
+from meta_data_mcp.providers.us_cdc_socrata import (
     handle_search_datasets,
     handle_get_dataset_metadata,
     handle_query_dataset,

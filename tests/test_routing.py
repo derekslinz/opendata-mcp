@@ -1,6 +1,6 @@
 import pytest
 
-from opendata_mcp.routing import RoutingEngine
+from meta_data_mcp.routing import RoutingEngine
 
 
 @pytest.fixture

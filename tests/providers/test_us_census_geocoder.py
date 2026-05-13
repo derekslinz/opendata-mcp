@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_census_geocoder import (
+from meta_data_mcp.providers.us_census_geocoder import (
     TOOLS,
     TOOLS_HANDLERS,
     handle_census_geocode_oneline,

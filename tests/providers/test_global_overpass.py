@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, Mock
 import httpx
-from opendata_mcp.providers.global_overpass import (
+from meta_data_mcp.providers.global_overpass import (
     handle_query,
     handle_status,
     handle_around_amenity,

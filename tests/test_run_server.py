@@ -1,11 +1,11 @@
-"""Tests for the run_server() utility in opendata_mcp.utils."""
+"""Tests for the run_server() utility in meta_data_mcp.utils."""
 
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from opendata_mcp.utils import create_mcp_server, run_server
+from meta_data_mcp.utils import create_mcp_server, run_server
 
 
 @pytest.fixture()

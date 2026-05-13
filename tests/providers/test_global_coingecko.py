@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_coingecko import (
+from meta_data_mcp.providers.global_coingecko import (
     handle_coingecko_simple_price,
     handle_coingecko_list_coins,
     handle_coingecko_coins_markets,

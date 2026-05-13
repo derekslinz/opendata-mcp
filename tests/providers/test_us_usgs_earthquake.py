@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.us_usgs_earthquake import (
+from meta_data_mcp.providers.us_usgs_earthquake import (
     handle_usgs_eq_query,
     handle_usgs_eq_count,
     handle_usgs_eq_feed_significant_day,

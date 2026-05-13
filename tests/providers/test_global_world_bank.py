@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_world_bank import (
+from meta_data_mcp.providers.global_world_bank import (
     handle_list_countries,
     handle_get_country,
     handle_list_indicators,

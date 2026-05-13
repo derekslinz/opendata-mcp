@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.au_data_gov import (
+from meta_data_mcp.providers.au_data_gov import (
     handle_au_datagov_search_datasets,
     handle_au_datagov_get_dataset,
     handle_au_datagov_list_organizations,

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock
 import httpx
 
-from opendata_mcp.providers.global_gbif import (
+from meta_data_mcp.providers.global_gbif import (
     handle_gbif_search_occurrences,
     handle_gbif_get_occurrence,
     handle_gbif_search_species,
