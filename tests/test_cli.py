@@ -11,29 +11,25 @@ def runner():
     return CliRunner()
 
 
-def test_run_valid_provider(runner):
-    # Create a mock module where main accepts transport, port, and host
-    async def mock_main(transport="sse", port=8000, host="127.0.0.1"):
+def test_run_starts_meta_server(runner):
+    # run always starts meta_data_mcp; no provider arg accepted
+    async def mock_main(transport="stdio", port=8000, host="127.0.0.1"):
         pass
 
     mock_module = type("Module", (), {"main": mock_main})
 
     with patch("meta_data_mcp.cli._import_provider_module", return_value=mock_module):
         with patch("meta_data_mcp.cli.anyio.run") as mock_run:
-            result = runner.invoke(cli, ["run", "test_provider"])
+            result = runner.invoke(cli, ["run"])
 
     assert result.exit_code == 0
-    # The default transport is now sse, port 8000, host 127.0.0.1
-    mock_run.assert_called_once_with(mock_module.main, "sse", 8000, "127.0.0.1")
+    mock_run.assert_called_once_with(mock_module.main, "stdio", 8000, "127.0.0.1")
 
 
-def test_run_invalid_provider(runner):
-    result = runner.invoke(cli, ["run", "nonexistent_provider"])
-    assert result.exit_code == 1
-    assert (
-        "Provider 'nonexistent_provider' not found or has missing dependencies."
-        in result.output
-    )
+def test_run_rejects_extra_args(runner):
+    # run takes no positional arguments — extra args are a usage error
+    result = runner.invoke(cli, ["run", "some_provider"])
+    assert result.exit_code == 2
 
 
 def test_list_providers(runner):

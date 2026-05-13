@@ -92,32 +92,30 @@ def _migrate_legacy_providers(config: dict) -> int:
 
 
 @cli.command()
-@click.argument("provider")
 @click.option(
     "--transport",
-    default="sse",
+    default="stdio",
     show_default=True,
     type=click.Choice(["stdio", "sse"]),
-    help="Transport protocol to use (stdio or sse)",
+    help="Transport protocol to use",
 )
 @click.option(
     "--port",
     default=8000,
     show_default=True,
     type=int,
-    help="Port to listen on for SSE transport",
+    help="Port for SSE transport",
 )
 @click.option(
     "--host",
     default="127.0.0.1",
     show_default=True,
-    help="Host to listen on for SSE transport",
+    help="Host for SSE transport",
 )
-def run(provider: str, transport: str, port: int, host: str):
-    """Run a specific provider MCP server."""
+def run(transport: str, port: int, host: str):
+    """Run the meta-data-mcp server."""
     try:
-        module = _import_provider_module(provider)
-        # Check if main accepts host
+        module = _import_provider_module("meta_data_mcp")
         import inspect
 
         sig = inspect.signature(module.main)
@@ -125,17 +123,11 @@ def run(provider: str, transport: str, port: int, host: str):
             anyio.run(module.main, transport, port, host)
         else:
             anyio.run(module.main, transport, port)
-    except ImportError as e:
-        click.echo(
-            f"Provider '{provider}' not found or has missing dependencies.", err=True
-        )
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
     except Exception as e:
         import traceback
 
         traceback.print_exc()
-        click.echo(f"Error running provider: {e}", err=True)
+        click.echo(f"Error running server: {e}", err=True)
         sys.exit(1)
 
 
@@ -198,25 +190,44 @@ def version():
 
 
 def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
-    """Return a Claude Desktop mcpServers entry dict for *provider*."""
+    """Return a Claude Desktop mcpServers entry dict for *provider*.
+
+    The meta discovery server uses `meta-data-mcp run` (no provider arg).
+    The all-providers aggregator is invoked as a Python module directly
+    so the public CLI remains clean and single-purpose.
+    """
+    is_all = provider == "meta_data_mcp_all"
     if is_local:
+        if is_all:
+            return {
+                "command": "uv",
+                "args": [
+                    "--directory", str(repo_root),
+                    "run", "python", "-m", "meta_data_mcp.providers.meta_data_mcp_all",
+                    "--transport", "stdio",
+                ],
+                "env": {"OTEL_SDK_DISABLED": "true"},
+            }
         return {
             "command": "uv",
             "args": [
-                "--directory",
-                str(repo_root),
-                "run",
-                LIB_NAME,
-                "run",
-                "--transport",
-                "stdio",
-                provider,
+                "--directory", str(repo_root),
+                "run", LIB_NAME, "run", "--transport", "stdio",
             ],
             "env": {"OTEL_SDK_DISABLED": "true"},
         }
+    if is_all:
+        return {
+            "command": "uvx",
+            "args": [
+                "--from", PACKAGE_NAME, "python", "-m",
+                "meta_data_mcp.providers.meta_data_mcp_all",
+                "--transport", "stdio",
+            ],
+        }
     return {
         "command": "uvx",
-        "args": [LIB_NAME, "run", "--transport", "stdio", provider],
+        "args": [LIB_NAME, "run", "--transport", "stdio"],
     }
 
 
@@ -334,6 +345,7 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
             click.echo(f"  ✓ companion '{companion_key}' already configured — skipping")
 
     try:
+        _backup_config(config_path)
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
         configured = [server_key] + ([companion_key] if companion_key else [])
@@ -395,6 +407,7 @@ def remove(provider: str):
             del config["mcpServers"]
 
         # Write updated config
+        _backup_config(config_path)
         with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
 
@@ -404,133 +417,6 @@ def remove(provider: str):
 
     except Exception as e:
         click.echo(f"Error updating config file: {e}")
-        sys.exit(1)
-
-
-@cli.command(
-    context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
-)
-@click.argument("_extra", nargs=-1)
-@click.option(
-    "--local", is_flag=True, help="Force local development mode using absolute paths."
-)
-@click.option("--force", is_flag=True, help="Overwrite existing configurations.")
-@click.option(
-    "--individual-providers",
-    is_flag=True,
-    help="[DEPRECATED] Register every individual provider as its own server. Use the default meta + aggregator setup instead.",
-)
-def setup_all(_extra: tuple, local: bool, force: bool, individual_providers: bool):
-    """Setup Claude Desktop for full OpenData MCP access.
-
-    Registers two servers that together give Claude everything it needs:
-
-    \b
-      opendata-mcp-meta   — 5 discovery tools (find-providers, describe-provider, …)
-      opendata-mcp-all    — 300+ data tools aggregated from all providers
-
-    Any legacy individual provider entries found in the config are automatically
-    removed and replaced with this recommended two-server setup.
-    """
-    try:
-        system = platform.system()
-        if system == "Darwin":
-            config_path = (
-                Path.home()
-                / "Library/Application Support/Claude/claude_desktop_config.json"
-            )
-        elif system == "Windows":
-            config_path = (
-                Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
-            )
-        else:
-            click.echo("Only Windows and macOS are supported.")
-            sys.exit(1)
-
-        if not config_path.parent.exists():
-            click.echo(f"Claude directory not found at {config_path.parent}")
-            sys.exit(1)
-
-        if config_path.exists():
-            try:
-                with open(config_path, "r") as f:
-                    config = json.load(f)
-            except json.JSONDecodeError:
-                click.echo(f"Error: {config_path} contains invalid JSON.")
-                sys.exit(1)
-        else:
-            config = {}
-
-        if "mcpServers" not in config:
-            config["mcpServers"] = {}
-
-        # Transparently remove any legacy individual-provider entries.
-        removed = _migrate_legacy_providers(config)
-        if removed:
-            click.echo(
-                f"Migrated: removed {removed} legacy individual provider entry/entries."
-            )
-
-        if individual_providers:
-            click.echo(
-                "Warning: --individual-providers is deprecated. "
-                "The meta + aggregator setup replaces the need for individual servers."
-            )
-
-        repo_root = Path(__file__).parent.parent.resolve()
-        is_local_repo = (repo_root / "pyproject.toml").exists()
-        use_local = is_local_repo or local
-        mode_label = "LOCAL" if use_local else "GLOBAL"
-
-        registered = []
-
-        # Always register the meta + aggregator pair.
-        for provider in ("meta_data_mcp", "meta_data_mcp_all"):
-            key = _server_key(provider)
-            if key in config["mcpServers"] and not force:
-                click.echo(
-                    f"Skipping '{key}' (already exists). Use --force to overwrite."
-                )
-            else:
-                config["mcpServers"][key] = _build_server_entry(
-                    provider, use_local, repo_root
-                )
-                click.echo(f"Registered {key} ({mode_label})")
-                registered.append(key)
-
-        # Optionally register every individual provider too (deprecated).
-        if individual_providers:
-            import pkgutil
-            import meta_data_mcp.providers as providers_pkg
-
-            skip = {"__template__", "meta_data_mcp", "meta_data_mcp_all"}
-            all_providers = [
-                name
-                for finder, name, ispkg in pkgutil.iter_modules(providers_pkg.__path__)
-                if name not in skip
-            ]
-            for provider in sorted(all_providers):
-                key = _server_key(provider)
-                if key in config["mcpServers"] and not force:
-                    click.echo(
-                        f"Skipping '{key}' (already exists). Use --force to overwrite."
-                    )
-                    continue
-                config["mcpServers"][key] = _build_server_entry(
-                    provider, use_local, repo_root
-                )
-                click.echo(f"Registered {key} ({mode_label})")
-                registered.append(key)
-
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
-
-        click.echo(
-            f"\nConfigured {len(registered)} server(s). Please restart Claude Desktop."
-        )
-
-    except Exception as e:
-        click.echo(f"Error: {e}")
         sys.exit(1)
 
 
@@ -595,7 +481,7 @@ def cleanup(_extra: tuple, apply: bool, local: bool):
             click.echo("✓ Already running the recommended meta + aggregator setup.")
         else:
             click.echo(
-                f"Tip: run `uv run {LIB_NAME} setup-all` to install the recommended setup."
+                f"Tip: run `uv run {LIB_NAME} setup` to install the recommended setup."
             )
         return
 
@@ -630,6 +516,7 @@ def cleanup(_extra: tuple, apply: bool, local: bool):
             click.echo(f"✓ {key} already present — keeping.")
 
     config["mcpServers"] = servers
+    _backup_config(config_path)
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
 
@@ -702,13 +589,19 @@ def inspect(provider: str, local: bool):
         sys.exit(e.returncode)
 
 
+def _backup_config(config_path: Path) -> None:
+    """Write a .bak copy of the Claude Desktop config before modifying it."""
+    if config_path.exists():
+        backup = config_path.with_suffix(".json.bak")
+        backup.write_text(config_path.read_text())
+
+
 def _strip_injected_server_keys() -> None:
     """Remove Claude Desktop mcpServers keys injected into sys.argv.
 
-    Something in the environment appends the current Claude Desktop
-    mcpServers keys as positional CLI arguments on every opendata-mcp
-    invocation. Strip them before Click parses sys.argv so commands
-    work correctly regardless of this injection.
+    Claude Desktop appends current mcpServers keys as positional args when
+    spawning any server. Strip them before Click parses sys.argv — but never
+    strip a token that matches a known CLI subcommand name.
     """
     try:
         config_path = (
@@ -722,7 +615,11 @@ def _strip_injected_server_keys() -> None:
         config = json.loads(config_path.read_text())
         server_keys = set(config.get("mcpServers", {}).keys())
         if server_keys:
-            sys.argv[1:] = [arg for arg in sys.argv[1:] if arg not in server_keys]
+            known_commands = set(cli.commands.keys())
+            sys.argv[1:] = [
+                arg for arg in sys.argv[1:]
+                if arg not in server_keys or arg in known_commands
+            ]
     except Exception:
         pass  # Never break the CLI if config can't be read
 
