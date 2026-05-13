@@ -9,6 +9,8 @@ from meta_data_mcp.providers.global_ripe_stat import (
     handle_ripestat_announced_prefixes,
     handle_ripestat_routing_history,
     handle_ripestat_geoloc,
+    handle_ripestat_asn_neighbours,
+    handle_ripestat_asn_neighbours_history,
 )
 
 
@@ -162,3 +164,72 @@ async def test_ripestat_geoloc_success():
 async def test_ripestat_geoloc_missing_param():
     with pytest.raises(ValueError):
         await handle_ripestat_geoloc({})
+
+
+@pytest.mark.anyio
+async def test_ripestat_asn_neighbours_success():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "status": "ok",
+            "data": {
+                "resource": "AS3333",
+                "neighbours": [
+                    {"asn": 1234, "type": "left"},
+                    {"asn": 5678, "type": "right"},
+                ],
+            },
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_ripestat_asn_neighbours({"resource": "AS3333"})
+        assert "1234" in result[0].text
+        assert "5678" in result[0].text
+
+
+@pytest.mark.anyio
+async def test_ripestat_asn_neighbours_missing_param():
+    with pytest.raises(ValueError):
+        await handle_ripestat_asn_neighbours({})
+
+
+@pytest.mark.anyio
+async def test_ripestat_asn_neighbours_history_success():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "status": "ok",
+            "data": {
+                "resource": "AS3333",
+                "neighbours_series": [
+                    {
+                        "starttime": "2024-01-01T00:00:00",
+                        "endtime": "2024-01-07T00:00:00",
+                        "neighbours": [{"asn": 1234, "type": "left"}],
+                    }
+                ],
+            },
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_ripestat_asn_neighbours_history({"resource": "AS3333"})
+        assert "neighbours_series" in result[0].text
+        assert "1234" in result[0].text
+
+
+@pytest.mark.anyio
+async def test_ripestat_asn_neighbours_history_with_params():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {"status": "ok", "data": {}}
+        mock_get.return_value.raise_for_status = Mock()
+
+        await handle_ripestat_asn_neighbours_history(
+            {"resource": "AS3333", "starttime": "2024-01-01T00:00:00", "max_rows": 100}
+        )
+        call_params = mock_get.call_args.kwargs.get("params", {})
+        assert call_params.get("starttime") == "2024-01-01T00:00:00"
+        assert call_params.get("max_rows") == 100
+
+
+@pytest.mark.anyio
+async def test_ripestat_asn_neighbours_history_missing_param():
+    with pytest.raises(ValueError):
+        await handle_ripestat_asn_neighbours_history({})

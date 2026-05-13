@@ -347,7 +347,7 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
     companion_key = None
     if provider == "meta_data_mcp":
         companion = "meta_data_mcp_all"
-        companion_key = _server_key(companion)
+        companion_key = _ALL_KEY  # "opendata-mcp-all" — stable; don't derive via _server_key
         if companion_key not in config["mcpServers"] or force:
             config["mcpServers"][companion_key] = _build_server_entry(
                 companion, use_local, repo_root
