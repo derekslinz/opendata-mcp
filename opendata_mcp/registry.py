@@ -5,7 +5,7 @@ This file is the single source of truth describing each provider's domains,
 regions, data types, keywords, and any required environment variables.
 
 It powers:
-- The `opendata_mcp_meta` aggregator provider, which exposes `find-providers`,
+- The `meta_data_mcp` aggregator provider, which exposes `find-providers`,
   `list-domains`, `list-regions`, and `describe-provider` tools so LLMs can
   discover which provider answers which question.
 - The CLI's `list` and `info` commands (enriched output).

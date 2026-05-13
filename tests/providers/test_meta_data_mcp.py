@@ -1,6 +1,6 @@
 import pytest
 
-from opendata_mcp.providers.opendata_mcp_meta import (
+from opendata_mcp.providers.meta_data_mcp import (
     handle_find_providers,
     handle_list_domains,
     handle_list_regions,

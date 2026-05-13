@@ -5,7 +5,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 ## Available Providers
 
 > [!IMPORTANT]
-> **Start Here: The Meta Provider (`opendata_mcp_meta`)**
+> **Start Here: The Meta Provider (`meta_data_mcp`)**
 >
 > With 56 data providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, **we strongly recommend installing only the Meta Provider first**. 
 >
@@ -13,7 +13,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 >
 > **Install it now:**
 > ```bash
-> uv run opendata-mcp setup opendata_mcp_meta
+> uv run opendata-mcp setup meta_data_mcp
 > ```
 <img width="1779" height="1092" alt="Screenshot 2026-05-11 at 21 50 39" src="https://github.com/user-attachments/assets/6173d926-769a-4fc8-bf4a-07669033719b" />
 
@@ -21,7 +21,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 
 | Provider | Name | Description |
 |---|---|---|
-| `opendata_mcp_meta` | OpenData MCP Meta | Aggregator: `find-providers`, `describe-provider`, `list-domains`, `list-regions`, `list-providers`. Set this up FIRST; it tells the LLM which other providers to install. |
+| `meta_data_mcp` | OpenData MCP Meta | Aggregator: `find-providers`, `describe-provider`, `list-domains`, `list-regions`, `list-providers`. Set this up FIRST; it tells the LLM which other providers to install. |
 
 ### Government / Civic
 
@@ -184,7 +184,7 @@ With 56 providers available, loading all of them into your LLM at once would ove
 
 1. **Install Meta**: Set up the meta-aggregator provider FIRST.
    ```bash
-   uv run opendata-mcp setup opendata_mcp_meta
+   uv run opendata-mcp setup meta_data_mcp
    ```
 2. **Restart Client**: Restart your Claude Desktop app so it can access the meta tools and prompts shown in the client.
 3. **Use the Prompts**: In the Claude Desktop app, click the attachment/prompt icon and select one of the pre-populated **Meta Prompts** (like "Financial & Economic Research" or "Climate & Environment Dashboard"). This will automatically inject the perfect instructions for Claude to discover the best datasets for your use-case.
@@ -225,7 +225,7 @@ uv run opendata-mcp remove $PROVIDER_NAME
 > ```bash
 > uv run opendata-mcp setup-all       # installs meta + aggregator, removes legacy entries
 > # — or equivalently —
-> uv run opendata-mcp setup opendata_mcp_meta
+> uv run opendata-mcp setup meta_data_mcp
 > ```
 >
 > **Migrate existing config:**
