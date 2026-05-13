@@ -67,7 +67,7 @@ def fetch_search_records(params: CERNSearchRecordsParams) -> dict:
     if params.q:
         query_params["q"] = params.q
 
-    response = http_get(f"{BASE_URL}/records", params=query_params)
+    response = http_get(f"{BASE_URL}/records/", params=query_params)
     return response.json()
 
 
@@ -150,7 +150,7 @@ class CERNListCollectionsParams(BaseModel):
 def fetch_list_collections(params: CERNListCollectionsParams) -> dict:
     """List CERN Open Data Dataset records."""
     query_params = {"type": "Dataset", "size": params.size}
-    response = http_get(f"{BASE_URL}/records", params=query_params)
+    response = http_get(f"{BASE_URL}/records/", params=query_params)
     return response.json()
 
 
@@ -201,7 +201,7 @@ def fetch_search_by_experiment(params: CERNSearchByExperimentParams) -> dict:
     if params.q:
         query_params["q"] = params.q
 
-    response = http_get(f"{BASE_URL}/records", params=query_params)
+    response = http_get(f"{BASE_URL}/records/", params=query_params)
     return response.json()
 
 
@@ -248,7 +248,7 @@ def fetch_search_software(params: CERNSearchSoftwareParams) -> dict:
     if params.q:
         query_params["q"] = params.q
 
-    response = http_get(f"{BASE_URL}/records", params=query_params)
+    response = http_get(f"{BASE_URL}/records/", params=query_params)
     return response.json()
 
 
