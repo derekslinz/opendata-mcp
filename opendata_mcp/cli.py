@@ -14,7 +14,8 @@ import anyio  # noqa: E402
 import click  # noqa: E402
 from opendata_mcp import __version__  # noqa: E402
 
-LIB_NAME = "meta-data-mcp"
+LIB_NAME = "meta-data-mcp"        # CLI entry-point name (what users type)
+PACKAGE_NAME = "opendata-mcp"     # PyPI distribution name (what uvx installs)
 SERVER_PREFIX = "opendata-mcp-"
 
 
@@ -213,9 +214,11 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
             ],
             "env": {"OTEL_SDK_DISABLED": "true"},
         }
+    # uvx installs by PACKAGE_NAME but runs the LIB_NAME command.
+    # These differ when the PyPI package name != CLI entry-point name.
     return {
         "command": "uvx",
-        "args": [LIB_NAME, "run", "--transport", "stdio", provider],
+        "args": ["--from", PACKAGE_NAME, LIB_NAME, "run", "--transport", "stdio", provider],
     }
 
 
@@ -312,7 +315,7 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
     mode_label = (
         f"LOCAL mode pointing to {repo_root}"
         if use_local
-        else f"GLOBAL mode using 'uvx {LIB_NAME}'"
+        else f"GLOBAL mode using 'uvx --from {PACKAGE_NAME} {LIB_NAME}'"
     )
     click.echo(f"Configuring in {mode_label}")
 
@@ -684,7 +687,7 @@ def inspect(provider: str, local: bool):
             provider,
         ]
     else:
-        server_cmd = ["uvx", LIB_NAME, "run", "--transport", "stdio", provider]
+        server_cmd = ["uvx", "--from", PACKAGE_NAME, LIB_NAME, "run", "--transport", "stdio", provider]
 
     click.echo(f"Starting MCP Inspector for provider '{provider}'…")
     click.echo("Open http://localhost:5173 in your browser (Ctrl-C to stop).")
