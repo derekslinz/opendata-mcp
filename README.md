@@ -67,18 +67,45 @@ uv run meta-data-mcp cleanup            # preview
 uv run meta-data-mcp cleanup --apply    # apply
 ```
 
-## Discovery tools (exposed to the LLM)
+## Server tools (what the LLM calls)
 
-These are the tools that make the routing transparent — the LLM uses them to find the right plugin without you having to tell it which tool to call:
+Once `meta-data-mcp` is running, the LLM has access to two layers of tools — and you don't need to mention either to the user:
+
+1. **Meta tools** — the seven server-level tools below. They make routing transparent: the LLM uses them to find (or create) the right plugin without you telling it which tool to call.
+2. **Plugin tools** — ~330 tools coming from the ~60 bundled plugins. They are merged into the same namespace at startup. The LLM picks one after consulting the meta tools.
+
+### Meta tools
 
 | Tool | Purpose |
 |---|---|
-| `opendata-find-providers` | Free-text search over the registry. Returns ranked plugin matches. |
-| `opendata-explain-choice` | Show the scoring breakdown for a search (useful for debugging). |
+| `opendata-find-providers` | Free-text search over the plugin registry. Returns ranked matches. When nothing matches the response carries a `no_match: true` flag and a `next_step` hint pointing at `opendata-create-plugin`. |
+| `opendata-explain-choice` | Show the scoring breakdown for a search (useful for debugging routing decisions). |
 | `opendata-list-domains` | Enumerate the controlled domain vocabulary (`health`, `legal`, `finance`, `earth-science`, …). |
 | `opendata-list-regions` | Enumerate the controlled region vocabulary (`us`, `eu`, `uk`, `global`, …). |
-| `opendata-describe-provider` | Full metadata for one plugin by id. |
+| `opendata-describe-provider` | Full metadata for one plugin by id — title, description, domains, regions, keywords, homepage, required env vars. |
 | `opendata-list-providers` | Paginated dump of the whole registry. |
+| `opendata-create-plugin` | **Autonomously create a new plugin.** Takes a YAML spec, runs the generator, imports the new module, registers it in the live registry, and hot-loads its tools onto the running server. Use this when `opendata-find-providers` returns no match. |
+
+### The autonomous discovery flow
+
+The reason this server is called "meta" is that it routes data requests on the user's behalf — including by *creating* the route when one doesn't exist yet. The full flow:
+
+1. **User asks for data**, e.g. "show me the most recent published CVEs."
+2. **LLM calls `opendata-find-providers`** with the query (`cve`, `vulnerability`, …).
+3. **If the registry has a match**: the LLM picks the matching plugin's tool and answers — done.
+4. **If the registry has no match**: the response includes `no_match: true` and a `next_step` field that explains the autonomous creation path. The LLM:
+   1. Tells the user it's about to add coverage for this data source.
+   2. Web-searches for an open API that exposes the requested data (e.g. the NVD or CIRCL CVE API).
+   3. Drafts a YAML spec following `tools/specs/example_weather_alert.yaml`.
+   4. Calls `opendata-create-plugin` with the spec. The server materializes the plugin module + tests, imports the module, registers a `ProviderEntry` in the in-memory dynamic registry, and merges the new tools into the running server's tool list.
+   5. Calls the newly-available tool to answer the user's original question.
+5. **User gets their answer** — and the plugin remains available for the rest of the session.
+
+The materialized plugin lives on disk (`meta_data_mcp/providers/{id}.py` + `tests/providers/test_{id}.py`); contributors can clean it up, add it to `meta_data_mcp/registry.py` as a static entry, and open a PR so it becomes part of every shipped install.
+
+### Plugin tools
+
+Every bundled plugin contributes its own tools under the one server. Their names are prefixed by the plugin's `server_name` (e.g. `usgs-eq-feed-significant-week`, `frankfurter-latest`, `wikipedia-fetch-summary`). The LLM discovers them through `opendata-find-providers` and `opendata-describe-provider`; you don't need to memorize them.
 
 ## Bundled plugins (~60)
 
