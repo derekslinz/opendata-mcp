@@ -36,14 +36,16 @@ def _server_key(provider: str) -> str:
 
     Two pass-through cases (returned as-is):
     - ``meta_data_mcp`` → ``"meta-data-mcp"``  (matches the CLI package name)
-    - Names already starting with ``opendata-mcp`` (e.g. ``meta_data_mcp_all``
-      → ``"opendata-mcp-all"``)
+    - ``meta_data_mcp_all`` → ``"opendata-mcp-all"`` (stable aggregator key)
+    - Names already starting with ``opendata-mcp``
 
     All other providers get SERVER_PREFIX prepended:
     e.g. ``ch_sbb`` → ``"opendata-mcp-ch-sbb"``
     """
     kebab = provider.replace("_", "-")
     prefix_stem = SERVER_PREFIX.rstrip("-")  # "opendata-mcp"
+    if kebab == "meta-data-mcp-all":
+        return _ALL_KEY
     if kebab == LIB_NAME or kebab.startswith(prefix_stem):
         return kebab
     return f"{SERVER_PREFIX}{kebab}"
@@ -347,7 +349,9 @@ def setup(provider: str, _extra: tuple, local: bool, force: bool):
     companion_key = None
     if provider == "meta_data_mcp":
         companion = "meta_data_mcp_all"
-        companion_key = _ALL_KEY  # "opendata-mcp-all" — stable; don't derive via _server_key
+        companion_key = (
+            _ALL_KEY  # "opendata-mcp-all" — stable; don't derive via _server_key
+        )
         if companion_key not in config["mcpServers"] or force:
             config["mcpServers"][companion_key] = _build_server_entry(
                 companion, use_local, repo_root
