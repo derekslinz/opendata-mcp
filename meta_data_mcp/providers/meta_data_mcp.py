@@ -459,8 +459,8 @@ class DraftSpecTool(BaseModel):
     name: str = Field(
         ...,
         description=(
-            "Tool name in kebab-case, prefixed by the plugin's server_name "
-            "(e.g. 'nvd-list-cves')."
+            "Tool name in globally unique kebab-case, often using a "
+            "provider-specific prefix (e.g. 'nvd-list-cves')."
         ),
     )
     description: str = Field(
@@ -519,7 +519,7 @@ class DraftSpecParams(BaseModel):
     server_name: str | None = Field(
         default=None,
         description=(
-            "kebab-case server name used as a tool-name prefix. "
+            "kebab-case server name for the plugin registry entry. "
             "Defaults to id with underscores replaced by hyphens."
         ),
     )
@@ -563,92 +563,121 @@ async def handle_draft_spec(
         params = DraftSpecParams(**(arguments or {}))
 
         if not _ID_RE.match(params.id):
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": (
-                        f"id {params.id!r} must be lowercase snake_case "
-                        "(matches /^[a-z][a-z0-9_]*$/)."
-                    )
-                }),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {
+                            "error": (
+                                f"id {params.id!r} must be lowercase snake_case "
+                                "(matches /^[a-z][a-z0-9_]*$/)."
+                            )
+                        }
+                    ),
+                )
+            ]
 
         server_name = params.server_name or params.id.replace("_", "-")
         if not _TOOL_NAME_RE.match(server_name):
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": (
-                        f"server_name {server_name!r} must be lowercase "
-                        "kebab-case."
-                    )
-                }),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {
+                            "error": (
+                                f"server_name {server_name!r} must be lowercase "
+                                "kebab-case."
+                            )
+                        }
+                    ),
+                )
+            ]
 
         # Validate every tool entry.
         for i, tool in enumerate(params.tools):
             if not _TOOL_NAME_RE.match(tool.name):
-                return [types.TextContent(
-                    type="text",
-                    text=serialize_for_llm({
-                        "error": (
-                            f"tools[{i}].name {tool.name!r} must be "
-                            "lowercase kebab-case."
-                        )
-                    }),
-                )]
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=serialize_for_llm(
+                            {
+                                "error": (
+                                    f"tools[{i}].name {tool.name!r} must be "
+                                    "lowercase kebab-case."
+                                )
+                            }
+                        ),
+                    )
+                ]
             if tool.response_format not in ("json", "text"):
-                return [types.TextContent(
-                    type="text",
-                    text=serialize_for_llm({
-                        "error": (
-                            f"tools[{i}].response_format must be 'json' "
-                            f"or 'text', got {tool.response_format!r}."
-                        )
-                    }),
-                )]
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=serialize_for_llm(
+                            {
+                                "error": (
+                                    f"tools[{i}].response_format must be 'json' "
+                                    f"or 'text', got {tool.response_format!r}."
+                                )
+                            }
+                        ),
+                    )
+                ]
             placeholders = _PLACEHOLDER_RE.findall(tool.endpoint)
             param_names = {p.name for p in tool.params}
             missing_placeholders = [p for p in placeholders if p not in param_names]
             if missing_placeholders:
-                return [types.TextContent(
-                    type="text",
-                    text=serialize_for_llm({
-                        "error": (
-                            f"tools[{i}] endpoint has placeholders "
-                            f"{missing_placeholders} that are not declared "
-                            "as params."
-                        )
-                    }),
-                )]
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=serialize_for_llm(
+                            {
+                                "error": (
+                                    f"tools[{i}] endpoint has placeholders "
+                                    f"{missing_placeholders} that are not declared "
+                                    "as params."
+                                )
+                            }
+                        ),
+                    )
+                ]
             for j, p in enumerate(tool.params):
                 if p.type not in _ALLOWED_PARAM_TYPES:
-                    return [types.TextContent(
-                        type="text",
-                        text=serialize_for_llm({
-                            "error": (
-                                f"tools[{i}].params[{j}].type "
-                                f"{p.type!r} must be one of "
-                                f"{list(_ALLOWED_PARAM_TYPES)}."
-                            )
-                        }),
-                    )]
+                    return [
+                        types.TextContent(
+                            type="text",
+                            text=serialize_for_llm(
+                                {
+                                    "error": (
+                                        f"tools[{i}].params[{j}].type "
+                                        f"{p.type!r} must be one of "
+                                        f"{list(_ALLOWED_PARAM_TYPES)}."
+                                    )
+                                }
+                            ),
+                        )
+                    ]
                 if p.name in placeholders and not p.required:
-                    return [types.TextContent(
-                        type="text",
-                        text=serialize_for_llm({
-                            "error": (
-                                f"tools[{i}].params[{j}] {p.name!r} is a "
-                                "path placeholder and must be required=true."
-                            )
-                        }),
-                    )]
+                    return [
+                        types.TextContent(
+                            type="text",
+                            text=serialize_for_llm(
+                                {
+                                    "error": (
+                                        f"tools[{i}].params[{j}] {p.name!r} is a "
+                                        "path placeholder and must be required=true."
+                                    )
+                                }
+                            ),
+                        )
+                    ]
 
         # Build the plain-dict spec, in the same field order the example uses
         # so the emitted YAML matches the project's existing style.
         spec_dict: dict[str, Any] = {
             "id": params.id,
             "server_name": server_name,
+            "title": params.title,
             "base_url": params.base_url,
             "description": params.description,
             "homepage": params.homepage,
@@ -686,24 +715,30 @@ async def handle_draft_spec(
 
         spec_yaml = _yaml.safe_dump(spec_dict, sort_keys=False, width=88)
 
-        return [types.TextContent(
-            type="text",
-            text=serialize_for_llm({
-                "status": "ok",
-                "spec_yaml": spec_yaml,
-                "next_step": (
-                    "Pass `spec_yaml` (and your chosen domains/regions/"
-                    "keywords/requires_env) to `opendata-create-plugin` to "
-                    "materialize and hot-load the plugin."
+        return [
+            types.TextContent(
+                type="text",
+                text=serialize_for_llm(
+                    {
+                        "status": "ok",
+                        "spec_yaml": spec_yaml,
+                        "next_step": (
+                            "Pass `spec_yaml` (and your chosen domains/regions/"
+                            "keywords/requires_env) to `opendata-create-plugin` to "
+                            "materialize and hot-load the plugin."
+                        ),
+                    }
                 ),
-            }),
-        )]
+            )
+        ]
     except Exception as e:
         log.error(f"Error in opendata-draft-spec: {e}")
-        return [types.TextContent(
-            type="text",
-            text=serialize_for_llm({"error": str(e)}),
-        )]
+        return [
+            types.TextContent(
+                type="text",
+                text=serialize_for_llm({"error": str(e)}),
+            )
+        ]
 
 
 TOOLS.append(
