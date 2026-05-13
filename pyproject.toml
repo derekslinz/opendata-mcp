@@ -23,7 +23,7 @@ dependencies = [
 path = "opendata_mcp/__init__.py"
 
 [project.scripts]
-opendata-mcp = "opendata_mcp.cli:main"
+meta-data-mcp = "opendata_mcp.cli:main"
 
 [tool.ruff]
 line-length = 88
