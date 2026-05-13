@@ -11,29 +11,25 @@ def runner():
     return CliRunner()
 
 
-def test_run_valid_provider(runner):
-    # Create a mock module where main accepts transport, port, and host
-    async def mock_main(transport="sse", port=8000, host="127.0.0.1"):
+def test_run_starts_meta_server(runner):
+    # run always starts meta_data_mcp; no provider arg accepted
+    async def mock_main(transport="stdio", port=8000, host="127.0.0.1"):
         pass
 
     mock_module = type("Module", (), {"main": mock_main})
 
     with patch("meta_data_mcp.cli._import_provider_module", return_value=mock_module):
         with patch("meta_data_mcp.cli.anyio.run") as mock_run:
-            result = runner.invoke(cli, ["run", "test_provider"])
+            result = runner.invoke(cli, ["run"])
 
     assert result.exit_code == 0
-    # The default transport is now sse, port 8000, host 127.0.0.1
-    mock_run.assert_called_once_with(mock_module.main, "sse", 8000, "127.0.0.1")
+    mock_run.assert_called_once_with(mock_module.main, "stdio", 8000, "127.0.0.1")
 
 
-def test_run_invalid_provider(runner):
-    result = runner.invoke(cli, ["run", "nonexistent_provider"])
-    assert result.exit_code == 1
-    assert (
-        "Provider 'nonexistent_provider' not found or has missing dependencies."
-        in result.output
-    )
+def test_run_rejects_extra_args(runner):
+    # run takes no positional arguments — extra args are a usage error
+    result = runner.invoke(cli, ["run", "some_provider"])
+    assert result.exit_code == 2
 
 
 def test_list_providers(runner):
@@ -106,3 +102,84 @@ def test_setup_invalid_provider_does_not_write_config(runner, tmp_path):
         in result.output
     )
     assert not config_path.exists()
+
+
+def test_setup_creates_backup_before_writing(runner, tmp_path):
+    """setup writes a .json.bak before overwriting claude_desktop_config.json."""
+    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
+    claude_dir.mkdir(parents=True)
+    config_path = claude_dir / "claude_desktop_config.json"
+    original_content = '{"mcpServers": {}}'
+    config_path.write_text(original_content)
+
+    mock_module = type("Module", (), {})
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            with patch(
+                "meta_data_mcp.cli._import_provider_module", return_value=mock_module
+            ):
+                runner.invoke(cli, ["setup", "--force", "meta_data_mcp"])
+
+    backup_path = config_path.with_suffix(".json.bak")
+    assert backup_path.exists(), ".json.bak should be created before writing config"
+    assert backup_path.read_text() == original_content
+
+
+def test_remove_creates_backup_before_writing(runner, tmp_path):
+    """remove writes a .json.bak before overwriting claude_desktop_config.json."""
+    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
+    claude_dir.mkdir(parents=True)
+    config_path = claude_dir / "claude_desktop_config.json"
+    original_content = '{"mcpServers": {"meta-data-mcp": {}}}'
+    config_path.write_text(original_content)
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            runner.invoke(cli, ["remove", "meta_data_mcp"])
+
+    backup_path = config_path.with_suffix(".json.bak")
+    assert backup_path.exists(), ".json.bak should be created before writing config"
+    assert backup_path.read_text() == original_content
+
+
+def test_cleanup_apply_creates_backup_before_writing(runner, tmp_path):
+    """cleanup --apply writes a .json.bak before overwriting claude_desktop_config.json."""
+    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
+    claude_dir.mkdir(parents=True)
+    config_path = claude_dir / "claude_desktop_config.json"
+    original_content = '{"mcpServers": {"opendata-mcp-ch-sbb": {}}}'
+    config_path.write_text(original_content)
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            runner.invoke(cli, ["cleanup", "--apply"])
+
+    backup_path = config_path.with_suffix(".json.bak")
+    assert backup_path.exists(), ".json.bak should be created before writing config"
+    assert backup_path.read_text() == original_content
+
+
+def test_strip_injected_server_keys_preserves_first_occurrence_only(tmp_path):
+    """_strip_injected_server_keys keeps a command-name token only once."""
+    import sys as _sys
+
+    from meta_data_mcp.cli import _strip_injected_server_keys
+
+    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
+    claude_dir.mkdir(parents=True)
+    config_path = claude_dir / "claude_desktop_config.json"
+    # Server key "setup" shares its name with the CLI subcommand.
+    config_path.write_text('{"mcpServers": {"setup": {}, "opendata-mcp-all": {}}}')
+
+    original_argv = _sys.argv[:]
+    try:
+        _sys.argv = ["meta-data-mcp", "setup", "setup", "opendata-mcp-all"]
+        with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
+            with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+                _strip_injected_server_keys()
+        # The first "setup" is the real subcommand and must be kept;
+        # the second "setup" and "opendata-mcp-all" are injected and must be stripped.
+        assert _sys.argv == ["meta-data-mcp", "setup"]
+    finally:
+        _sys.argv = original_argv
