@@ -625,7 +625,15 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         description="Fetch public ArcGIS item metadata by item ID from the ArcGIS REST API — layers, maps, services, and files.",
         domains=("geo",),
         regions=("us",),
-        keywords=("arcgis", "gis", "item", "metadata", "esri", "layer", "map service"),
+        keywords=(
+            "arcgis",
+            "gis",
+            "item",
+            "metadata",
+            "esri",
+            "layer",
+            "map service",
+        ),
         homepage="https://developers.arcgis.com/rest/users-groups-and-items/item/",
     ),
     ProviderEntry(
