@@ -82,5 +82,5 @@ markers = [
 ]
 
 
-[tool.hatch.build.targets.wheel]
+[tool.hatch.build]
 packages = ["opendata_mcp"]
