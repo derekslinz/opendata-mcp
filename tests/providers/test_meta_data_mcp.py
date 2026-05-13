@@ -20,6 +20,19 @@ from opendata_mcp.providers.meta_data_mcp import (
     handle_read_all_providers,
 )
 
+EXPECTED_PROVIDER_FIELDS = {
+    "id",
+    "server_name",
+    "title",
+    "description",
+    "domains",
+    "regions",
+    "keywords",
+    "homepage",
+    "license_note",
+    "requires_env",
+}
+
 
 @pytest.fixture
 def anyio_backend():
@@ -243,18 +256,7 @@ def test_read_all_providers_includes_provider_data():
     assert payload
 
     provider = payload[0]
-    assert {
-        "id",
-        "server_name",
-        "title",
-        "description",
-        "domains",
-        "regions",
-        "keywords",
-        "homepage",
-        "license_note",
-        "requires_env",
-    }.issubset(provider.keys())
+    assert EXPECTED_PROVIDER_FIELDS.issubset(provider.keys())
 
 
 # Prompt handler coverage tests
