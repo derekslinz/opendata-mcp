@@ -2,7 +2,7 @@
 
 The (meta)-data-mcp is an mmcp server: it acts as an intelligent gateway to an ever-growing library of open data sources, keeping track of vast lakes of data so you don't have to. 
 
-Never heard of an mmcp before? Don't feel bad, I made it up while writing this just now. Originally this was the opendata-mcp --but as the sources grew from one to dozens and more, the tools availabl quickly exceeded 300, and the list of installed sources was just ridiculous.
+Never heard of an mmcp before? Don't feel bad, I made it up while writing this just now. Originally this was the opendata-mcp—but as the sources grew from one to dozens and more, the tools available quickly exceeded 300, and the list of installed sources was just ridiculous.
 
 So I decided to take a hard left, rename the project, and focus on the tricky part. There's an absurd amount of data available --finding data isn't the hard part, it's finding the data that you need, when you need it. 
 
