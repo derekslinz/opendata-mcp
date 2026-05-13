@@ -40,8 +40,8 @@ def anyio_backend():
 
 
 def test_meta_tools_registered():
-    """The six discovery tools plus the autonomous plugin-creation tool must
-    be registered at module-import time (before main() merges plugins)."""
+    """The discovery + autonomous-creation meta tools must be registered at
+    module-import time (before main() merges plugins)."""
     names = {tool.name for tool in TOOLS}
     expected = {
         "opendata-explain-choice",
@@ -51,10 +51,114 @@ def test_meta_tools_registered():
         "opendata-describe-provider",
         "opendata-list-providers",
         "opendata-create-plugin",
+        "opendata-draft-spec",
     }
     # The set must contain (at least) all of the above. Plugin tools may
     # have been hot-loaded earlier in this test session — that's fine.
     assert expected.issubset(names), f"missing: {expected - names}"
+
+
+@pytest.mark.anyio
+async def test_draft_spec_emits_valid_yaml_for_simple_api():
+    """draft-spec returns a YAML string that the generator's validator accepts."""
+    from meta_data_mcp.providers.meta_data_mcp import handle_draft_spec
+
+    result = await handle_draft_spec({
+        "id": "global_drafttest",
+        "title": "Draft Test API",
+        "base_url": "https://api.example.com",
+        "description": "Draft-spec test plugin.",
+        "homepage": "https://example.com/",
+        "domains": ["finance"],
+        "regions": ["global"],
+        "keywords": ["test"],
+        "tools": [
+            {
+                "name": "drafttest-get-thing",
+                "description": "Get a thing by id.",
+                "endpoint": "/v1/things/{thing_id}",
+                "response_format": "json",
+                "params": [
+                    {
+                        "name": "thing_id",
+                        "type": "str",
+                        "required": True,
+                        "description": "the id",
+                    },
+                ],
+            },
+        ],
+    })
+    payload = json.loads(result[0].text)
+    assert payload.get("status") == "ok", payload
+    yaml_str = payload["spec_yaml"]
+
+    # Round-trip the YAML through the generator's validator to prove it's
+    # actually consumable by `opendata-create-plugin`.
+    import tempfile
+    from pathlib import Path as _P
+    import importlib.util
+
+    spec_path = _P(tempfile.mkdtemp()) / "draft.yaml"
+    spec_path.write_text(yaml_str)
+
+    gen_path = _P(__file__).resolve().parents[2] / "tools" / "generate_provider.py"
+    gen_spec = importlib.util.spec_from_file_location("generate_provider", gen_path)
+    assert gen_spec is not None and gen_spec.loader is not None
+    gen_mod = importlib.util.module_from_spec(gen_spec)
+    gen_spec.loader.exec_module(gen_mod)
+    parsed = gen_mod.load_spec(spec_path)
+    assert parsed["id"] == "global_drafttest"
+    assert parsed["server_name"] == "global-drafttest"
+    assert parsed["tools"][0]["name"] == "drafttest-get-thing"
+
+
+@pytest.mark.anyio
+async def test_draft_spec_rejects_path_placeholder_without_required_param():
+    from meta_data_mcp.providers.meta_data_mcp import handle_draft_spec
+
+    result = await handle_draft_spec({
+        "id": "bad_one",
+        "title": "Bad",
+        "base_url": "https://example.com",
+        "description": "x",
+        "homepage": "https://example.com",
+        "tools": [
+            {
+                "name": "bad-tool",
+                "description": "x",
+                "endpoint": "/v1/{missing_id}",
+                "params": [],
+            }
+        ],
+    })
+    payload = json.loads(result[0].text)
+    assert "error" in payload
+    assert "missing_id" in payload["error"]
+
+
+@pytest.mark.anyio
+async def test_draft_spec_rejects_bad_id_casing():
+    from meta_data_mcp.providers.meta_data_mcp import handle_draft_spec
+
+    result = await handle_draft_spec({
+        "id": "Bad-Id",  # not snake_case
+        "title": "x",
+        "base_url": "https://example.com",
+        "description": "x",
+        "homepage": "https://example.com",
+        "tools": [
+            {
+                "name": "x-y",
+                "description": "x",
+                "endpoint": "/x",
+                "params": [],
+            }
+        ],
+    })
+    payload = json.loads(result[0].text)
+    assert "error" in payload
+    assert "snake_case" in payload["error"].lower()
 
 
 @pytest.mark.anyio
