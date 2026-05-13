@@ -28,6 +28,11 @@ from opendata_mcp.registry import REGISTRY, ProviderEntry
 log = logging.getLogger(__name__)
 
 
+def _tokenize(text: str) -> set[str]:
+    """Tokenize text into lowercase alphanumeric terms."""
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
 @dataclass(frozen=True)
 class ScoredProvider:
     """A provider with its ranking score and scoring breakdown."""
@@ -122,18 +127,18 @@ class MetadataScorer(Scorer):
         if not query:
             return 0.0
 
-        q_tokens = set(re.findall(r"[a-z0-9]+", query.lower()))
+        q_tokens = _tokenize(query)
         if not q_tokens:
             return 0.0
         score = 0.0
 
-        # Check if query matches any domain or region tokens
+        # Check if query contains domain or region tokens
         for domain in provider.domains:
-            if domain.lower() in q_tokens:
+            if _tokenize(domain).issubset(q_tokens):
                 score += 0.5
 
         for region in provider.regions:
-            if region.lower() in q_tokens:
+            if _tokenize(region).issubset(q_tokens):
                 score += 0.3
 
         return min(score, 1.0)
