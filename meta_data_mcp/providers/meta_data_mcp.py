@@ -21,6 +21,7 @@ server.
 
 import importlib
 import logging
+import re
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
@@ -111,12 +112,13 @@ async def handle_find_providers(
             payload["next_step"] = (
                 "No registered plugin matches this query. To serve this "
                 "request autonomously: (1) web-search for an open/public "
-                "API that exposes the requested data, (2) draft a YAML "
-                "spec following tools/specs/example_weather_alert.yaml, "
-                "(3) call `opendata-create-plugin` with the spec to "
-                "materialize, register, and hot-load a new plugin in "
-                "this running server. Its tools will become available "
-                "immediately afterwards."
+                "API that exposes the requested data, (2) call "
+                "`opendata-draft-spec` with the API's id, base_url, and "
+                "tool definitions to get a validated YAML spec, (3) pass "
+                "that spec to `opendata-create-plugin` to materialize, "
+                "register, and hot-load a new plugin in this running "
+                "server. Its tools will become available immediately "
+                "afterwards."
             )
 
         return [types.TextContent(type="text", text=serialize_for_llm(payload))]
@@ -409,16 +411,316 @@ TOOLS.append(
         description=(
             "Autonomously create a new plugin for this meta-data-mcp server "
             "from a YAML spec. Use this when `opendata-find-providers` "
-            "returned no match: web-search for an open API that matches the "
-            "user's query, draft a YAML spec following "
-            "`tools/specs/example_weather_alert.yaml`, then call this tool. "
-            "The new plugin is materialized to disk, imported, registered in "
-            "the live registry, and its tools become available immediately."
+            "returned no match. Recommended flow: first call "
+            "`opendata-draft-spec` with structured fields to get a valid "
+            "YAML spec, then pass it here. The new plugin is materialized "
+            "to disk, imported, registered in the live registry, and its "
+            "tools become available immediately."
         ),
         inputSchema=CreatePluginParams.model_json_schema(),
     )
 )
 TOOLS_HANDLERS["opendata-create-plugin"] = handle_create_plugin
+
+
+###################
+# draft-spec (build a YAML plugin spec from structured inputs)
+###################
+
+
+class DraftSpecToolParam(BaseModel):
+    """One parameter on a tool inside a draft spec."""
+
+    name: str = Field(
+        ...,
+        description="Parameter name (snake_case, matches API query/path param).",
+    )
+    type: str = Field(
+        ...,
+        description="Type: one of 'str', 'int', 'float', 'bool'.",
+    )
+    required: bool = Field(
+        default=False,
+        description="Whether the parameter is required.",
+    )
+    description: str = Field(
+        default="",
+        description="Short human-readable description of the parameter.",
+    )
+    default: Any | None = Field(
+        default=None,
+        description="Optional default value when the parameter is not required.",
+    )
+
+
+class DraftSpecTool(BaseModel):
+    """One tool entry in a draft plugin spec."""
+
+    name: str = Field(
+        ...,
+        description=(
+            "Tool name in kebab-case, prefixed by the plugin's server_name "
+            "(e.g. 'nvd-list-cves')."
+        ),
+    )
+    description: str = Field(
+        ...,
+        description="Concise description of what the tool returns. The LLM sees this.",
+    )
+    endpoint: str = Field(
+        ...,
+        description=(
+            "URL path relative to base_url. May contain {placeholders} for "
+            "path parameters (e.g. '/cves/{cve_id}'). Each placeholder must "
+            "appear as a required param of matching name."
+        ),
+    )
+    response_format: str = Field(
+        default="json",
+        description="'json' (default) or 'text' for plain-text responses.",
+    )
+    params: list[DraftSpecToolParam] = Field(
+        default_factory=list,
+        description="Query parameters and path-placeholder parameters for this tool.",
+    )
+
+
+class DraftSpecParams(BaseModel):
+    """Structured inputs that produce a valid plugin YAML spec."""
+
+    id: str = Field(
+        ...,
+        description=(
+            "Plugin id in snake_case, e.g. 'global_nvd_cve'. Becomes the "
+            "Python module name under meta_data_mcp/providers/."
+        ),
+    )
+    title: str = Field(
+        ...,
+        description="Human-readable title for the registry entry.",
+    )
+    base_url: str = Field(
+        ...,
+        description="API base URL with no trailing slash (e.g. 'https://services.nvd.nist.gov').",
+    )
+    description: str = Field(
+        ...,
+        description="One- or two-sentence description of what this plugin covers.",
+    )
+    homepage: str = Field(
+        ...,
+        description="URL to the API documentation or provider homepage.",
+    )
+    tools: list[DraftSpecTool] = Field(
+        ...,
+        min_length=1,
+        description="At least one tool definition. Each becomes one MCP tool on the server.",
+    )
+    server_name: str | None = Field(
+        default=None,
+        description=(
+            "kebab-case server name used as a tool-name prefix. "
+            "Defaults to id with underscores replaced by hyphens."
+        ),
+    )
+    domains: list[str] = Field(
+        default_factory=list,
+        description="Registry domains (e.g. ['security', 'government']).",
+    )
+    regions: list[str] = Field(
+        default_factory=list,
+        description="Registry regions (e.g. ['global', 'us']).",
+    )
+    keywords: list[str] = Field(
+        default_factory=list,
+        description="Search keywords that should match this plugin in opendata-find-providers.",
+    )
+    requires_env: list[str] = Field(
+        default_factory=list,
+        description="Names of environment variables this API needs (e.g. ['NVD_API_KEY']).",
+    )
+
+
+_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_TOOL_NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+_PLACEHOLDER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_ALLOWED_PARAM_TYPES = ("str", "int", "float", "bool")
+
+
+async def handle_draft_spec(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Compose a validated plugin YAML spec from structured inputs.
+
+    Use this BEFORE calling `opendata-create-plugin`. The output is a
+    YAML string that's syntactically valid, schema-compliant, and ready
+    to pass straight through. This eliminates the need to hand-author
+    YAML and surfaces validation errors up-front.
+    """
+    import yaml as _yaml
+
+    try:
+        params = DraftSpecParams(**(arguments or {}))
+
+        if not _ID_RE.match(params.id):
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": (
+                        f"id {params.id!r} must be lowercase snake_case "
+                        "(matches /^[a-z][a-z0-9_]*$/)."
+                    )
+                }),
+            )]
+
+        server_name = params.server_name or params.id.replace("_", "-")
+        if not _TOOL_NAME_RE.match(server_name):
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": (
+                        f"server_name {server_name!r} must be lowercase "
+                        "kebab-case."
+                    )
+                }),
+            )]
+
+        # Validate every tool entry.
+        for i, tool in enumerate(params.tools):
+            if not _TOOL_NAME_RE.match(tool.name):
+                return [types.TextContent(
+                    type="text",
+                    text=serialize_for_llm({
+                        "error": (
+                            f"tools[{i}].name {tool.name!r} must be "
+                            "lowercase kebab-case."
+                        )
+                    }),
+                )]
+            if tool.response_format not in ("json", "text"):
+                return [types.TextContent(
+                    type="text",
+                    text=serialize_for_llm({
+                        "error": (
+                            f"tools[{i}].response_format must be 'json' "
+                            f"or 'text', got {tool.response_format!r}."
+                        )
+                    }),
+                )]
+            placeholders = _PLACEHOLDER_RE.findall(tool.endpoint)
+            param_names = {p.name for p in tool.params}
+            missing_placeholders = [p for p in placeholders if p not in param_names]
+            if missing_placeholders:
+                return [types.TextContent(
+                    type="text",
+                    text=serialize_for_llm({
+                        "error": (
+                            f"tools[{i}] endpoint has placeholders "
+                            f"{missing_placeholders} that are not declared "
+                            "as params."
+                        )
+                    }),
+                )]
+            for j, p in enumerate(tool.params):
+                if p.type not in _ALLOWED_PARAM_TYPES:
+                    return [types.TextContent(
+                        type="text",
+                        text=serialize_for_llm({
+                            "error": (
+                                f"tools[{i}].params[{j}].type "
+                                f"{p.type!r} must be one of "
+                                f"{list(_ALLOWED_PARAM_TYPES)}."
+                            )
+                        }),
+                    )]
+                if p.name in placeholders and not p.required:
+                    return [types.TextContent(
+                        type="text",
+                        text=serialize_for_llm({
+                            "error": (
+                                f"tools[{i}].params[{j}] {p.name!r} is a "
+                                "path placeholder and must be required=true."
+                            )
+                        }),
+                    )]
+
+        # Build the plain-dict spec, in the same field order the example uses
+        # so the emitted YAML matches the project's existing style.
+        spec_dict: dict[str, Any] = {
+            "id": params.id,
+            "server_name": server_name,
+            "base_url": params.base_url,
+            "description": params.description,
+            "homepage": params.homepage,
+        }
+        if params.domains:
+            spec_dict["domains"] = list(params.domains)
+        if params.regions:
+            spec_dict["regions"] = list(params.regions)
+        if params.keywords:
+            spec_dict["keywords"] = list(params.keywords)
+        if params.requires_env:
+            spec_dict["requires_env"] = list(params.requires_env)
+
+        spec_dict["tools"] = []
+        for tool in params.tools:
+            tool_dict: dict[str, Any] = {
+                "name": tool.name,
+                "description": tool.description,
+                "endpoint": tool.endpoint,
+                "response_format": tool.response_format,
+            }
+            if tool.params:
+                tool_dict["params"] = []
+                for p in tool.params:
+                    p_dict: dict[str, Any] = {
+                        "name": p.name,
+                        "type": p.type,
+                        "required": p.required,
+                        "description": p.description,
+                    }
+                    if p.default is not None:
+                        p_dict["default"] = p.default
+                    tool_dict["params"].append(p_dict)
+            spec_dict["tools"].append(tool_dict)
+
+        spec_yaml = _yaml.safe_dump(spec_dict, sort_keys=False, width=88)
+
+        return [types.TextContent(
+            type="text",
+            text=serialize_for_llm({
+                "status": "ok",
+                "spec_yaml": spec_yaml,
+                "next_step": (
+                    "Pass `spec_yaml` (and your chosen domains/regions/"
+                    "keywords/requires_env) to `opendata-create-plugin` to "
+                    "materialize and hot-load the plugin."
+                ),
+            }),
+        )]
+    except Exception as e:
+        log.error(f"Error in opendata-draft-spec: {e}")
+        return [types.TextContent(
+            type="text",
+            text=serialize_for_llm({"error": str(e)}),
+        )]
+
+
+TOOLS.append(
+    types.Tool(
+        name="opendata-draft-spec",
+        description=(
+            "Build a validated YAML plugin spec from structured inputs. "
+            "Use this BEFORE `opendata-create-plugin` to avoid hand-writing "
+            "YAML. Validates id format, kebab-case tool names, path-"
+            "placeholder/param consistency, parameter types, and response "
+            "format. Returns the YAML string ready to feed into "
+            "`opendata-create-plugin`."
+        ),
+        inputSchema=DraftSpecParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["opendata-draft-spec"] = handle_draft_spec
 
 
 ###################
