@@ -94,10 +94,10 @@ def _migrate_legacy_providers(config: dict) -> int:
 @cli.command()
 @click.option(
     "--transport",
-    default="stdio",
+    default="sse",
     show_default=True,
     type=click.Choice(["stdio", "sse"]),
-    help="Transport protocol to use",
+    help="Transport protocol (sse for interactive, stdio for Claude Desktop)",
 )
 @click.option(
     "--port",
