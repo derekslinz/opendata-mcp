@@ -13,7 +13,7 @@ Inspired by/born out of  https://github.com/grll 's project, it's grown into a s
 >
 > **Install it now:**
 > ```bash
-> uv run opendata-mcp setup meta_data_mcp
+> uv run meta-data-mcp setup meta_data_mcp
 > ```
 <img width="1779" height="1092" alt="Screenshot 2026-05-11 at 21 50 39" src="https://github.com/user-attachments/assets/6173d926-769a-4fc8-bf4a-07669033719b" />
 
@@ -184,34 +184,34 @@ With 56 providers available, loading all of them into your LLM at once would ove
 
 1. **Install Meta**: Set up the meta-aggregator provider FIRST.
    ```bash
-   uv run opendata-mcp setup meta_data_mcp
+   uv run meta-data-mcp setup meta_data_mcp
    ```
 2. **Restart Client**: Restart your Claude Desktop app so it can access the meta tools and prompts shown in the client.
 3. **Use the Prompts**: In the Claude Desktop app, click the attachment/prompt icon and select one of the pre-populated **Meta Prompts** (like "Financial & Economic Research" or "Climate & Environment Dashboard"). This will automatically inject the perfect instructions for Claude to discover the best datasets for your use-case.
-4. **Run Everything**: If Claude needs another provider to complete your request, it will use the meta tools (`opendata-find-providers`) to discover it, and then instruct you to run `uv run opendata-mcp setup <provider_name>`. 
+4. **Run Everything**: If Claude needs another provider to complete your request, it will use the meta tools (`opendata-find-providers`) to discover it, and then instruct you to run `uv run meta-data-mcp setup <provider_name>`. 
 
 > [!TIP]
 > **For developers building multi-agent systems:** Check out the `system_prompt.md` file for a highly optimized system prompt you can give to your orchestrator agent to enforce this exact pattern.
 
 ##### Overview
 
-For local development and testing, use **`uv run opendata-mcp`**:
+For local development and testing, use **`uv run meta-data-mcp`**:
 
 ```bash
 # show available commands
-uv run opendata-mcp 
+uv run meta-data-mcp 
 
 # show available providers
-uv run opendata-mcp list
+uv run meta-data-mcp list
 
 # show info about a provider
-uv run opendata-mcp info $PROVIDER_NAME
+uv run meta-data-mcp info $PROVIDER_NAME
 
 # setup a provider's MCP server on your Claude Desktop app
-uv run opendata-mcp setup $PROVIDER_NAME
+uv run meta-data-mcp setup $PROVIDER_NAME
 
 # remove a provider's MCP server from your Claude Desktop app
-uv run opendata-mcp remove $PROVIDER_NAME
+uv run meta-data-mcp remove $PROVIDER_NAME
 ```
 
 > [!WARNING]
@@ -223,22 +223,22 @@ uv run opendata-mcp remove $PROVIDER_NAME
 >
 > **Recommended setup (new):**
 > ```bash
-> uv run opendata-mcp setup-all       # installs meta + aggregator, removes legacy entries
+> uv run meta-data-mcp setup-all       # installs meta + aggregator, removes legacy entries
 > # — or equivalently —
-> uv run opendata-mcp setup meta_data_mcp
+> uv run meta-data-mcp setup meta_data_mcp
 > ```
 >
 > **Migrate existing config:**
 > ```bash
-> uv run opendata-mcp cleanup          # preview what will be removed
-> uv run opendata-mcp cleanup --apply  # remove legacy entries and install meta + aggregator
+> uv run meta-data-mcp cleanup          # preview what will be removed
+> uv run meta-data-mcp cleanup --apply  # remove legacy entries and install meta + aggregator
 > ```
 
 Quickstart for the Switzerland SBB (train company) provider:
 
 ```bash
 # make sure claude is installed
-uv run opendata-mcp setup ch_sbb
+uv run meta-data-mcp setup ch_sbb
 ```
 
 Restart Claude and you should see a new hammer icon at the bottom right of the chat.
@@ -249,16 +249,16 @@ By default, the `run` command uses the **SSE (HTTP)** transport. This launches a
 
 ```bash
 # start the server using default SSE transport on port 8000
-uv run opendata-mcp run ch_sbb
+uv run meta-data-mcp run ch_sbb
 
 # specify host and port
-uv run opendata-mcp run ch_sbb --host 0.0.0.0 --port 3001
+uv run meta-data-mcp run ch_sbb --host 0.0.0.0 --port 3001
 ```
 
 If you need to run a provider via **stdio** (standard input/output), use the `--transport stdio` flag:
 
 ```bash
-uv run opendata-mcp run ch_sbb --transport stdio
+uv run meta-data-mcp run ch_sbb --transport stdio
 ```
 
 You can now ask questions to Claude about SBB train network disruption and it will answer based on data collected on `data.sbb.ch`.
