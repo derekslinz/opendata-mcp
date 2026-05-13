@@ -112,6 +112,7 @@ class FedRegGetDocumentParams(BaseModel):
 
     document_number: str = Field(
         ...,
+        min_length=1,
         description="Federal Register document number (e.g. '2024-12345').",
     )
 

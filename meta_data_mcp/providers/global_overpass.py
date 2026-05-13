@@ -58,7 +58,12 @@ def _run_overpass_query(query: str) -> Any:
     (Overpass accepts both GET and POST). Returns the parsed JSON when the
     response content-type is JSON; otherwise returns the raw text.
     """
-    response = http_get(f"{BASE_URL}/interpreter", params={"data": query}, timeout=60.0)
+    response = http_get(
+        f"{BASE_URL}/interpreter",
+        params={"data": query},
+        timeout=60.0,
+        headers={"Accept": "*/*"},
+    )
     content_type = (
         response.headers.get("content-type", "") if hasattr(response, "headers") else ""
     )
@@ -81,6 +86,7 @@ class OverpassQueryParams(BaseModel):
 
     query: str = Field(
         ...,
+        min_length=1,
         description=(
             "Raw OverpassQL query string. Include '[out:json];' for JSON "
             'responses (e.g. \'[out:json];node["amenity"="cafe"]'
@@ -139,7 +145,7 @@ def fetch_status(_params: OverpassStatusParams) -> str:
     response = http_get(
         f"{BASE_URL}/status",
         timeout=30.0,
-        headers={"Accept": "text/plain"},
+        headers={"Accept": "*/*"},
     )
     return response.text
 

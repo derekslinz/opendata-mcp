@@ -89,8 +89,11 @@ def _default_user_agent() -> str:
     require an identifiable User-Agent including a contact address. Callers
     may override `OPENDATA_MCP_CONTACT` via environment variable.
     """
-    contact = os.getenv("OPENDATA_MCP_CONTACT", "opendata-mcp@example.org")
-    return f"meta-data-mcp/{__version__} (+https://github.com/derekslinz/meta-data-mcp; {contact})"
+    contact = os.getenv("OPENDATA_MCP_CONTACT")
+    base = f"meta-data-mcp/{__version__} (+https://github.com/derekslinz/meta-data-mcp"
+    if contact:
+        return f"{base}; {contact})"
+    return f"{base})"
 
 
 def http_get(
@@ -141,7 +144,13 @@ def http_get(
             log.debug("Cache hit for %s", url)
             return cached
 
-    response = httpx.get(url, params=params, timeout=timeout, headers=merged_headers)
+    response = httpx.get(
+        url,
+        params=params,
+        timeout=timeout,
+        headers=merged_headers,
+        follow_redirects=True,
+    )
     response.raise_for_status()
 
     if effective_ttl > 0:
