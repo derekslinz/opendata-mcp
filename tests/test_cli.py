@@ -13,7 +13,7 @@ def runner():
 
 def test_run_starts_meta_server(runner):
     # run always starts meta_data_mcp; no provider arg accepted
-    async def mock_main(transport="stdio", port=8000, host="127.0.0.1"):
+    async def mock_main(transport="sse", port=8000, host="127.0.0.1"):
         pass
 
     mock_module = type("Module", (), {"main": mock_main})
@@ -23,7 +23,7 @@ def test_run_starts_meta_server(runner):
             result = runner.invoke(cli, ["run"])
 
     assert result.exit_code == 0
-    mock_run.assert_called_once_with(mock_module.main, "stdio", 8000, "127.0.0.1")
+    mock_run.assert_called_once_with(mock_module.main, "sse", 8000, "127.0.0.1")
 
 
 def test_run_rejects_extra_args(runner):
