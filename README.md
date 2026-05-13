@@ -106,7 +106,7 @@ The materialized plugin lives on disk (`meta_data_mcp/providers/{id}.py` + `test
 
 ### Plugin tools
 
-Every bundled plugin contributes its own tools under the one server. Their names are prefixed by the plugin's `server_name` (e.g. `usgs-eq-feed-significant-week`, `frankfurter-latest`, `wikipedia-fetch-summary`). The LLM discovers them through `opendata-find-providers` and `opendata-describe-provider`; you don't need to memorize them.
+Every bundled plugin contributes its own tools under the one server. Their names are unique kebab-case identifiers, often using a provider-specific prefix (e.g. `usgs-eq-feed-significant-week`, `frankfurter-latest`, `wikipedia-fetch-summary`). The LLM discovers them through `opendata-find-providers` and `opendata-describe-provider`; you don't need to memorize them.
 
 ## Bundled plugins (~60)
 

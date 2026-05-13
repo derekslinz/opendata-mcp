@@ -63,35 +63,38 @@ async def test_draft_spec_emits_valid_yaml_for_simple_api():
     """draft-spec returns a YAML string that the generator's validator accepts."""
     from meta_data_mcp.providers.meta_data_mcp import handle_draft_spec
 
-    result = await handle_draft_spec({
-        "id": "global_drafttest",
-        "title": "Draft Test API",
-        "base_url": "https://api.example.com",
-        "description": "Draft-spec test plugin.",
-        "homepage": "https://example.com/",
-        "domains": ["finance"],
-        "regions": ["global"],
-        "keywords": ["test"],
-        "tools": [
-            {
-                "name": "drafttest-get-thing",
-                "description": "Get a thing by id.",
-                "endpoint": "/v1/things/{thing_id}",
-                "response_format": "json",
-                "params": [
-                    {
-                        "name": "thing_id",
-                        "type": "str",
-                        "required": True,
-                        "description": "the id",
-                    },
-                ],
-            },
-        ],
-    })
+    result = await handle_draft_spec(
+        {
+            "id": "global_drafttest",
+            "title": "Draft Test API",
+            "base_url": "https://api.example.com",
+            "description": "Draft-spec test plugin.",
+            "homepage": "https://example.com/",
+            "domains": ["finance"],
+            "regions": ["global"],
+            "keywords": ["test"],
+            "tools": [
+                {
+                    "name": "drafttest-get-thing",
+                    "description": "Get a thing by id.",
+                    "endpoint": "/v1/things/{thing_id}",
+                    "response_format": "json",
+                    "params": [
+                        {
+                            "name": "thing_id",
+                            "type": "str",
+                            "required": True,
+                            "description": "the id",
+                        },
+                    ],
+                },
+            ],
+        }
+    )
     payload = json.loads(result[0].text)
     assert payload.get("status") == "ok", payload
     yaml_str = payload["spec_yaml"]
+    assert "title: Draft Test API" in yaml_str
 
     # Round-trip the YAML through the generator's validator to prove it's
     # actually consumable by `opendata-create-plugin`.
@@ -99,17 +102,19 @@ async def test_draft_spec_emits_valid_yaml_for_simple_api():
     from pathlib import Path as _P
     import importlib.util
 
-    spec_path = _P(tempfile.mkdtemp()) / "draft.yaml"
-    spec_path.write_text(yaml_str)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        spec_path = _P(temp_dir) / "draft.yaml"
+        spec_path.write_text(yaml_str)
 
-    gen_path = _P(__file__).resolve().parents[2] / "tools" / "generate_provider.py"
-    gen_spec = importlib.util.spec_from_file_location("generate_provider", gen_path)
-    assert gen_spec is not None and gen_spec.loader is not None
-    gen_mod = importlib.util.module_from_spec(gen_spec)
-    gen_spec.loader.exec_module(gen_mod)
-    parsed = gen_mod.load_spec(spec_path)
+        gen_path = _P(__file__).resolve().parents[2] / "tools" / "generate_provider.py"
+        gen_spec = importlib.util.spec_from_file_location("generate_provider", gen_path)
+        assert gen_spec is not None and gen_spec.loader is not None
+        gen_mod = importlib.util.module_from_spec(gen_spec)
+        gen_spec.loader.exec_module(gen_mod)
+        parsed = gen_mod.load_spec(spec_path)
     assert parsed["id"] == "global_drafttest"
     assert parsed["server_name"] == "global-drafttest"
+    assert parsed["title"] == "Draft Test API"
     assert parsed["tools"][0]["name"] == "drafttest-get-thing"
 
 
@@ -117,21 +122,23 @@ async def test_draft_spec_emits_valid_yaml_for_simple_api():
 async def test_draft_spec_rejects_path_placeholder_without_required_param():
     from meta_data_mcp.providers.meta_data_mcp import handle_draft_spec
 
-    result = await handle_draft_spec({
-        "id": "bad_one",
-        "title": "Bad",
-        "base_url": "https://example.com",
-        "description": "x",
-        "homepage": "https://example.com",
-        "tools": [
-            {
-                "name": "bad-tool",
-                "description": "x",
-                "endpoint": "/v1/{missing_id}",
-                "params": [],
-            }
-        ],
-    })
+    result = await handle_draft_spec(
+        {
+            "id": "bad_one",
+            "title": "Bad",
+            "base_url": "https://example.com",
+            "description": "x",
+            "homepage": "https://example.com",
+            "tools": [
+                {
+                    "name": "bad-tool",
+                    "description": "x",
+                    "endpoint": "/v1/{missing_id}",
+                    "params": [],
+                }
+            ],
+        }
+    )
     payload = json.loads(result[0].text)
     assert "error" in payload
     assert "missing_id" in payload["error"]
@@ -141,21 +148,23 @@ async def test_draft_spec_rejects_path_placeholder_without_required_param():
 async def test_draft_spec_rejects_bad_id_casing():
     from meta_data_mcp.providers.meta_data_mcp import handle_draft_spec
 
-    result = await handle_draft_spec({
-        "id": "Bad-Id",  # not snake_case
-        "title": "x",
-        "base_url": "https://example.com",
-        "description": "x",
-        "homepage": "https://example.com",
-        "tools": [
-            {
-                "name": "x-y",
-                "description": "x",
-                "endpoint": "/x",
-                "params": [],
-            }
-        ],
-    })
+    result = await handle_draft_spec(
+        {
+            "id": "Bad-Id",  # not snake_case
+            "title": "x",
+            "base_url": "https://example.com",
+            "description": "x",
+            "homepage": "https://example.com",
+            "tools": [
+                {
+                    "name": "x-y",
+                    "description": "x",
+                    "endpoint": "/x",
+                    "params": [],
+                }
+            ],
+        }
+    )
     payload = json.loads(result[0].text)
     assert "error" in payload
     assert "snake_case" in payload["error"].lower()
