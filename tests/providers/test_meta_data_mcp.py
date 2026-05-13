@@ -161,10 +161,8 @@ async def test_list_providers_pagination():
 @pytest.mark.anyio
 async def test_find_providers_exception_handling(caplog):
     """Test that exceptions in find_providers are logged and re-raised."""
-    with patch("opendata_mcp.providers.meta_data_mcp.RoutingEngine") as mock_engine:
-        mock_instance = AsyncMock()
-        mock_instance.route.side_effect = RuntimeError("Test error")
-        mock_engine.return_value = mock_instance
+    with patch("opendata_mcp.providers.meta_data_mcp._engine") as mock_engine:
+        mock_engine.route = AsyncMock(side_effect=RuntimeError("Test error"))
 
         with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
             with pytest.raises(RuntimeError, match="Test error"):
@@ -176,10 +174,8 @@ async def test_find_providers_exception_handling(caplog):
 @pytest.mark.anyio
 async def test_explain_choice_exception_handling(caplog):
     """Test that exceptions in explain_choice are logged and re-raised."""
-    with patch("opendata_mcp.providers.meta_data_mcp.RoutingEngine") as mock_engine:
-        mock_instance = AsyncMock()
-        mock_instance.route.side_effect = ValueError("Bad params")
-        mock_engine.return_value = mock_instance
+    with patch("opendata_mcp.providers.meta_data_mcp._engine") as mock_engine:
+        mock_engine.route = AsyncMock(side_effect=ValueError("Bad params"))
 
         with caplog.at_level("ERROR", logger="opendata_mcp.providers.meta_data_mcp"):
             with pytest.raises(ValueError, match="Bad params"):
