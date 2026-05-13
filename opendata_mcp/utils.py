@@ -86,7 +86,7 @@ def _default_user_agent() -> str:
     may override `OPENDATA_MCP_CONTACT` via environment variable.
     """
     contact = os.getenv("OPENDATA_MCP_CONTACT", "opendata-mcp@example.org")
-    return f"opendata-mcp/{__version__} (+https://github.com/derekslinz/opendata-mcp; {contact})"
+    return f"meta-data-mcp/{__version__} (+https://github.com/derekslinz/meta-data-mcp; {contact})"
 
 
 def http_get(

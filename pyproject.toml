@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "opendata-mcp"
+name = "meta-data-mcp"
 dynamic = ["version"]
 description = "Python MCP servers exposing Open Data to compatible LLM clients."
 readme = "README.md"

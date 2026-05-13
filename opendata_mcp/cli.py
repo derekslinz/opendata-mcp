@@ -14,8 +14,8 @@ import anyio  # noqa: E402
 import click  # noqa: E402
 from opendata_mcp import __version__  # noqa: E402
 
-LIB_NAME = "meta-data-mcp"        # CLI entry-point name (what users type)
-PACKAGE_NAME = "opendata-mcp"     # PyPI distribution name (what uvx installs)
+LIB_NAME = "meta-data-mcp"    # CLI entry-point name == PyPI distribution name
+PACKAGE_NAME = LIB_NAME       # kept for clarity; both are now "meta-data-mcp"
 SERVER_PREFIX = "opendata-mcp-"
 
 
@@ -214,11 +214,9 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
             ],
             "env": {"OTEL_SDK_DISABLED": "true"},
         }
-    # uvx installs by PACKAGE_NAME but runs the LIB_NAME command.
-    # These differ when the PyPI package name != CLI entry-point name.
     return {
         "command": "uvx",
-        "args": ["--from", PACKAGE_NAME, LIB_NAME, "run", "--transport", "stdio", provider],
+        "args": [LIB_NAME, "run", "--transport", "stdio", provider],
     }
 
 
@@ -560,8 +558,8 @@ def cleanup(_extra: tuple, apply: bool, local: bool):
 
     \b
     Example workflow:
-        uv run opendata-mcp cleanup            # preview changes
-        uv run opendata-mcp cleanup --apply    # apply
+        uv run meta-data-mcp cleanup            # preview changes
+        uv run meta-data-mcp cleanup --apply    # apply
     """
     system = platform.system()
     if system not in ["Darwin", "Windows"]:
@@ -650,7 +648,7 @@ def inspect(provider: str, local: bool):
     where you can browse tools, send requests, and inspect responses.
 
     Example:
-        uv run opendata-mcp inspect us_nasa
+        uv run meta-data-mcp inspect us_nasa
     """
     import shutil
     import subprocess
