@@ -38,7 +38,7 @@ uv run opendata-mcp setup opendata_mcp_meta
 uv run opendata-mcp setup meta_data_mcp
 
 # Server key conversion (automatic)
-meta_data_mcp  →  meta-data-mcp  (in Claude Desktop config)
+meta_data_mcp  →  opendata-mcp-meta-data-mcp  (in Claude Desktop config)
 ```
 
 ### Python Imports
@@ -78,7 +78,7 @@ uv run opendata-mcp setup-all       # Installs meta-data-mcp + companion
    ```json
    {
      "mcpServers": {
-       "meta-data-mcp": {  // Old: "opendata-mcp-meta"
+       "opendata-mcp-meta-data-mcp": {
          "command": "uv",
          "args": ["run", "opendata-mcp", "run", "meta_data_mcp"]
        }

@@ -39,7 +39,7 @@ The core innovation is the **RoutingEngine** — a pluggable, multi-criteria sco
    - Use case: Exact or direct phrase matches
 
 2. **FuzzyScorer** (20% weight)
-   - Levenshtein distance for typo tolerance
+   - Sequence similarity ratio via `difflib.SequenceMatcher` for typo tolerance
    - Threshold: >60% similarity required
    - Use case: Misspelled or variant queries ("climate" vs "climete")
 
@@ -57,7 +57,7 @@ The core innovation is the **RoutingEngine** — a pluggable, multi-criteria sco
 
 - **LRU Cache**: Configurable size (default 1000 queries)
 - **TTL**: Configurable expiration (default 1 hour)
-- **Key**: Hash of (query, domain, region)
+- **Key**: MD5 hash of (query, domain, region, explain) — values lowercased and stripped
 - **Performance**: <5ms for cached queries, ~100ms for uncached (50 providers)
 
 ### Explanation Mode
@@ -168,7 +168,7 @@ This enables parallel scoring in future versions or integration with async frame
 
 ### Why Not Embeddings?
 - **Trade-off**: Semantic accuracy vs. deployment simplicity
-- **Choice**: Simple TF-IDF acceptable for 50-200 providers
+- **Choice**: Simple Jaccard overlap acceptable for 50-200 providers
 - **Future**: Embeddings can replace SimpleSemanticScorer in v2.0
 
 ### Why LRU + TTL?
