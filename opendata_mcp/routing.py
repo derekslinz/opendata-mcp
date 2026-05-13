@@ -4,9 +4,8 @@ Sophisticated multi-criteria routing engine for provider discovery.
 This module provides intelligent ranking of providers based on:
 - Token matching (exact matches, partial matches)
 - Fuzzy matching (typo tolerance via Levenshtein distance)
-- Semantic similarity (TF-IDF cosine similarity)
+- Semantic similarity (Jaccard overlap over query/description terms)
 - Metadata matching (domains, regions, keywords)
-- Recency/freshness scoring
 - Cached results for frequent queries
 
 The RoutingEngine accepts pluggable scoring strategies and combines them
@@ -18,10 +17,11 @@ from __future__ import annotations
 import difflib
 import hashlib
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Callable
 
 from opendata_mcp.registry import REGISTRY, ProviderEntry
 
@@ -100,7 +100,6 @@ class FuzzyScorer(Scorer):
         targets = [
             provider.id,
             provider.title.lower(),
-            provider.description.lower(),
         ] + [k.lower() for k in provider.keywords]
 
         # Find best match
@@ -123,16 +122,18 @@ class MetadataScorer(Scorer):
         if not query:
             return 0.0
 
-        q_lower = query.lower()
+        q_tokens = set(re.findall(r"[a-z0-9]+", query.lower()))
+        if not q_tokens:
+            return 0.0
         score = 0.0
 
-        # Check if query matches any domain or region
+        # Check if query matches any domain or region tokens
         for domain in provider.domains:
-            if domain.lower() in q_lower or q_lower in domain.lower():
+            if domain.lower() in q_tokens:
                 score += 0.5
 
         for region in provider.regions:
-            if region.lower() in q_lower or q_lower in region.lower():
+            if region.lower() in q_tokens:
                 score += 0.3
 
         return min(score, 1.0)
@@ -150,9 +151,7 @@ class SimpleSemanticScorer(Scorer):
             return 0.0
 
         q_terms = set(query.lower().split())
-        desc_text = (
-            provider.description + " " + " ".join(provider.keywords)
-        ).lower()
+        desc_text = (provider.description + " " + " ".join(provider.keywords)).lower()
         desc_terms = set(desc_text.split())
 
         if not q_terms or not desc_terms:
@@ -205,7 +204,7 @@ class RoutingEngine:
         if total_weight > 0:
             self.weights = {k: v / total_weight for k, v in self.weights.items()}
 
-        self.cache: dict[str, tuple[list[ScoredProvider], float]] = {}
+        self.cache: OrderedDict[str, tuple[list[ScoredProvider], float]] = OrderedDict()
         self.cache_size = cache_size
         self.cache_ttl = cache_ttl_seconds
 
@@ -214,9 +213,10 @@ class RoutingEngine:
         query: str | None,
         domain: str | None,
         region: str | None,
+        explain: bool,
     ) -> str:
         """Generate cache key from query parameters."""
-        parts = [query or "", domain or "", region or ""]
+        parts = [query or "", domain or "", region or "", str(explain)]
         key_str = "|".join(parts).lower().strip()
         return hashlib.md5(key_str.encode()).hexdigest()
 
@@ -244,11 +244,12 @@ class RoutingEngine:
             List of ScoredProvider ranked by score.
         """
         # Check cache
-        cache_key = self._cache_key(query, domain, region)
+        cache_key = self._cache_key(query, domain, region, explain)
         if cache_key in self.cache:
             cached_results, cached_time = self.cache[cache_key]
             if time.time() - cached_time < self.cache_ttl:
                 log.debug(f"Cache hit for key {cache_key}")
+                self.cache.move_to_end(cache_key)
                 return cached_results[:limit]
             else:
                 del self.cache[cache_key]
@@ -259,7 +260,15 @@ class RoutingEngine:
         # Score each provider
         scored: list[ScoredProvider] = []
         for provider in filtered:
-            score, breakdown = await self._combined_score(query, provider, explain)
+            if query and query.strip():
+                score, breakdown = await self._combined_score(query, provider, explain)
+            else:
+                score = 1.0
+                breakdown = (
+                    {strategy_name: 0.0 for strategy_name in self.scorers}
+                    if explain
+                    else None
+                )
             if score > 0:
                 scored.append(
                     ScoredProvider(
@@ -272,17 +281,12 @@ class RoutingEngine:
         # Sort by score descending, then by id for stability
         scored.sort(key=lambda x: (-x.score, x.entry.id))
 
-        # Limit results
-        results = scored[:limit]
-
-        # Cache the results
+        # Cache the full scored results
         if len(self.cache) >= self.cache_size:
-            # Evict oldest entry
-            oldest_key = next(iter(self.cache))
-            del self.cache[oldest_key]
-        self.cache[cache_key] = (results, time.time())
+            self.cache.popitem(last=False)
+        self.cache[cache_key] = (scored, time.time())
 
-        return results
+        return scored[:limit]
 
     def _passes_filters(
         self,
@@ -291,9 +295,15 @@ class RoutingEngine:
         region: str | None,
     ) -> bool:
         """Check if provider passes domain/region filters."""
-        if domain and domain not in provider.domains:
+        normalized_domain = domain.lower().strip() if domain else None
+        normalized_region = region.lower().strip() if region else None
+
+        provider_domains = {item.lower().strip() for item in provider.domains}
+        provider_regions = {item.lower().strip() for item in provider.regions}
+
+        if normalized_domain and normalized_domain not in provider_domains:
             return False
-        if region and region not in provider.regions:
+        if normalized_region and normalized_region not in provider_regions:
             return False
         return True
 
@@ -326,8 +336,8 @@ async def find_providers_sophisticated(
     region: str | None = None,
     limit: int = 20,
     explain: bool = False,
-) -> list[ScoredProvider | ProviderEntry]:
-    """Route query using sophisticated engine. Returns ProviderEntry for backward compat."""
+) -> list[ProviderEntry]:
+    """Route query using sophisticated engine and return ProviderEntry values."""
     engine = RoutingEngine()
     results = await engine.route(
         query=query, domain=domain, region=region, limit=limit, explain=explain

@@ -21,7 +21,6 @@ Tools:
 - opendata-list-providers   — all providers (terse, paginated)
 """
 
-import asyncio
 import logging
 from typing import Any, List, Optional, Sequence
 
@@ -32,7 +31,6 @@ from opendata_mcp.utils import serialize_for_llm
 
 from opendata_mcp.registry import (
     REGISTRY,
-    find_providers,
     get_provider,
     list_domains,
     list_regions,

@@ -1,12 +1,15 @@
+import json
+
 import pytest
 
 from opendata_mcp.providers.meta_data_mcp import (
+    TOOLS,
+    handle_describe_provider,
+    handle_explain_choice,
     handle_find_providers,
     handle_list_domains,
-    handle_list_regions,
-    handle_describe_provider,
     handle_list_providers,
-    TOOLS,
+    handle_list_regions,
 )
 
 
@@ -18,6 +21,7 @@ def anyio_backend():
 def test_meta_tools_registered():
     names = {tool.name for tool in TOOLS}
     assert names == {
+        "opendata-explain-choice",
         "opendata-find-providers",
         "opendata-list-domains",
         "opendata-list-regions",
@@ -47,6 +51,28 @@ async def test_find_providers_by_region():
     result = await handle_find_providers({"region": "uk"})
     text = result[0].text
     assert "uk_gov" in text or "uk_ons" in text
+
+
+@pytest.mark.anyio
+async def test_find_providers_by_region_case_insensitive():
+    result = await handle_find_providers({"region": "UK"})
+    payload = json.loads(result[0].text)
+    assert payload["count"] > 0
+
+
+@pytest.mark.anyio
+async def test_find_providers_without_query_uses_filters_only():
+    result = await handle_find_providers({"domain": "health", "limit": 5})
+    payload = json.loads(result[0].text)
+    assert payload["count"] > 0
+
+
+@pytest.mark.anyio
+async def test_explain_choice_includes_breakdown():
+    result = await handle_explain_choice({"query": "earthquake", "limit": 1})
+    payload = json.loads(result[0].text)
+    assert payload["results"]
+    assert payload["results"][0]["scoring_breakdown"] is not None
 
 
 @pytest.mark.anyio
