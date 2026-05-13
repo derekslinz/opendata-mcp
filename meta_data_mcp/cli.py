@@ -14,8 +14,8 @@ import anyio  # noqa: E402
 import click  # noqa: E402
 from meta_data_mcp import __version__  # noqa: E402
 
-LIB_NAME = "meta-data-mcp"    # CLI entry-point name == PyPI distribution name
-PACKAGE_NAME = LIB_NAME       # kept for clarity; both are now "meta-data-mcp"
+LIB_NAME = "meta-data-mcp"  # CLI entry-point name == PyPI distribution name
+PACKAGE_NAME = LIB_NAME  # kept for clarity; both are now "meta-data-mcp"
 SERVER_PREFIX = "opendata-mcp-"
 
 
@@ -50,8 +50,8 @@ def _server_key(provider: str) -> str:
 
 
 # Canonical config keys for the meta and aggregator servers.
-_META_KEY = _server_key("meta_data_mcp")   # "meta-data-mcp"
-_ALL_KEY = "opendata-mcp-all"              # stable key; users may already have this configured
+_META_KEY = _server_key("meta_data_mcp")  # "meta-data-mcp"
+_ALL_KEY = "opendata-mcp-all"  # stable key; users may already have this configured
 
 # Legacy double-prefixed keys produced by earlier buggy versions.
 _LEGACY_META_KEY = f"{SERVER_PREFIX}{_META_KEY}"  # "opendata-mcp-meta-data-mcp"
@@ -84,7 +84,7 @@ def _migrate_legacy_providers(config: dict) -> int:
             changed += 1
 
     keep = {_META_KEY, _ALL_KEY}
-    legacy = [k for k in list(servers) if k.startswith(SERVER_PREFIX) and k not in keep]
+    legacy = [k for k in servers if k.startswith(SERVER_PREFIX) and k not in keep]
     for key in legacy:
         del servers[key]
 
@@ -202,17 +202,27 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
             return {
                 "command": "uv",
                 "args": [
-                    "--directory", str(repo_root),
-                    "run", "python", "-m", "meta_data_mcp.providers.meta_data_mcp_all",
-                    "--transport", "stdio",
+                    "--directory",
+                    str(repo_root),
+                    "run",
+                    "python",
+                    "-m",
+                    "meta_data_mcp.providers.meta_data_mcp_all",
+                    "--transport",
+                    "stdio",
                 ],
                 "env": {"OTEL_SDK_DISABLED": "true"},
             }
         return {
             "command": "uv",
             "args": [
-                "--directory", str(repo_root),
-                "run", LIB_NAME, "run", "--transport", "stdio",
+                "--directory",
+                str(repo_root),
+                "run",
+                LIB_NAME,
+                "run",
+                "--transport",
+                "stdio",
             ],
             "env": {"OTEL_SDK_DISABLED": "true"},
         }
@@ -220,9 +230,13 @@ def _build_server_entry(provider: str, is_local: bool, repo_root: Path) -> dict:
         return {
             "command": "uvx",
             "args": [
-                "--from", PACKAGE_NAME, "python", "-m",
+                "--from",
+                PACKAGE_NAME,
+                "python",
+                "-m",
                 "meta_data_mcp.providers.meta_data_mcp_all",
-                "--transport", "stdio",
+                "--transport",
+                "stdio",
             ],
         }
     return {
@@ -565,14 +579,23 @@ def inspect(provider: str, local: bool):
             "--directory",
             str(repo_root),
             "run",
-            LIB_NAME,
-            "run",
+            "python",
+            "-m",
+            f"meta_data_mcp.providers.{provider}",
             "--transport",
             "stdio",
-            provider,
         ]
     else:
-        server_cmd = ["uvx", "--from", PACKAGE_NAME, LIB_NAME, "run", "--transport", "stdio", provider]
+        server_cmd = [
+            "uvx",
+            "--from",
+            PACKAGE_NAME,
+            "python",
+            "-m",
+            f"meta_data_mcp.providers.{provider}",
+            "--transport",
+            "stdio",
+        ]
 
     click.echo(f"Starting MCP Inspector for provider '{provider}'…")
     click.echo("Open http://localhost:5173 in your browser (Ctrl-C to stop).")
@@ -616,10 +639,19 @@ def _strip_injected_server_keys() -> None:
         server_keys = set(config.get("mcpServers", {}).keys())
         if server_keys:
             known_commands = set(cli.commands.keys())
-            sys.argv[1:] = [
-                arg for arg in sys.argv[1:]
-                if arg not in server_keys or arg in known_commands
-            ]
+            # Preserve at most one occurrence of a token that is both a server
+            # key and a known subcommand name (the first occurrence is the real
+            # subcommand; any subsequent duplicates are injected server keys).
+            already_preserved: set[str] = set()
+            clean: list[str] = []
+            for arg in sys.argv[1:]:
+                if arg not in server_keys:
+                    clean.append(arg)
+                elif arg in known_commands and arg not in already_preserved:
+                    clean.append(arg)
+                    already_preserved.add(arg)
+                # else: injected server key — drop it
+            sys.argv[1:] = clean
     except Exception:
         pass  # Never break the CLI if config can't be read
 
