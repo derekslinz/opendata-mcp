@@ -1,4 +1,6 @@
-# meta-data-mcp server is a meta model context protocol server that acts as an intelligent gateway to an ever-growing library of open data sources. 
+# meta-data-mcp server is a meta model context protocol server 
+
+The (meta)-data-mcp is an mmcp server: it acts as an intelligent gateway to an ever-growing library of open data sources, keeping track of vast lakes of data so you don't have to. 
 
 Never heard of an mmcp before? Don't feel bad, I made it up while writing this just now. Originally this was the opendata-mcp --but as the sources grew from one to dozens and more, the tools availabl quickly exceeded 300, and the list of installed sources was just ridiculous.
 
