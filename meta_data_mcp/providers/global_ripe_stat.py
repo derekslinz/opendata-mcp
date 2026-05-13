@@ -336,6 +336,136 @@ TOOLS_HANDLERS["ripestat-routing-history"] = handle_ripestat_routing_history
 
 
 ###################
+# ASN Neighbours
+###################
+
+
+class RIPEStatASNNeighboursParams(BaseModel):
+    """Parameters for fetching current BGP neighbours of an ASN."""
+
+    resource: str = Field(
+        ...,
+        description="ASN (e.g. 'AS3333' or '3333'). Returns current BGP neighbors.",
+    )
+    starttime: Optional[str] = Field(
+        None,
+        description="Start of the time window (ISO 8601). Defaults to most recent data.",
+    )
+    endtime: Optional[str] = Field(
+        None,
+        description="End of the time window (ISO 8601). Defaults to now.",
+    )
+
+
+def fetch_ripestat_asn_neighbours(params: RIPEStatASNNeighboursParams) -> dict:
+    query_params: dict[str, Any] = {"resource": params.resource}
+    if params.starttime:
+        query_params["starttime"] = params.starttime
+    if params.endtime:
+        query_params["endtime"] = params.endtime
+    response = http_get(f"{BASE_URL}/asn-neighbours/data.json", params=query_params)
+    return response.json()
+
+
+async def handle_ripestat_asn_neighbours(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    try:
+        if not arguments or "resource" not in arguments:
+            raise ValueError("resource is required")
+        params = RIPEStatASNNeighboursParams(**arguments)
+        data = fetch_ripestat_asn_neighbours(params)
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    except Exception as e:
+        log.error(f"Error fetching RIPEstat ASN neighbours: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="ripestat-asn-neighbours",
+        description=(
+            "Get the current BGP neighbors (peers, upstreams, downstreams) of an ASN "
+            "from RIPE NCC RIS. Returns neighbor ASNs grouped by relationship type."
+        ),
+        inputSchema=RIPEStatASNNeighboursParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["ripestat-asn-neighbours"] = handle_ripestat_asn_neighbours
+
+
+###################
+# ASN Neighbours History
+###################
+
+
+class RIPEStatASNNeighboursHistoryParams(BaseModel):
+    """Parameters for fetching historical BGP neighbour data for an ASN."""
+
+    resource: str = Field(
+        ...,
+        description="ASN (e.g. 'AS3333' or '3333'). Returns historical BGP neighbor changes.",
+    )
+    starttime: Optional[str] = Field(
+        None,
+        description="Start of the time window (ISO 8601). Defaults to 2 weeks ago.",
+    )
+    endtime: Optional[str] = Field(
+        None,
+        description="End of the time window (ISO 8601). Defaults to now.",
+    )
+    max_rows: Optional[int] = Field(
+        None,
+        description="Maximum number of result rows to return.",
+    )
+
+
+def fetch_ripestat_asn_neighbours_history(
+    params: RIPEStatASNNeighboursHistoryParams,
+) -> dict:
+    query_params: dict[str, Any] = {"resource": params.resource}
+    if params.starttime:
+        query_params["starttime"] = params.starttime
+    if params.endtime:
+        query_params["endtime"] = params.endtime
+    if params.max_rows is not None:
+        query_params["max_rows"] = params.max_rows
+    response = http_get(
+        f"{BASE_URL}/asn-neighbours-history/data.json", params=query_params
+    )
+    return response.json()
+
+
+async def handle_ripestat_asn_neighbours_history(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    try:
+        if not arguments or "resource" not in arguments:
+            raise ValueError("resource is required")
+        params = RIPEStatASNNeighboursHistoryParams(**arguments)
+        data = fetch_ripestat_asn_neighbours_history(params)
+        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    except Exception as e:
+        log.error(f"Error fetching RIPEstat ASN neighbours history: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="ripestat-asn-neighbours-history",
+        description=(
+            "Get the historical BGP neighbour relationships for an ASN over a time window. "
+            "Shows how peering, transit, and customer relationships changed over time."
+        ),
+        inputSchema=RIPEStatASNNeighboursHistoryParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["ripestat-asn-neighbours-history"] = (
+    handle_ripestat_asn_neighbours_history
+)
+
+
+###################
 # Geolocation
 ###################
 

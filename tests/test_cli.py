@@ -5,6 +5,7 @@ The CLI exposes ONE server (``meta-data-mcp``). Commands like ``info``,
 argument; plugins are an internal concept.
 """
 
+import json
 from unittest.mock import patch
 
 import pytest
@@ -24,9 +25,7 @@ def test_run_starts_the_server(runner):
     async def mock_main(transport="stdio", port=8000, host="127.0.0.1"):
         return None
 
-    with patch(
-        "meta_data_mcp.providers.meta_data_mcp.main", new=mock_main
-    ):
+    with patch("meta_data_mcp.providers.meta_data_mcp.main", new=mock_main):
         with patch("meta_data_mcp.cli.anyio.run") as mock_run:
             result = runner.invoke(cli, ["run"])
 
@@ -102,7 +101,6 @@ def test_setup_writes_one_server_key(runner, tmp_path):
             result = runner.invoke(cli, ["setup", "--force"])
 
     assert result.exit_code == 0, result.output
-    import json
 
     config = json.loads(config_path.read_text())
     assert list(config["mcpServers"].keys()) == ["meta-data-mcp"]
@@ -127,15 +125,12 @@ def test_setup_migrates_legacy_entries(runner, tmp_path):
             result = runner.invoke(cli, ["setup", "--force"])
 
     assert result.exit_code == 0, result.output
-    import json
 
     config = json.loads(config_path.read_text())
     assert "unrelated-server" in config["mcpServers"]
     assert "meta-data-mcp" in config["mcpServers"]
     # all legacy opendata-mcp-* entries were removed
-    assert not any(
-        k.startswith("opendata-mcp-") for k in config["mcpServers"]
-    )
+    assert not any(k.startswith("opendata-mcp-") for k in config["mcpServers"])
 
 
 def test_setup_creates_backup_before_writing(runner, tmp_path):
@@ -158,16 +153,13 @@ def test_remove_removes_the_server_key(runner, tmp_path):
     claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
     claude_dir.mkdir(parents=True)
     config_path = claude_dir / "claude_desktop_config.json"
-    config_path.write_text(
-        '{"mcpServers": {"meta-data-mcp": {}, "other-server": {}}}'
-    )
+    config_path.write_text('{"mcpServers": {"meta-data-mcp": {}, "other-server": {}}}')
 
     with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
         with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
             result = runner.invoke(cli, ["remove"])
 
     assert result.exit_code == 0
-    import json
 
     config = json.loads(config_path.read_text())
     assert "meta-data-mcp" not in config["mcpServers"]
@@ -207,7 +199,6 @@ def test_cleanup_dry_run_lists_legacy_entries(runner, tmp_path):
     assert "opendata-mcp-meta" in result.output
     assert "Dry run" in result.output
     # No write yet
-    import json
 
     config = json.loads(config_path.read_text())
     assert "opendata-mcp-us-nasa" in config["mcpServers"]
@@ -226,12 +217,9 @@ def test_cleanup_apply_removes_legacy_entries(runner, tmp_path):
             result = runner.invoke(cli, ["cleanup", "--apply"])
 
     assert result.exit_code == 0
-    import json
 
     config = json.loads(config_path.read_text())
-    assert not any(
-        k.startswith("opendata-mcp-") for k in config.get("mcpServers", {})
-    )
+    assert not any(k.startswith("opendata-mcp-") for k in config.get("mcpServers", {}))
 
 
 def test_cleanup_apply_creates_backup_before_writing(runner, tmp_path):

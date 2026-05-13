@@ -118,7 +118,11 @@ def _migrate_legacy_entries(config: dict) -> list[str]:
         return []
 
     to_remove = sorted(
-        k for k in servers if k.startswith(_LEGACY_PREFIX) or k in {
+        k
+        for k in servers
+        if k.startswith(_LEGACY_PREFIX)
+        or k
+        in {
             _LEGACY_DOUBLE_META,
             _LEGACY_DOUBLE_ALL,
         }
@@ -205,9 +209,7 @@ def list_plugins() -> None:
     click.echo(f"{len(plugins)} plugins bundled in {LIB_NAME}:")
     for name in plugins:
         click.echo(f"  - {name}")
-    click.echo(
-        "\nAll plugin tools are exposed through the one `meta-data-mcp` server."
-    )
+    click.echo("\nAll plugin tools are exposed through the one `meta-data-mcp` server.")
 
 
 @cli.command()
@@ -356,7 +358,11 @@ def cleanup(_extra: tuple, apply: bool) -> None:
     servers = config.get("mcpServers", {})
 
     legacy = sorted(
-        k for k in servers if k.startswith(_LEGACY_PREFIX) or k in {
+        k
+        for k in servers
+        if k.startswith(_LEGACY_PREFIX)
+        or k
+        in {
             _LEGACY_DOUBLE_META,
             _LEGACY_DOUBLE_ALL,
         }

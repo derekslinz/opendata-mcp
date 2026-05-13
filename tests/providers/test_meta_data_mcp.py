@@ -130,6 +130,7 @@ async def test_create_plugin_end_to_end(tmp_path, monkeypatch):
     generate_provider.py → import module → register in dynamic registry →
     hot-load tools onto the running server.
     """
+    import meta_data_mcp.providers.meta_data_mcp as srv
     from meta_data_mcp.providers.meta_data_mcp import (
         handle_create_plugin,
         TOOLS_HANDLERS as live_handlers,
@@ -158,6 +159,7 @@ tools:
 
     saved_dynamic = list(DYNAMIC_REGISTRY)
     saved_handlers = dict(live_handlers)
+    saved_tools = list(srv.TOOLS)
     try:
         result = await handle_create_plugin(
             {
@@ -182,8 +184,10 @@ tools:
         DYNAMIC_REGISTRY[:] = saved_dynamic
         live_handlers.clear()
         live_handlers.update(saved_handlers)
+        srv.TOOLS[:] = saved_tools
         # Best-effort cleanup of files materialized on disk.
         from pathlib import Path
+
         repo_root = Path(__file__).resolve().parents[2]
         for path in (
             repo_root / "tools" / "specs" / f"{pid}.yaml",

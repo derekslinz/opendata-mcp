@@ -214,6 +214,7 @@ async def handle_create_plugin(
     The new tools become available in the same server process. The MCP
     client will see them on its next ``tools/list`` request.
     """
+    import contextlib
     import subprocess
     import sys as _sys
 
@@ -231,41 +232,51 @@ async def handle_create_plugin(
         try:
             spec = _yaml.safe_load(params.spec_yaml)
         except _yaml.YAMLError as exc:
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({"error": f"YAML parse error: {exc}"}),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm({"error": f"YAML parse error: {exc}"}),
+                )
+            ]
 
         if not isinstance(spec, dict):
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": "Spec must be a YAML mapping at the top level."
-                }),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {"error": "Spec must be a YAML mapping at the top level."}
+                    ),
+                )
+            ]
 
         required = ("id", "server_name", "base_url", "description", "tools")
         missing = [k for k in required if k not in spec]
         if missing:
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": f"Spec missing required keys: {missing}"
-                }),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {"error": f"Spec missing required keys: {missing}"}
+                    ),
+                )
+            ]
 
         plugin_id = spec["id"]
 
         if get_provider(plugin_id) is not None:
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": (
-                        f"Plugin '{plugin_id}' already registered. "
-                        "Use a different id or call its existing tools."
-                    )
-                }),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {
+                            "error": (
+                                f"Plugin '{plugin_id}' already registered. "
+                                "Use a different id or call its existing tools."
+                            )
+                        }
+                    ),
+                )
+            ]
 
         # Resolve repo paths. When installed via uvx, the source tree is in
         # the read-only uv cache — we still try to write because the failure
@@ -277,28 +288,34 @@ async def handle_create_plugin(
         generator = repo_root / "tools" / "generate_provider.py"
 
         if not generator.exists():
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": (
-                        f"Generator not found at {generator}. Autonomous "
-                        "plugin creation requires running from a source "
-                        "checkout, not a uvx install."
-                    )
-                }),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {
+                            "error": (
+                                f"Generator not found at {generator}. Autonomous "
+                                "plugin creation requires running from a source "
+                                "checkout, not a uvx install."
+                            )
+                        }
+                    ),
+                )
+            ]
 
         try:
             specs_dir.mkdir(parents=True, exist_ok=True)
             spec_path = specs_dir / f"{plugin_id}.yaml"
             spec_path.write_text(params.spec_yaml)
         except OSError as exc:
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": f"Could not write spec file: {exc}"
-                }),
-            )]
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {"error": f"Could not write spec file: {exc}"}
+                    ),
+                )
+            ]
 
         proc = subprocess.run(
             [_sys.executable, str(generator), str(spec_path), "--force"],
@@ -306,27 +323,35 @@ async def handle_create_plugin(
             text=True,
         )
         if proc.returncode != 0:
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": "Generator failed",
-                    "stderr": proc.stderr,
-                    "stdout": proc.stdout,
-                }),
-            )]
+            with contextlib.suppress(OSError):
+                spec_path.unlink()
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {
+                            "error": "Generator failed",
+                            "stderr": proc.stderr,
+                            "stdout": proc.stdout,
+                        }
+                    ),
+                )
+            ]
 
         # Import the freshly-written plugin module.
         try:
-            new_module = importlib.import_module(
-                f"meta_data_mcp.providers.{plugin_id}"
-            )
+            new_module = importlib.import_module(f"meta_data_mcp.providers.{plugin_id}")
         except Exception as exc:  # noqa: BLE001 — surface any import error
-            return [types.TextContent(
-                type="text",
-                text=serialize_for_llm({
-                    "error": f"Generated plugin failed to import: {exc}"
-                }),
-            )]
+            with contextlib.suppress(OSError):
+                spec_path.unlink()
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {"error": f"Generated plugin failed to import: {exc}"}
+                    ),
+                )
+            ]
 
         # Register in the in-memory dynamic registry.
         entry = ProviderEntry(
@@ -347,31 +372,35 @@ async def handle_create_plugin(
         owner_by_tool = {name: "(existing)" for name in TOOLS_HANDLERS}
         added = _merge_plugin(new_module, plugin_id, owner_by_tool)
 
-        new_tool_names = [
-            t.name for t in (getattr(new_module, "TOOLS", None) or [])
-        ]
+        new_tool_names = [t.name for t in (getattr(new_module, "TOOLS", None) or [])]
 
-        return [types.TextContent(
-            type="text",
-            text=serialize_for_llm({
-                "status": "ok",
-                "plugin_id": plugin_id,
-                "tools_added": added,
-                "new_tool_names": new_tool_names,
-                "registry_entry": entry.to_dict(),
-                "message": (
-                    f"Plugin '{plugin_id}' is now live. "
-                    f"{added} new tool(s) available: {new_tool_names}. "
-                    "Call them directly to answer the user's original query."
+        return [
+            types.TextContent(
+                type="text",
+                text=serialize_for_llm(
+                    {
+                        "status": "ok",
+                        "plugin_id": plugin_id,
+                        "tools_added": added,
+                        "new_tool_names": new_tool_names,
+                        "registry_entry": entry.to_dict(),
+                        "message": (
+                            f"Plugin '{plugin_id}' is now live. "
+                            f"{added} new tool(s) available: {new_tool_names}. "
+                            "Call them directly to answer the user's original query."
+                        ),
+                    }
                 ),
-            }),
-        )]
+            )
+        ]
     except Exception as e:
         log.error(f"Error in opendata-create-plugin: {e}")
-        return [types.TextContent(
-            type="text",
-            text=serialize_for_llm({"error": str(e)}),
-        )]
+        return [
+            types.TextContent(
+                type="text",
+                text=serialize_for_llm({"error": str(e)}),
+            )
+        ]
 
 
 TOOLS.append(
