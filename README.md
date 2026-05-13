@@ -1,6 +1,12 @@
-# Open Data Model Context Protocol
-Inspired by/born out of  https://github.com/grll 's project, it's grown into a sort of window into the world of amazing open data sources.
+# meta-data-mcp server is a meta model context protocol server that acts as an intelligent gateway to an ever-growing library of open data sources. 
 
+Never heard of an mmcp before? Don't feel bad, I made it up while writing this just now. Originally this was the opendata-mcp --but as the sources grew from one to dozens and more, the tools availabl quickly exceeded 300, and the list of installed sources was just ridiculous.
+
+So I decided to take a hard left, rename the project, and focus on the tricky part. There's an absurd amount of data available --finding data isn't the hard part, it's finding the data that you need, when you need it. 
+
+To illustrate the point: I love the overpass API from openstreetmap[https://wiki.openstreetmap.org/wiki/Overpass_API] --I've spent hours playing with it...but I've never once used it for any actual purpose. Finding the tool that you need is hard enough, finding it when you need it is magical.
+
+This project aims to be magical.
 
 ## Available Providers
 
