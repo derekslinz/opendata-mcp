@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import pytest
@@ -13,7 +14,7 @@ def runner():
 
 def test_run_starts_meta_server(runner):
     # run always starts meta_data_mcp; no provider arg accepted
-    async def mock_main(transport="stdio", port=8000, host="127.0.0.1"):
+    async def mock_main(transport="sse", port=8000, host="127.0.0.1"):
         pass
 
     mock_module = type("Module", (), {"main": mock_main})
@@ -23,7 +24,7 @@ def test_run_starts_meta_server(runner):
             result = runner.invoke(cli, ["run"])
 
     assert result.exit_code == 0
-    mock_run.assert_called_once_with(mock_module.main, "stdio", 8000, "127.0.0.1")
+    mock_run.assert_called_once_with(mock_module.main, "sse", 8000, "127.0.0.1")
 
 
 def test_run_rejects_extra_args(runner):
@@ -183,3 +184,23 @@ def test_strip_injected_server_keys_preserves_first_occurrence_only(tmp_path):
         assert _sys.argv == ["meta-data-mcp", "setup"]
     finally:
         _sys.argv = original_argv
+
+
+def test_setup_meta_data_mcp_all_uses_canonical_server_key(runner, tmp_path):
+    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
+    claude_dir.mkdir(parents=True)
+    config_path = claude_dir / "claude_desktop_config.json"
+
+    mock_module = type("Module", (), {})
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            with patch(
+                "meta_data_mcp.cli._import_provider_module", return_value=mock_module
+            ):
+                result = runner.invoke(cli, ["setup", "--force", "meta_data_mcp_all"])
+
+    assert result.exit_code == 0
+    config = json.loads(config_path.read_text())
+    assert "opendata-mcp-all" in config["mcpServers"]
+    assert "opendata-mcp-meta-data-mcp-all" not in config["mcpServers"]
