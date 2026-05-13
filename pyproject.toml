@@ -5,10 +5,32 @@ build-backend = "hatchling.build"
 [project]
 name = "meta-data-mcp"
 dynamic = ["version"]
-description = "Python MCP servers exposing Open Data to compatible LLM clients."
+description = "MCP server exposing 60+ open data providers to LLM clients via intelligent metadata routing."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
+authors = [
+    { name = "Derek Linz", email = "derek.s.linz@gmail.com" },
+]
+keywords = [
+    "mcp",
+    "open-data",
+    "llm",
+    "ai",
+    "claude",
+    "metadata",
+    "routing",
+    "data-discovery",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Internet :: WWW/HTTP",
+]
 dependencies = [
     "anyio>=4.0.0",
     "click>=8.1.7",
@@ -18,6 +40,11 @@ dependencies = [
     "starlette>=1.0.0",
     "uvicorn>=0.42.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/derekslinz/meta-data-mcp"
+Repository = "https://github.com/derekslinz/meta-data-mcp"
+"Bug Tracker" = "https://github.com/derekslinz/meta-data-mcp/issues"
 
 [tool.hatch.version]
 path = "opendata_mcp/__init__.py"
