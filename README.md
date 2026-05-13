@@ -1,8 +1,8 @@
 # meta-data-mcp
 
-> A single MCP server that transparently routes user requests to ~60 open-data sources.
+> A single MCP server that transparently routes user requests to 66 open-data sources.
 
-`meta-data-mcp` is one MCP server — not many. Under the hood it bundles ~60 *plugins*, each wrapping a different open-data API. The plugins are an implementation detail; from your LLM's perspective there is one server, one set of tools, and one place to ask "where can I find data about X?"
+`meta-data-mcp` is one MCP server — not many. Under the hood it bundles 66 *plugins*, each wrapping a different open-data API. The plugins are an implementation detail; from your LLM's perspective there is one server, one set of tools, and one place to ask "where can I find data about X?"
 
 You install one server. You get all the data, discoverable through built-in routing tools.
 
@@ -72,7 +72,7 @@ uv run meta-data-mcp cleanup --apply    # apply
 Once `meta-data-mcp` is running, the LLM has access to two layers of tools — and you don't need to mention either to the user:
 
 1. **Meta tools** — the eight server-level tools below. They make routing transparent: the LLM uses them to find (or create) the right plugin without you telling it which tool to call.
-2. **Plugin tools** — ~330 tools coming from the ~60 bundled plugins. They are merged into the same namespace at startup. The LLM picks one after consulting the meta tools.
+2. **Plugin tools** — ~330 tools coming from the 66 bundled plugins. They are merged into the same namespace at startup. The LLM picks one after consulting the meta tools.
 
 ### Meta tools
 
@@ -108,7 +108,7 @@ The materialized plugin lives on disk (`meta_data_mcp/providers/{id}.py` + `test
 
 Every bundled plugin contributes its own tools under the one server. Their names are unique kebab-case identifiers, often using a provider-specific prefix (e.g. `usgs-eq-feed-significant-week`, `frankfurter-latest`, `wikipedia-fetch-summary`). The LLM discovers them through `opendata-find-providers` and `opendata-describe-provider`; you don't need to memorize them.
 
-## Bundled plugins (~60)
+## Bundled plugins (66)
 
 This is what's inside the one server. You don't install these individually — they all come along.
 
@@ -122,7 +122,10 @@ This is what's inside the one server. You don't install these individually — t
 | `nl_tweedekamer` | Tweede Kamer | Dutch Parliament open data |
 | `sg_data_gov` | Singapore Open Data | data.gov.sg datasets and collections |
 | `uk_gov` | data.gov.uk | UK government CKAN catalog |
+| `us_cary` | Town of Cary Open Data | Town of Cary, NC open data via Socrata — public safety, transportation, utilities, parks |
 | `us_data_gov` | Data.gov | US federal government open datasets |
+| `us_fayetteville` | City of Fayetteville Open Data | City of Fayetteville, NC open data via Socrata — public safety, infrastructure, community services |
+| `us_raleigh` | City of Raleigh Open Data | City of Raleigh open data via Socrata — public safety, infrastructure, parks, planning |
 
 ### Statistics / Economics
 
@@ -157,6 +160,7 @@ This is what's inside the one server. You don't install these individually — t
 | `us_cdc_socrata` | US CDC | CDC open data via Socrata |
 | `us_clinicaltrials` | ClinicalTrials.gov | NIH/NLM clinical trials registry v2 |
 | `us_fda_openfda` | openFDA | FDA adverse events, recalls, labels |
+| `us_healthdata_gov` | HealthData.gov | HHS open health data via Socrata — outcomes, insurance, demographics, public health |
 
 ### Earth Science / Weather / Environment
 
@@ -164,6 +168,7 @@ This is what's inside the one server. You don't install these individually — t
 |---|---|---|
 | `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
 | `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
+| `us_ncdeq_gis` | NC DEQ Environmental GIS | NC Dept. of Environmental Quality ArcGIS Hub — permits, air/water quality, hazardous waste |
 | `us_noaa_ncei` | NOAA NCEI | Climate data access services (key-less) |
 | `us_noaa_tides` | NOAA Tides & Currents | Water levels, tides, currents |
 | `us_usgs_earthquake` | USGS Earthquakes | Real-time and historical seismic events |
@@ -186,7 +191,9 @@ This is what's inside the one server. You don't install these individually — t
 | `global_overpass` | OSM Overpass | Query OpenStreetMap with Overpass QL |
 | `global_wikidata` | Wikidata | Structured knowledge graph + SPARQL |
 | `global_wikipedia` | Wikipedia | Article summaries, related, page views |
+| `us_arcgis_item` | ArcGIS REST API | Fetch public ArcGIS item metadata by ID — layers, maps, services, files |
 | `us_census_geocoder` | US Census Geocoder | Address ⇄ coordinates ⇄ geographies |
+| `us_nc_onemap` | NC OneMap | NC's authoritative GIS clearinghouse via ArcGIS REST — statewide geographic layers |
 
 ### Transit / Aviation
 
@@ -293,7 +300,8 @@ See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field r
 
 ## Roadmap
 
-- Autonomous plugin generation: when `opendata-find-providers` doesn't match the user's query, automatically search the web for an appropriate open API, scaffold a new plugin via `generate_provider.py`, register it, and answer the original query — all in one round-trip.
+- **v1.2 — Hierarchical discovery:** `opendata-list-subcategories` and `opendata-browse-providers` tools so users can browse domain → subcategory → provider when they don't know what they need.
+- **v1.3 — Agent-driven generation:** Hook the routing engine's no-match path into an agent that finds an open API, generates a provider module, and registers it automatically — closing coverage gaps without user intervention.
 - Public hosted deployment with SSE so non-Claude clients can use the server remotely.
 - Multi-language SDK clients for the discovery tools so non-MCP integrations get the same routing benefits.
 
