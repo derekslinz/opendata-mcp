@@ -29,7 +29,7 @@ This project aims to be magical.
 
 | Provider | Name | Description |
 |---|---|---|
-| `meta_data_mcp` | OpenData MCP Meta | Aggregator: `find-providers`, `describe-provider`, `list-domains`, `list-regions`, `list-providers`. Set this up FIRST; it tells the LLM which other providers to install. |
+| `meta_data_mcp` | OpenData MCP Meta | Aggregator: `find-providers`, `explain-choice`, `list-domains`, `list-regions`, `describe-provider`, `list-providers`. Set this up FIRST; it tells the LLM which other providers to install. |
 
 ### Government / Civic
 
@@ -188,7 +188,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 #### The "Install Meta + Run Everything" Pattern
 
-With 56 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
+With 59 providers available, loading all of them into your LLM at once would overwhelm its context window. Instead, we recommend this workflow:
 
 1. **Install Meta**: Set up the meta-aggregator provider FIRST.
    ```bash
@@ -335,7 +335,7 @@ See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field r
    * Each data source needs its own python module.
    * Create a new Python module in `opendata_mcp/providers/`.
    * Use a descriptive name following the pattern: `{country_code}_{organization}.py` (e.g., `ch_sbb.py`).
-   * Start with our [template file](https://github.com/derekslinz/opendata-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
+   * Start with our [template file](https://github.com/derekslinz/meta-data-mcp/blob/main/opendata_mcp/providers/__template__.py) as your base.
    * Use `http_get` from `opendata_mcp.utils` for all outbound requests (sets the required User-Agent automatically).
 2. **Implement Required Components**
 
