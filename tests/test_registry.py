@@ -51,7 +51,9 @@ def test_every_provider_module_has_a_registry_entry():
         name
         for _, name, _ in pkgutil.iter_modules(providers_pkg.__path__)
         if not name.startswith("__")
-        and name not in ("meta_data_mcp", "meta_data_mcp_all")
+        # The discovery layer lives in `meta_data_mcp` itself — it's not
+        # a data plugin and must not appear in the registry.
+        and name != "meta_data_mcp"
     }
     registry_ids = set(all_ids())
     orphaned = sorted(discovered - registry_ids)

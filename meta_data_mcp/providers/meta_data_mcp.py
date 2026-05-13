@@ -1,26 +1,25 @@
 """
-OpenData MCP Meta-Aggregator
+meta-data-mcp — the one MCP server.
 
-This provider exposes discovery tools over the entire opendata-mcp provider
-registry. An LLM that has only this one MCP server installed can:
+A single MCP server that transparently routes user requests to internal
+data plugins. The ~60 modules alongside this one are *plugins*, not
+separate servers — they borrow the MCP tool/handler shape for code
+organization but are exposed under this one server's tool namespace.
 
-- Search across all providers by free-text query
-- Filter by domain (e.g. "health", "legal", "finance") or region (e.g. "us",
-  "eu", "global")
-- Get full metadata for a given provider, including the env vars it requires
+This module is both:
 
-This solves the discovery problem at scale: with 50+ providers, an LLM no
-longer needs to memorize tool names — it asks `opendata-find-providers`
-first, then sets up only the providers it needs.
+1. The discovery layer — exposing meta tools that let an LLM search the
+   internal plugin registry (`opendata-find-providers`,
+   `opendata-list-domains`, etc.).
+2. The runtime entry point — `main()` discovers every plugin module
+   under `meta_data_mcp.providers`, imports it, and merges its tools
+   into the single server's tool list before serving.
 
-Tools:
-- opendata-find-providers   — query + optional domain/region filters
-- opendata-list-domains     — enumerate the controlled domain vocabulary
-- opendata-list-regions     — enumerate the controlled region vocabulary
-- opendata-describe-provider — full registry entry for one provider id
-- opendata-list-providers   — all providers (terse, paginated)
+The CLI's `meta-data-mcp run` calls `main()` here. There is no second
+server.
 """
 
+import importlib
 import logging
 from typing import Any, List, Optional, Sequence
 
@@ -99,10 +98,27 @@ async def handle_find_providers(
         # Extract entries for compatibility
         matches = [result.entry for result in scored_results]
 
-        payload = {
+        payload: dict[str, Any] = {
             "count": len(matches),
             "providers": [entry.to_dict() for entry in matches],
         }
+
+        # When the user supplied a query but nothing matched, hand the LLM
+        # the next move: it can autonomously create a new plugin for this
+        # query by calling `opendata-create-plugin` with a YAML spec.
+        if params.query and not matches:
+            payload["no_match"] = True
+            payload["next_step"] = (
+                "No registered plugin matches this query. To serve this "
+                "request autonomously: (1) web-search for an open/public "
+                "API that exposes the requested data, (2) draft a YAML "
+                "spec following tools/specs/example_weather_alert.yaml, "
+                "(3) call `opendata-create-plugin` with the spec to "
+                "materialize, register, and hot-load a new plugin in "
+                "this running server. Its tools will become available "
+                "immediately afterwards."
+            )
+
         return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error in opendata-find-providers: {e}")
@@ -112,11 +128,268 @@ async def handle_find_providers(
 TOOLS.append(
     types.Tool(
         name="opendata-find-providers",
-        description="Search the opendata-mcp registry. Returns providers that match a free-text query and/or domain/region filters. Use this FIRST when you don't know which provider can answer a question.",
+        description=(
+            "Search the meta-data-mcp plugin registry. Returns plugins that "
+            "match a free-text query and/or domain/region filters. Use this "
+            "FIRST when you don't know which plugin can answer a question. "
+            "If no plugin matches, the response includes a `next_step` field "
+            "that explains how to autonomously create one via "
+            "`opendata-create-plugin`."
+        ),
         inputSchema=FindProvidersParams.model_json_schema(),
     )
 )
 TOOLS_HANDLERS["opendata-find-providers"] = handle_find_providers
+
+
+###################
+# create-plugin (autonomous plugin generation)
+###################
+
+
+class CreatePluginParams(BaseModel):
+    """Parameters for `opendata-create-plugin`.
+
+    The LLM is expected to draft `spec_yaml` after web-searching for an open
+    API that fits the user's query. The YAML follows the schema described in
+    `tools/specs/README.md`; use `tools/specs/example_weather_alert.yaml`
+    as a template.
+    """
+
+    spec_yaml: str = Field(
+        ...,
+        description=(
+            "Full YAML spec for the new plugin. Must include id, server_name, "
+            "base_url, description, homepage, and at least one tool. See "
+            "tools/specs/example_weather_alert.yaml for the canonical form."
+        ),
+    )
+    domains: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Registry domains for the new plugin (e.g. ['security']). "
+            "Use `opendata-list-domains` to see existing values, but new "
+            "domain names are allowed."
+        ),
+    )
+    regions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Registry regions for the new plugin (e.g. ['global', 'us']). "
+            "Use `opendata-list-regions` to see existing values."
+        ),
+    )
+    keywords: list[str] = Field(
+        default_factory=list,
+        description="Search keywords that should match this plugin.",
+    )
+    license_note: str = Field(
+        default="",
+        description="Optional short licensing/attribution note for the data source.",
+    )
+    requires_env: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Names of any environment variables the new plugin needs "
+            "(e.g. API keys). Leave empty for keyless APIs."
+        ),
+    )
+
+
+async def handle_create_plugin(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Materialize a new plugin from a YAML spec, register it, and hot-load.
+
+    Pipeline:
+        1. Validate the spec (parse YAML, sanity-check required keys).
+        2. Write the spec to ``tools/specs/{id}.yaml``.
+        3. Invoke ``tools/generate_provider.py`` to write the plugin module
+           and its test stub.
+        4. Import the new module.
+        5. Register a ``ProviderEntry`` in the in-memory dynamic registry.
+        6. Merge the new module's TOOLS / TOOLS_HANDLERS into the running
+           server's tool list.
+
+    The new tools become available in the same server process. The MCP
+    client will see them on its next ``tools/list`` request.
+    """
+    import subprocess
+    import sys as _sys
+
+    import yaml as _yaml
+
+    from meta_data_mcp.registry import (
+        ProviderEntry,
+        get_provider,
+        register_plugin,
+    )
+
+    try:
+        params = CreatePluginParams(**(arguments or {}))
+
+        try:
+            spec = _yaml.safe_load(params.spec_yaml)
+        except _yaml.YAMLError as exc:
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({"error": f"YAML parse error: {exc}"}),
+            )]
+
+        if not isinstance(spec, dict):
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": "Spec must be a YAML mapping at the top level."
+                }),
+            )]
+
+        required = ("id", "server_name", "base_url", "description", "tools")
+        missing = [k for k in required if k not in spec]
+        if missing:
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": f"Spec missing required keys: {missing}"
+                }),
+            )]
+
+        plugin_id = spec["id"]
+
+        if get_provider(plugin_id) is not None:
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": (
+                        f"Plugin '{plugin_id}' already registered. "
+                        "Use a different id or call its existing tools."
+                    )
+                }),
+            )]
+
+        # Resolve repo paths. When installed via uvx, the source tree is in
+        # the read-only uv cache — we still try to write because the failure
+        # is informative.
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parents[2]
+        specs_dir = repo_root / "tools" / "specs"
+        generator = repo_root / "tools" / "generate_provider.py"
+
+        if not generator.exists():
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": (
+                        f"Generator not found at {generator}. Autonomous "
+                        "plugin creation requires running from a source "
+                        "checkout, not a uvx install."
+                    )
+                }),
+            )]
+
+        try:
+            specs_dir.mkdir(parents=True, exist_ok=True)
+            spec_path = specs_dir / f"{plugin_id}.yaml"
+            spec_path.write_text(params.spec_yaml)
+        except OSError as exc:
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": f"Could not write spec file: {exc}"
+                }),
+            )]
+
+        proc = subprocess.run(
+            [_sys.executable, str(generator), str(spec_path), "--force"],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": "Generator failed",
+                    "stderr": proc.stderr,
+                    "stdout": proc.stdout,
+                }),
+            )]
+
+        # Import the freshly-written plugin module.
+        try:
+            new_module = importlib.import_module(
+                f"meta_data_mcp.providers.{plugin_id}"
+            )
+        except Exception as exc:  # noqa: BLE001 — surface any import error
+            return [types.TextContent(
+                type="text",
+                text=serialize_for_llm({
+                    "error": f"Generated plugin failed to import: {exc}"
+                }),
+            )]
+
+        # Register in the in-memory dynamic registry.
+        entry = ProviderEntry(
+            id=plugin_id,
+            server_name=spec.get("server_name", plugin_id.replace("_", "-")),
+            title=spec.get("title", plugin_id),
+            description=spec.get("description", ""),
+            domains=tuple(params.domains),
+            regions=tuple(params.regions),
+            keywords=tuple(params.keywords),
+            homepage=spec.get("homepage", ""),
+            license_note=params.license_note,
+            requires_env=tuple(params.requires_env),
+        )
+        register_plugin(entry)
+
+        # Hot-load the new module's tools into this running server.
+        owner_by_tool = {name: "(existing)" for name in TOOLS_HANDLERS}
+        added = _merge_plugin(new_module, plugin_id, owner_by_tool)
+
+        new_tool_names = [
+            t.name for t in (getattr(new_module, "TOOLS", None) or [])
+        ]
+
+        return [types.TextContent(
+            type="text",
+            text=serialize_for_llm({
+                "status": "ok",
+                "plugin_id": plugin_id,
+                "tools_added": added,
+                "new_tool_names": new_tool_names,
+                "registry_entry": entry.to_dict(),
+                "message": (
+                    f"Plugin '{plugin_id}' is now live. "
+                    f"{added} new tool(s) available: {new_tool_names}. "
+                    "Call them directly to answer the user's original query."
+                ),
+            }),
+        )]
+    except Exception as e:
+        log.error(f"Error in opendata-create-plugin: {e}")
+        return [types.TextContent(
+            type="text",
+            text=serialize_for_llm({"error": str(e)}),
+        )]
+
+
+TOOLS.append(
+    types.Tool(
+        name="opendata-create-plugin",
+        description=(
+            "Autonomously create a new plugin for this meta-data-mcp server "
+            "from a YAML spec. Use this when `opendata-find-providers` "
+            "returned no match: web-search for an open API that matches the "
+            "user's query, draft a YAML spec following "
+            "`tools/specs/example_weather_alert.yaml`, then call this tool. "
+            "The new plugin is materialized to disk, imported, registered in "
+            "the live registry, and its tools become available immediately."
+        ),
+        inputSchema=CreatePluginParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["opendata-create-plugin"] = handle_create_plugin
 
 
 ###################
@@ -484,11 +757,101 @@ for prompt_id, case_info in USE_CASES.items():
     PROMPTS_HANDLERS[prompt_id] = make_handler(case_info["text"], case_info["title"])
 
 
+# ---------------------------------------------------------------------------
+# Plugin loading
+# ---------------------------------------------------------------------------
+#
+# A plugin is a sibling module under meta_data_mcp.providers that exposes
+# `TOOLS` and `TOOLS_HANDLERS`. At server start we import every plugin
+# listed in the registry and merge its tools into THIS server's tool
+# namespace. The result: one server, every plugin's tools available.
+
+# Module names that should never be loaded as data plugins.
+_NON_PLUGIN_MODULES: frozenset[str] = frozenset(
+    {
+        "__template__",
+        "meta_data_mcp",  # this file
+        "meta_data_mcp_all",  # legacy aggregator (removed but defensively skipped)
+    }
+)
+
+
+def _merge_plugin(
+    module: Any,
+    plugin_id: str,
+    owner_by_tool: dict[str, str],
+) -> int:
+    """Merge a plugin module's TOOLS/TOOLS_HANDLERS into the server.
+
+    Returns the number of tools actually added (after collision filtering).
+    """
+    plugin_tools = getattr(module, "TOOLS", None) or []
+    plugin_handlers = getattr(module, "TOOLS_HANDLERS", None) or {}
+
+    added = 0
+    for tool in plugin_tools:
+        name = tool.name
+        if name in owner_by_tool:
+            log.warning(
+                "Tool name collision: '%s' already registered by '%s'; "
+                "skipping duplicate from '%s'.",
+                name,
+                owner_by_tool[name],
+                plugin_id,
+            )
+            continue
+        handler = plugin_handlers.get(name)
+        if handler is None:
+            log.warning(
+                "Plugin '%s' lists tool '%s' but has no handler; skipping.",
+                plugin_id,
+                name,
+            )
+            continue
+        TOOLS.append(tool)
+        TOOLS_HANDLERS[name] = handler
+        owner_by_tool[name] = plugin_id
+        added += 1
+    return added
+
+
+def _load_all_plugins() -> tuple[int, int]:
+    """Import every registered plugin and merge its tools into THIS server.
+
+    Returns (plugins_loaded, tools_added).
+    """
+    owner_by_tool: dict[str, str] = {name: "meta" for name in TOOLS_HANDLERS}
+    loaded = 0
+    added = 0
+    for entry in REGISTRY:
+        if entry.id in _NON_PLUGIN_MODULES:
+            continue
+        try:
+            module = importlib.import_module(f"meta_data_mcp.providers.{entry.id}")
+        except ImportError as exc:
+            log.warning("Plugin '%s' could not be imported: %s", entry.id, exc)
+            continue
+        except Exception as exc:  # noqa: BLE001 — one broken plugin must not block the rest
+            log.warning("Plugin '%s' raised during import: %s", entry.id, exc)
+            continue
+        added += _merge_plugin(module, entry.id, owner_by_tool)
+        loaded += 1
+    return loaded, added
+
+
 async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
     from meta_data_mcp.utils import create_mcp_server, run_server
 
+    plugins_loaded, plugin_tools_added = _load_all_plugins()
+    log.info(
+        "meta-data-mcp — %d plugins loaded, %d plugin tools + %d discovery tools",
+        plugins_loaded,
+        plugin_tools_added,
+        len(TOOLS) - plugin_tools_added,
+    )
+
     server = create_mcp_server(
-        "opendata-mcp-meta",
+        "meta-data-mcp",
         resources=RESOURCES,
         resources_handlers=RESOURCES_HANDLERS,
         tools=TOOLS,
