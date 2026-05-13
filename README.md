@@ -214,16 +214,15 @@ uv run meta-data-mcp list
 
 # show info about a provider
 uv run meta-data-mcp info $PROVIDER_NAME
-
-# setup a provider's MCP server on your Claude Desktop app
-uv run meta-data-mcp setup $PROVIDER_NAME
-
-# remove a provider's MCP server from your Claude Desktop app
-uv run meta-data-mcp remove $PROVIDER_NAME
 ```
 
 > [!WARNING]
 > **Individual provider setup is deprecated.**
+> **Seriously, pretend it never existed**
+> **You don't want to see 60 mcp servers in claude**
+> **especially when none of them start and notifications***
+> **spam claude desktop.***
+> 
 > Setting up 55+ providers one by one (`setup ch_sbb`, `setup us_nasa`, …) is no longer
 > recommended. Use the two-command setup below instead — it gives Claude both discovery and
 > data access through a single pair of servers. Any existing individual provider entries are
@@ -354,9 +353,10 @@ Because of our target scale we want to keep things simple and pragmatic at first
    * Carefully evaluate necessity of new dependencies
 4. **Code Quality**
 
-   * Format code using ruff
+   * Format code using ruff (it's pre-commit hook, you can't not do it)
    * Maintain comprehensive test coverage with pytest
    * Follow consistent code style
+     
 5. **Type Safety**
 
    * Use Python type hints throughout
@@ -369,44 +369,44 @@ Because of our target scale we want to keep things simple and pragmatic at first
 * [X] Implement CI/CD pipeline with automated PyPI releases
 * [X] Develop provider template and first reference implementation
 * [X] **Implement and harden NASA, Copernicus, and DB providers**
-* [ ] Integrate additional open datasets (actively seeking contributors)
-* [ ] Establish clear guidelines for choosing between Resources and Tools
-* [ ] Develop scalable repository architecture for long-term growth
-* [ ] Expand MCP SDK parameter support (authentication, rate limiting, etc.)
-* [ ] Implement additional MCP protocol features (prompts, resource templates)
-* [ ] Add support for alternative transport protocols beyond stdio (SSE)
-* [ ] Deploy hosted MCP servers for improved accessibility
+* [X] Integrate additional open datasets (actively seeking contributors)
+* [X] Implement additional MCP protocol features (prompts, resource templates)
+* [X] Add support for alternative transport protocols beyond stdio (SSE)
+* [ ] Ultimately, the goal is for the meta mcp server to be capable of adding new sources autonomously.
+* [ ] For now, tools/generate_provider.py generates new providers as needed.
 
 ## Roadmap
 
-Let’s build the open source infrastructure that will allow all LLMs to access all Open Data together!
+Let’s build an infrastructure that makes mcp servers invisible (magic).
+
+* [ ] Deploy hosted MCP servers for improved accessibility
+* [ ] Develop scalable repository architecture for long-term growth
+* [ ] Expand MCP SDK parameter support (authentication, rate limiting, etc.)
 
 ### Access:
 
-* Make Open Data available to all LLM applications (beyond Claude)
+* Make Open Data available to all LLM applications (kind of moot because they're all starting to cross import, + sse)
 * Make Open Data data sources searchable in a scalable way
-* Make Open Data available through MCP remotely (SSE) with publicly sponsored infrastructure
+
 
 ### Publish:
 
-* Build the many Open Data MCP servers to make all the Open Data truly accessible (we need you!).
-* On our side we are starting to build MCP servers for Switzerland ~12k open dataset!
-* Make it even easier to build Open Data MCP servers
+* There can be only one. Or at least, there should only be one. We would all drown in a sea of open data, so lets keep that pandora's
+* box closed and put a little door on the box just for the meta mcp.
+* Don't build more mcp servers--build more provider plugins.
+* Make it even easier to *use* Open Data --even if it hasn't been added yet.
 
-We are very early, and lack of dataset available is currently the bottleneck. Help yourself! Create your Open Data MCP server and get users to use it as well from their LLMs applications. Let’s connect LLMs to the millions of open datasets from governments, public entities, companies and NGOs!
-
-As Anthropic's MCP evolves we will adapt and upgrade Open Data MCP.
 
 ## Limitations
 
 * All data served by Open Data MCP servers should be Open.
+* It doesn't strictly need to be OData format, but it needs to be standardized.
 * Please oblige to the data licenses of the data providers.
 * Our License must be quoted in commercial applications.
 
 ## References
 
-* This project was originally conceived by [grll](https://github.com/grll).
-* Kudos to [Anthropic's open source MCP](https://spec.modelcontextprotocol.io/) release enabling initiative like this one.
+* This was born from https://github.com/OpenDataMCP/OpenDataMCP --credit to the origin.
 
 ## License
 
