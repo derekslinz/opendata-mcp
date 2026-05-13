@@ -269,11 +269,13 @@ See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field r
 - Public hosted deployment with SSE so non-Claude clients can use the server remotely.
 - Multi-language SDK clients for the discovery tools so non-MCP integrations get the same routing benefits.
 
+
 ## Credits
 
 - Originally conceived by [grll](https://github.com/grll) as `opendata-mcp`.
 - Forked and reshaped around the single-server "meta-mcp" model.
 - Built on [Anthropic's open-source MCP spec](https://spec.modelcontextprotocol.io/).
+
 
 ## License
 
