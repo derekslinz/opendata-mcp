@@ -28,9 +28,16 @@ from opendata_mcp.registry import REGISTRY, ProviderEntry
 log = logging.getLogger(__name__)
 
 
-def _tokenize(text: str) -> set[str]:
+def _tokenize(text: str | None) -> set[str]:
     """Tokenize text into lowercase alphanumeric terms."""
+    if not text:
+        return set()
     return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def _normalize_filter(value: str | None) -> str | None:
+    """Normalize domain/region filter values."""
+    return value.lower().strip() if value else None
 
 
 @dataclass(frozen=True)
@@ -156,7 +163,7 @@ class SimpleSemanticScorer(Scorer):
             return 0.0
 
         q_terms = set(query.lower().split())
-        desc_text = (provider.description + " " + " ".join(provider.keywords)).lower()
+        desc_text = f"{provider.description} {' '.join(provider.keywords)}".lower()
         desc_terms = set(desc_text.split())
 
         if not q_terms or not desc_terms:
@@ -300,8 +307,8 @@ class RoutingEngine:
         region: str | None,
     ) -> bool:
         """Check if provider passes domain/region filters."""
-        normalized_domain = domain.lower().strip() if domain else None
-        normalized_region = region.lower().strip() if region else None
+        normalized_domain = _normalize_filter(domain)
+        normalized_region = _normalize_filter(region)
 
         provider_domains = {item.lower().strip() for item in provider.domains}
         provider_regions = {item.lower().strip() for item in provider.regions}
