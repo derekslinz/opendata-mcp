@@ -229,25 +229,14 @@ uv run meta-data-mcp remove $PROVIDER_NAME
 > data access through a single pair of servers. Any existing individual provider entries are
 > automatically removed the next time you run `setup`, `setup-all`, or `cleanup`.
 >
-> **Recommended setup (new):**
+> **Recommended setup:**
 > ```bash
-> uv run meta-data-mcp setup-all       # installs meta + aggregator, removes legacy entries
-> # — or equivalently —
-> uv run meta-data-mcp setup meta_data_mcp
-> ```
->
-> **Migrate existing config:**
-> ```bash
-> uv run meta-data-mcp cleanup          # preview what will be removed
-> uv run meta-data-mcp cleanup --apply  # remove legacy entries and install meta + aggregator
+>  # installs meta + aggregator, removes legacy entries
+> 
+> uv run meta-data-mcp setup
 > ```
 
-Quickstart for the Switzerland SBB (train company) provider:
 
-```bash
-# make sure claude is installed
-uv run meta-data-mcp setup ch_sbb
-```
 
 Restart Claude and you should see a new hammer icon at the bottom right of the chat.
 
@@ -257,58 +246,18 @@ By default, the `run` command uses the **SSE (HTTP)** transport. This launches a
 
 ```bash
 # start the server using default SSE transport on port 8000
-uv run meta-data-mcp run ch_sbb
+uv run meta-data-mcp run 
 
 # specify host and port
-uv run meta-data-mcp run ch_sbb --host 0.0.0.0 --port 3001
+uv run meta-data-mcp run --host 0.0.0.0 --port 3001
 ```
 
 If you need to run a provider via **stdio** (standard input/output), use the `--transport stdio` flag:
 
 ```bash
-uv run meta-data-mcp run ch_sbb --transport stdio
+uv run meta-data-mcp run --transport stdio
 ```
 
-You can now ask questions to Claude about SBB train network disruption and it will answer based on data collected on `data.sbb.ch`.
-
-### `<u>`Publish`</u>`: Contribute by building and publishing public datasets
-
-#### Prerequisites
-
-1. **Install UV Package Manager**
-
-   ```bash
-   # macOS
-   brew install uv
-
-   # Windows (PowerShell)
-   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-   # Linux/WSL
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-2. **Clone & Setup Repository**
-
-   ```bash
-   # Clone the repository
-   git clone https://github.com/derekslinz/opendata-mcp.git
-   cd opendata-mcp
-
-   # Create and activate virtual environment
-   uv venv
-   source .venv/bin/activate  # Unix/macOS
-   # or
-   .venv\Scripts\activate     # Windows
-
-   # Install dependencies
-   uv sync
-   ```
-3. **Install Pre-commit Hooks**
-
-   ```bash
-   # Install pre-commit hooks for code quality
-   pre-commit install
-   ```
 
 #### Quick path: use the provider generator
 
