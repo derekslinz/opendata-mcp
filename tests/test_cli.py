@@ -88,7 +88,7 @@ def test_version_command(runner):
         result = runner.invoke(cli, ["version"])
 
     assert result.exit_code == 0
-    assert "opendata-mcp version: 1.0.0" in result.output
+    assert "meta-data-mcp version: 1.0.0" in result.output
 
 
 def test_setup_invalid_provider_does_not_write_config(runner, tmp_path):
