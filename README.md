@@ -250,46 +250,6 @@ uv run meta-data-mcp run --transport stdio                # stdio
 uv run meta-data-mcp run --host 0.0.0.0 --port 3001       # SSE bound to all interfaces
 ```
 
-## Contributing a new plugin
-
-A "plugin" here is a Python module under `meta_data_mcp/providers/` plus an entry in `meta_data_mcp/registry.py`. The unified server picks it up automatically at startup. Plugins are *not* MCP servers — they expose a `TOOLS` list and a `TOOLS_HANDLERS` dict that the meta server merges into its own tool namespace.
-
-### Setup
-
-```bash
-git clone https://github.com/derekslinz/meta-data-mcp.git
-cd meta-data-mcp
-uv venv && source .venv/bin/activate
-uv sync
-pre-commit install
-```
-
-### Quick path: use the provider generator
-
-For most REST/JSON APIs you can scaffold a plugin in minutes instead of writing it from scratch.
-
-1. Copy `tools/specs/example_weather_alert.yaml` and edit it to describe your API.
-2. Dry-run to preview the generated files:
-   ```bash
-   uv run python tools/generate_provider.py tools/specs/{your_spec}.yaml --dry-run
-   ```
-3. Write the files:
-   ```bash
-   uv run python tools/generate_provider.py tools/specs/{your_spec}.yaml
-   ```
-4. Add a `ProviderEntry` to `meta_data_mcp/registry.py` so the discovery layer can find your plugin.
-5. Run `uv run pytest`. The generated tests should pass on the first try if the spec matches the live API.
-
-See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field reference and the cases the generator doesn't handle (auth headers, POST, multi-step logic) — those still need the manual path below.
-
-### Manual path: write a plugin from scratch
-
-1. **Create a new plugin module** under `meta_data_mcp/providers/`, using `{country_code}_{org}.py` naming (e.g. `ch_sbb.py`). Start from `meta_data_mcp/providers/__template__.py`.
-2. **Use `http_get` from `meta_data_mcp.utils`** for all outbound HTTP. It sets the required User-Agent and handles the TTL cache.
-3. **Declare your tools** by populating module-level `TOOLS: list[types.Tool]` and `TOOLS_HANDLERS: dict[str, Callable]`. Use Pydantic for parameter schemas and clear, action-oriented `description=` strings — the LLM relies on those.
-4. **Add a `ProviderEntry`** to `meta_data_mcp/registry.py` with accurate `domains`, `regions`, and `keywords` so the routing layer can find your plugin.
-5. **Add tests** in `tests/providers/test_{your_plugin}.py`. Mock HTTP at the `http_get` boundary; add a live test under `tests/live/` if the API is keyless and stable.
-6. **Run `uv run pytest`** to verify.
 
 ## Roadmap
 
