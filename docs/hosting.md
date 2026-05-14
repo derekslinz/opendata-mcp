@@ -89,7 +89,11 @@ uv sync
 Verify:
 
 ```bash
+# If installed with `uv tool install`:
 meta-data-mcp version
+
+# If running from a source checkout after `uv sync`:
+uv run meta-data-mcp version
 ```
 
 ## 3. Set the bearer token
