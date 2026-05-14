@@ -223,6 +223,10 @@ def test_setup_print_json_surfaces_auth_when_token_set(
     assert "META_DATA_MCP_AUTH_TOKEN" in result.stderr
     assert "Bearer test-token-abc123" in result.stderr
     assert "https://YOUR-HOST/sse" in result.stderr
+    # The "type": "sse" discriminator must be present — Claude Code requires
+    # it to recognise the entry as a remote SSE server (without it the entry
+    # is treated as stdio and skipped with "command: expected string").
+    assert '"type": "sse"' in result.stderr
 
 
 def test_setup_writes_to_claude_code_when_detected(runner, tmp_path):

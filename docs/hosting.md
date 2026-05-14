@@ -232,6 +232,7 @@ actually paste into the remote-client config:
 ```jsonc
 {
   "meta-data-mcp": {
+    "type": "sse",
     "url": "https://YOUR-HOST/sse",
     "headers": {
       "Authorization": "Bearer <the-same-token>"
@@ -239,6 +240,13 @@ actually paste into the remote-client config:
   }
 }
 ```
+
+> **The `"type": "sse"` field matters.** Claude Code validates entries
+> under `mcpServers` strictly: without it the entry is treated as a
+> stdio launcher, validation expects `command`, and the server is
+> skipped with `command: expected string, received undefined`.
+> Other clients (Cursor, Windsurf) accept the bare `{url, headers}`
+> shape, but including `"type": "sse"` is always safe.
 
 Replace `YOUR-HOST` with your hostname (e.g. `mcp.linzalytics.com`) and
 paste the result into:
