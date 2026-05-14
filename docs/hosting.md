@@ -216,7 +216,8 @@ curl -sS https://mcp.linzalytics.com/sse -i | head -3
 Run on **your laptop** (not the server):
 
 ```bash
-META_DATA_MCP_AUTH_TOKEN=<the-same-token> meta-data-mcp setup --print-json
+. ./.meta-data-mcp.env
+meta-data-mcp setup --print-json
 ```
 
 The stdout of that command is a JSON snippet for the **local stdio**
