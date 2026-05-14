@@ -492,6 +492,12 @@ def setup(
             f"\nConfigured '{SERVER_KEY}' in {successes} client(s). "
             "Restart the affected MCP client(s) to apply."
         )
+    else:
+        click.echo(
+            f"No requested MCP clients were configured for '{SERVER_KEY}'.",
+            err=True,
+        )
+        sys.exit(1)
 
 
 def _write_server_to_client(
