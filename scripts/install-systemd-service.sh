@@ -198,10 +198,10 @@ else
   # read-only at run-time, so we must not let `uv run` try to re-sync.
   EXEC_START="$USER_HOME/.local/bin/uv --directory $SOURCE_DIR run --no-sync meta-data-mcp run --transport sse --host $HOST --port $PORT"
   # When running from a source checkout, opendata-create-plugin needs to
-  # write new plugin specs and provider modules back into the source tree.
-  # ProtectSystem=strict would block that, so expose the two specific
-  # directories as ReadWritePaths.
-  PLUGIN_WRITE_PATHS="$SOURCE_DIR/tools/specs $SOURCE_DIR/meta_data_mcp/providers"
+  # write new plugin specs, provider modules, and matching test files back
+  # into the source tree. ProtectSystem=strict would block that, so expose
+  # the three specific directories as ReadWritePaths.
+  PLUGIN_WRITE_PATHS="$SOURCE_DIR/tools/specs $SOURCE_DIR/meta_data_mcp/providers $SOURCE_DIR/tests/providers"
 fi
 
 # 4. Bearer token + env file
