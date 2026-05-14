@@ -458,14 +458,6 @@ async def run_server(
             ],
         )
 
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_methods=["*"],
-            allow_headers=["*"],
-            expose_headers=["*"],
-        )
-
         auth_token = os.getenv("META_DATA_MCP_AUTH_TOKEN")
         if auth_token:
             app.add_middleware(BearerAuthMiddleware, token=auth_token)
@@ -478,6 +470,17 @@ async def run_server(
                 "SSE bearer auth DISABLED — set META_DATA_MCP_AUTH_TOKEN to "
                 "require Authorization: Bearer <token> on /sse and /messages"
             )
+
+        # CORSMiddleware must be added last so it is outermost; this ensures
+        # that OPTIONS preflight requests receive CORS headers before reaching
+        # BearerAuthMiddleware (which would otherwise reject them with 401).
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["*"],
+        )
 
         config = uvicorn.Config(
             app,

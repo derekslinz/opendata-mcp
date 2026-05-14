@@ -3,6 +3,7 @@
 import httpx
 import pytest
 from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
@@ -95,3 +96,49 @@ async def test_non_bearer_scheme_is_rejected():
             "/sse", headers={"Authorization": "Basic c2VjcmV0"}
         )
     assert response.status_code == 401
+
+
+def _build_app_with_cors(token: str) -> Starlette:
+    """Build app matching the production middleware order: BearerAuth added first,
+    CORSMiddleware added last so it is outermost."""
+
+    async def sse(request):
+        return PlainTextResponse("sse-ok")
+
+    app = Starlette(
+        routes=[
+            Route("/sse", endpoint=sse),
+        ],
+    )
+    app.add_middleware(BearerAuthMiddleware, token=token)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["*"],
+    )
+    return app
+
+
+@pytest.mark.asyncio
+async def test_cors_preflight_passes_through_with_auth_enabled():
+    """OPTIONS preflight requests must not be rejected by BearerAuthMiddleware.
+
+    Browser CORS preflights are sent without an Authorization header; they must
+    receive a 200 with CORS headers so the subsequent credentialled request can
+    proceed.
+    """
+    app = _build_app_with_cors("secret")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.options(
+            "/sse",
+            headers={
+                "Origin": "https://example.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+    assert response.status_code == 200
+    assert "access-control-allow-origin" in response.headers
