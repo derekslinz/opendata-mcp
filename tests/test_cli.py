@@ -365,6 +365,172 @@ def test_clients_command_lists_status(runner, tmp_path):
     assert "installed (not configured)" in result.output  # cursor: dir exists, file doesn't
 
 
+def test_setup_handles_null_mcpservers_value(runner, tmp_path):
+    """A `null` mcpServers value should be replaced with an empty object, not crash."""
+    (tmp_path / ".claude.json").write_text('{"mcpServers": null, "other": 1}')
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code == 0, result.output
+    config = json.loads((tmp_path / ".claude.json").read_text())
+    assert isinstance(config["mcpServers"], dict)
+    assert "meta-data-mcp" in config["mcpServers"]
+    assert config["other"] == 1
+
+
+def test_setup_skips_non_object_mcpservers_and_continues(runner, tmp_path):
+    """A list/string mcpServers value should skip that client without aborting siblings."""
+    # Claude Code has mcpServers as a list (malformed)
+    (tmp_path / ".claude.json").write_text('{"mcpServers": ["foo"], "other": 1}')
+    # Cursor is also installed and well-formed
+    (tmp_path / ".cursor").mkdir()
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code == 0, result.output
+    # Claude Code config was NOT mutated (skipped due to malformed value)
+    claude = json.loads((tmp_path / ".claude.json").read_text())
+    assert claude["mcpServers"] == ["foo"]
+    assert claude["other"] == 1
+    # Helpful error mentioning the type was emitted
+    assert "non-object" in result.output and "list" in result.output
+    # Sibling (Cursor) was still configured
+    cursor = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert "meta-data-mcp" in cursor["mcpServers"]
+
+
+def test_setup_skips_string_mcpservers_value(runner, tmp_path):
+    """String mcpServers value: skip with type-named error, don't crash."""
+    (tmp_path / ".claude.json").write_text('{"mcpServers": "oops"}')
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(
+                cli, ["setup", "--client", "claude-code", "--force"]
+            )
+
+    # exit_code is 0 — the per-client skip is reported, not a hard abort
+    assert result.exit_code == 0, result.output
+    assert "non-object" in result.output and "str" in result.output
+    # File untouched
+    assert json.loads((tmp_path / ".claude.json").read_text()) == {
+        "mcpServers": "oops"
+    }
+
+
+def test_setup_skips_top_level_non_object_config(runner, tmp_path):
+    """If the whole file is a JSON array/string, skip cleanly."""
+    (tmp_path / ".claude.json").write_text("[1, 2, 3]")
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(
+                cli, ["setup", "--client", "claude-code", "--force"]
+            )
+
+    assert result.exit_code == 0, result.output
+    assert "top-level" in result.output and "list" in result.output
+
+
+def test_remove_does_not_crash_on_non_object_mcpservers(runner, tmp_path):
+    """remove must tolerate string/list mcpServers without raising TypeError."""
+    # String containing SERVER_KEY substring — `in` would be true but `del` would fail
+    (tmp_path / ".claude.json").write_text(
+        '{"mcpServers": "prefix-meta-data-mcp-suffix"}'
+    )
+    # And a list
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor" / "mcp.json").write_text('{"mcpServers": ["meta-data-mcp"]}')
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["remove"])
+
+    assert result.exit_code == 0, result.output
+    # Neither file was mutated
+    assert json.loads((tmp_path / ".claude.json").read_text()) == {
+        "mcpServers": "prefix-meta-data-mcp-suffix"
+    }
+    assert json.loads((tmp_path / ".cursor" / "mcp.json").read_text()) == {
+        "mcpServers": ["meta-data-mcp"]
+    }
+
+
+def test_remove_client_flag_targets_only_that_client(runner, tmp_path):
+    """`remove --client cursor` strips only from Cursor even if Claude Code also has it."""
+    (tmp_path / ".claude.json").write_text(
+        '{"mcpServers": {"meta-data-mcp": {}, "other": {}}}'
+    )
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor" / "mcp.json").write_text(
+        '{"mcpServers": {"meta-data-mcp": {}}}'
+    )
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["remove", "--client", "cursor"])
+
+    assert result.exit_code == 0, result.output
+    # Cursor: meta-data-mcp removed, mcpServers became empty and was dropped
+    cursor = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert "mcpServers" not in cursor
+    # Claude Code: untouched (--client cursor only targeted Cursor)
+    claude = json.loads((tmp_path / ".claude.json").read_text())
+    assert claude["mcpServers"] == {"meta-data-mcp": {}, "other": {}}
+
+
+def test_remove_client_unknown_key_errors(runner, tmp_path):
+    """`remove --client not-a-client` exits non-zero with a supported-list hint."""
+    with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+        result = runner.invoke(cli, ["remove", "--client", "not-a-client"])
+
+    assert result.exit_code != 0
+    assert "Unknown client" in result.output
+    # Hint enumerates the supported keys
+    assert "claude-desktop" in result.output
+
+
+def test_remove_client_all_targets_every_supported_client(runner, tmp_path):
+    """`remove --client all` strips meta-data-mcp from every client where it's set,
+    regardless of whether the client is detected as installed."""
+    # Claude Code: has SERVER_KEY
+    (tmp_path / ".claude.json").write_text(
+        '{"mcpServers": {"meta-data-mcp": {}}}'
+    )
+    # Cursor: has SERVER_KEY
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor" / "mcp.json").write_text(
+        '{"mcpServers": {"meta-data-mcp": {}, "keep": {}}}'
+    )
+    # Gemini: does NOT have SERVER_KEY (should be silently skipped)
+    (tmp_path / ".gemini").mkdir()
+    (tmp_path / ".gemini" / "settings.json").write_text(
+        '{"mcpServers": {"unrelated": {}}}'
+    )
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["remove", "--client", "all"])
+
+    assert result.exit_code == 0, result.output
+    assert "Claude Code" in result.output
+    assert "Cursor" in result.output
+
+    claude = json.loads((tmp_path / ".claude.json").read_text())
+    assert "mcpServers" not in claude  # was {"meta-data-mcp": {}}; emptied → key dropped
+
+    cursor = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert "meta-data-mcp" not in cursor["mcpServers"]
+    assert cursor["mcpServers"] == {"keep": {}}
+
+    gemini = json.loads((tmp_path / ".gemini" / "settings.json").read_text())
+    assert gemini == {"mcpServers": {"unrelated": {}}}  # untouched
+
+
 def test_remove_multi_client(runner, tmp_path):
     """`remove` strips meta-data-mcp from every detected client."""
     (tmp_path / ".claude.json").write_text(

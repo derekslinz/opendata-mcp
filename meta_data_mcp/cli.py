@@ -514,8 +514,27 @@ def _write_server_to_client(
             err=True,
         )
         return False
+    if not isinstance(config, dict):
+        click.echo(
+            f"  ✗ {spec.label}: skipped ({config_path} top-level is "
+            f"{type(config).__name__}, not an object)",
+            err=True,
+        )
+        return False
 
-    config.setdefault("mcpServers", {})
+    servers = config.get("mcpServers")
+    if servers is None:
+        # Missing or explicit `null` — initialise.
+        config["mcpServers"] = {}
+    elif not isinstance(servers, dict):
+        click.echo(
+            f"  ✗ {spec.label}: skipped ({config_path} has a non-object "
+            f"`mcpServers` value of type {type(servers).__name__}; "
+            "fix it manually).",
+            err=True,
+        )
+        return False
+
     removed = _migrate_legacy_entries(config)
     if removed:
         click.echo(
@@ -583,7 +602,17 @@ def remove(_extra: tuple, client: str | None) -> None:
                 err=True,
             )
             continue
-        servers = config.get("mcpServers") or {}
+        if not isinstance(config, dict):
+            click.echo(
+                f"  ✗ {spec.label}: skipped ({config_path} top-level is "
+                f"{type(config).__name__}, not an object)",
+                err=True,
+            )
+            continue
+        servers = config.get("mcpServers")
+        if not isinstance(servers, dict):
+            # Missing, null, or malformed — nothing for us to remove.
+            continue
         if SERVER_KEY not in servers:
             continue
         del servers[SERVER_KEY]
@@ -618,7 +647,10 @@ def list_clients_command() -> None:
             configured = False
             if installed and config_path.exists():
                 cfg = _load_config_safe(config_path)
-                configured = bool(cfg and SERVER_KEY in (cfg.get("mcpServers") or {}))
+                if isinstance(cfg, dict):
+                    servers = cfg.get("mcpServers")
+                    if isinstance(servers, dict):
+                        configured = SERVER_KEY in servers
             if configured:
                 status = "  ✓ configured"
             elif installed:
