@@ -17,30 +17,62 @@ This project was forked from [opendata-mcp](https://github.com/OpenDataMCP/OpenD
 
 ## Installation
 
-You'll need `uv` (a Python package manager). The setup feature injects the server configuration into Claude Desktop, but anything that can use mcp servers is compatible.
+You'll need `uv` (a Python package manager).
 
 ```bash
-# macOS — install uv via Homebrew so Claude Desktop can find it
+# macOS — install uv via Homebrew so MCP clients can find it
 brew install uv
+
+# Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Windows (PowerShell)
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Then register the server with Claude Desktop:
+Then register the server with every MCP client installed on your machine:
 
 ```bash
 uv run meta-data-mcp setup
 ```
 
-That single command:
+The command auto-detects which MCP clients you have installed and adds **one** `meta-data-mcp` entry under `mcpServers` in each. Supported clients:
 
-- Adds **one** entry to `claude_desktop_config.json` — the key is `meta-data-mcp`.
-- Backs up your existing config to `claude_desktop_config.json.bak` before writing.
+| Client | Config file |
+|---|---|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) / `%APPDATA%/Claude/claude_desktop_config.json` (Windows) |
+| Claude Code | `~/.claude.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Gemini CLI | `~/.gemini/settings.json` |
+| LM Studio | `~/.cache/lm-studio/mcp.json` |
 
-Restart Claude Desktop and you'll see one new server with discovery tools + every plugin's tools available under it.
+Each existing config is backed up to `<file>.bak` before writing. Restart the affected client(s) and you'll see one new server with discovery tools + every plugin's tools available under it.
 
-If you want to see the json it creates so you can use it elsewhere, run this and check the claude_desktop_config.json file until printing the json is an option (soon).
+Inspect what's detected / configured on your machine:
+
+```bash
+uv run meta-data-mcp clients
+```
+
+Target a single client (or write to every supported client regardless of detection):
+
+```bash
+uv run meta-data-mcp setup --client claude-code
+uv run meta-data-mcp setup --client all
+```
+
+If you want to see the JSON snippet without touching any config file (e.g. to paste into a client we don't support yet):
+
+```bash
+uv run meta-data-mcp setup --print-json
+```
+
+When `META_DATA_MCP_AUTH_TOKEN` is set, `--print-json` also surfaces the SSE-client snippet (with the real token) to stderr so you can wire a remote client.
+
+### Hosting `meta-data-mcp` as a remote SSE server
+
+For deploying behind your own domain with bearer-token authentication, see [`docs/hosting.md`](docs/hosting.md). It covers `systemd`, Caddy/nginx TLS termination, token rotation, and the threat model.
 
 ## CLI
 

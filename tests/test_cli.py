@@ -225,6 +225,169 @@ def test_setup_print_json_surfaces_auth_when_token_set(
     assert "https://YOUR-HOST/sse" in result.stderr
 
 
+def test_setup_writes_to_claude_code_when_detected(runner, tmp_path):
+    """When ~/.claude.json exists, setup writes the meta-data-mcp entry there."""
+    (tmp_path / ".claude.json").write_text('{"mcpServers": {}, "other": 1}')
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code == 0, result.output
+    config = json.loads((tmp_path / ".claude.json").read_text())
+    assert "meta-data-mcp" in config["mcpServers"]
+    # Pre-existing keys are preserved
+    assert config["other"] == 1
+
+
+def test_setup_writes_to_cursor_when_dir_exists(runner, tmp_path):
+    """When ~/.cursor/ exists, setup creates ~/.cursor/mcp.json."""
+    (tmp_path / ".cursor").mkdir()
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code == 0, result.output
+    cursor_config = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert "meta-data-mcp" in cursor_config["mcpServers"]
+
+
+def test_setup_writes_to_all_detected_clients_in_one_run(runner, tmp_path):
+    """A single `setup` updates every client whose detect path exists."""
+    # Set up three clients: Claude Code (file), Cursor (dir), Gemini (file)
+    (tmp_path / ".claude.json").write_text("{}")
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".gemini").mkdir()
+    (tmp_path / ".gemini" / "settings.json").write_text(
+        '{"general": {"sessionRetention": true}}'
+    )
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code == 0, result.output
+    for relpath in (".claude.json", ".cursor/mcp.json", ".gemini/settings.json"):
+        cfg = json.loads((tmp_path / relpath).read_text())
+        assert "meta-data-mcp" in cfg["mcpServers"], relpath
+    # Pre-existing Gemini keys preserved
+    gemini = json.loads((tmp_path / ".gemini/settings.json").read_text())
+    assert "general" in gemini
+
+
+def test_setup_no_clients_detected_errors_with_helpful_hint(runner, tmp_path):
+    """If no clients are installed, setup exits non-zero with guidance."""
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code != 0
+    assert "No installed MCP clients" in result.output
+    assert "--client" in result.output
+
+
+def test_setup_client_flag_targets_one_explicit_client(runner, tmp_path):
+    """`--client claude-code` writes only to ~/.claude.json, ignoring detection."""
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(
+                cli, ["setup", "--client", "claude-code", "--force"]
+            )
+
+    assert result.exit_code == 0, result.output
+    config = json.loads((tmp_path / ".claude.json").read_text())
+    assert "meta-data-mcp" in config["mcpServers"]
+    # Other client configs were not created
+    assert not (tmp_path / ".cursor" / "mcp.json").exists()
+
+
+def test_setup_client_all_writes_to_every_supported_client(runner, tmp_path):
+    """`--client all` writes to every supported client, creating parent dirs."""
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--client", "all", "--force"])
+
+    assert result.exit_code == 0, result.output
+    # Linux: claude-desktop is unsupported on this OS and should be skipped
+    for relpath in (
+        ".claude.json",
+        ".cursor/mcp.json",
+        ".codeium/windsurf/mcp_config.json",
+        ".gemini/settings.json",
+        ".cache/lm-studio/mcp.json",
+    ):
+        cfg = json.loads((tmp_path / relpath).read_text())
+        assert "meta-data-mcp" in cfg["mcpServers"], relpath
+
+
+def test_setup_client_unknown_key_errors(runner, tmp_path):
+    with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+        result = runner.invoke(
+            cli, ["setup", "--client", "not-a-client", "--force"]
+        )
+    assert result.exit_code != 0
+    assert "Unknown client" in result.output
+
+
+def test_setup_skips_corrupt_json_but_continues_with_others(runner, tmp_path):
+    """A single invalid-JSON client should not abort writes to siblings."""
+    (tmp_path / ".claude.json").write_text("{ broken json")
+    (tmp_path / ".cursor").mkdir()
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code == 0, result.output
+    # Cursor still got configured
+    cursor_config = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    assert "meta-data-mcp" in cursor_config["mcpServers"]
+    # Claude Code (corrupt) was skipped, content unchanged
+    assert (tmp_path / ".claude.json").read_text() == "{ broken json"
+
+
+def test_clients_command_lists_status(runner, tmp_path):
+    """`meta-data-mcp clients` shows installed/configured status for each."""
+    (tmp_path / ".claude.json").write_text(
+        '{"mcpServers": {"meta-data-mcp": {"command": "x"}}}'
+    )
+    (tmp_path / ".cursor").mkdir()
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["clients"])
+
+    assert result.exit_code == 0, result.output
+    assert "Claude Code" in result.output
+    assert "configured" in result.output  # claude-code has SERVER_KEY
+    assert "Cursor" in result.output
+    assert "installed (not configured)" in result.output  # cursor: dir exists, file doesn't
+
+
+def test_remove_multi_client(runner, tmp_path):
+    """`remove` strips meta-data-mcp from every detected client."""
+    (tmp_path / ".claude.json").write_text(
+        '{"mcpServers": {"meta-data-mcp": {}, "other": {}}}'
+    )
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor" / "mcp.json").write_text(
+        '{"mcpServers": {"meta-data-mcp": {}}}'
+    )
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["remove"])
+
+    assert result.exit_code == 0, result.output
+    claude = json.loads((tmp_path / ".claude.json").read_text())
+    assert "meta-data-mcp" not in claude.get("mcpServers", {})
+    assert "other" in claude["mcpServers"]
+    cursor = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+    # Cursor had only meta-data-mcp; mcpServers should be removed when empty
+    assert "mcpServers" not in cursor
+
+
 def test_remove_removes_the_server_key(runner, tmp_path):
     claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
     claude_dir.mkdir(parents=True)
