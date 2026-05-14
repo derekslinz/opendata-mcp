@@ -404,7 +404,12 @@ def test_setup_skips_non_object_mcpservers_and_continues(runner, tmp_path):
 
 
 def test_setup_skips_string_mcpservers_value(runner, tmp_path):
-    """String mcpServers value: skip with type-named error, don't crash."""
+    """String mcpServers value: skip with type-named error, no crash, file untouched.
+
+    Targeting only this one (malformed) client results in 0 successes, so
+    `setup` exits non-zero — but the run completes cleanly without a
+    TypeError on the string subscript.
+    """
     (tmp_path / ".claude.json").write_text('{"mcpServers": "oops"}')
 
     with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
@@ -413,17 +418,17 @@ def test_setup_skips_string_mcpservers_value(runner, tmp_path):
                 cli, ["setup", "--client", "claude-code", "--force"]
             )
 
-    # exit_code is 0 — the per-client skip is reported, not a hard abort
-    assert result.exit_code == 0, result.output
+    # No-success exit + per-client skip message (proves no crash)
+    assert result.exit_code != 0
     assert "non-object" in result.output and "str" in result.output
-    # File untouched
+    # File untouched — preserves user data
     assert json.loads((tmp_path / ".claude.json").read_text()) == {
         "mcpServers": "oops"
     }
 
 
 def test_setup_skips_top_level_non_object_config(runner, tmp_path):
-    """If the whole file is a JSON array/string, skip cleanly."""
+    """If the whole file is a JSON array/string, skip cleanly without crashing."""
     (tmp_path / ".claude.json").write_text("[1, 2, 3]")
 
     with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
@@ -432,8 +437,11 @@ def test_setup_skips_top_level_non_object_config(runner, tmp_path):
                 cli, ["setup", "--client", "claude-code", "--force"]
             )
 
-    assert result.exit_code == 0, result.output
+    # No-success exit code, but the run completed without TypeError
+    assert result.exit_code != 0
     assert "top-level" in result.output and "list" in result.output
+    # File untouched
+    assert json.loads((tmp_path / ".claude.json").read_text()) == [1, 2, 3]
 
 
 def test_remove_does_not_crash_on_non_object_mcpservers(runner, tmp_path):
