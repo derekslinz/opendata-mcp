@@ -17,7 +17,7 @@ This project was forked from [opendata-mcp](https://github.com/OpenDataMCP/OpenD
 
 ## Installation
 
-You'll need [Claude Desktop](https://claude.ai/download) and `uv` (a Python package manager).
+You'll need `uv` (a Python package manager). The setup feature injects the server configuration into Claude Desktop, but anything that can use mcp servers is compatible.
 
 ```bash
 # macOS — install uv via Homebrew so Claude Desktop can find it
@@ -36,10 +36,11 @@ uv run meta-data-mcp setup
 That single command:
 
 - Adds **one** entry to `claude_desktop_config.json` — the key is `meta-data-mcp`.
-- Removes any legacy entries left over from earlier multi-server setups (`opendata-mcp-meta`, `opendata-mcp-all`, and any individual `opendata-mcp-*` provider entries).
 - Backs up your existing config to `claude_desktop_config.json.bak` before writing.
 
 Restart Claude Desktop and you'll see one new server with discovery tools + every plugin's tools available under it.
+
+If you want to see the json it creates so you can use it elsewhere, run this and check the claude_desktop_config.json file until printing the json is an option (soon).
 
 ## CLI
 
@@ -58,14 +59,6 @@ There is one server, so the CLI takes no "provider" argument. Every command oper
 
 The `list` command exists for transparency about what's bundled — **plugins are not separately installable, runnable, or addressable**. They are loaded automatically when the server starts.
 
-## Migrating from earlier multi-server setups
-
-If you used an older version of this project that installed one MCP server per provider (or the two-server `opendata-mcp-meta` + `opendata-mcp-all` pattern), `setup` cleans those up automatically the next time you run it. To preview what will be removed without changing anything:
-
-```bash
-uv run meta-data-mcp cleanup            # preview
-uv run meta-data-mcp cleanup --apply    # apply
-```
 
 ## Server tools (what the LLM calls)
 
