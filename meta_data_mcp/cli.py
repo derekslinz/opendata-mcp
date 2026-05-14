@@ -8,8 +8,9 @@ all commands operate on the one server.
 Commands:
 
     run       — start the server
-    setup     — register the server in Claude Desktop's config
-    remove    — unregister the server from Claude Desktop's config
+    setup     — register the server in every installed MCP client (auto-detect)
+    remove    — unregister the server from every detected MCP client
+    clients   — list supported MCP clients and their installed status
     cleanup   — remove legacy individual-provider entries (pre-unified setups)
     inspect   — launch MCP Inspector against the server
     list      — informational: list internal plugins
@@ -23,7 +24,9 @@ import json
 import os
 import platform
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 # Add src to sys.path so this works when run from a source checkout.
 _src_path = str(Path(__file__).parent.parent)
@@ -49,17 +52,128 @@ _LEGACY_DOUBLE_ALL = "opendata-mcp-opendata-mcp-all"
 
 
 # ---------------------------------------------------------------------------
-# Config helpers
+# Supported MCP clients
 # ---------------------------------------------------------------------------
 
 
-def _config_path() -> Path:
+@dataclass(frozen=True)
+class ClientSpec:
+    """A supported MCP client and where its config lives.
+
+    All Phase-1 clients share the same JSON ``mcpServers`` schema:
+
+        {"mcpServers": {<server-key>: {"command": str, "args": [str, ...],
+                                       "env"?: {str: str}}}}
+
+    ``detect_fn`` returns the path that must EXIST for the client to count
+    as installed. ``config_path_fn`` returns the file to write (may equal
+    detect_fn). Both may return None on an unsupported platform.
+    """
+
+    key: str
+    label: str
+    detect_fn: Callable[[], Path | None]
+    config_path_fn: Callable[[], Path | None]
+
+
+def _claude_desktop_config_path() -> Path | None:
     system = platform.system()
     if system == "Darwin":
         return (
             Path.home()
             / "Library/Application Support/Claude/claude_desktop_config.json"
         )
+    if system == "Windows":
+        return Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
+    return None
+
+
+def _claude_desktop_detect() -> Path | None:
+    p = _claude_desktop_config_path()
+    return p.parent if p is not None else None
+
+
+def _claude_code_path() -> Path:
+    return Path.home() / ".claude.json"
+
+
+def _cursor_path() -> Path:
+    return Path.home() / ".cursor" / "mcp.json"
+
+
+def _windsurf_path() -> Path:
+    return Path.home() / ".codeium" / "windsurf" / "mcp_config.json"
+
+
+def _gemini_path() -> Path:
+    return Path.home() / ".gemini" / "settings.json"
+
+
+def _lm_studio_path() -> Path:
+    return Path.home() / ".cache" / "lm-studio" / "mcp.json"
+
+
+CLIENTS: dict[str, ClientSpec] = {
+    "claude-desktop": ClientSpec(
+        key="claude-desktop",
+        label="Claude Desktop",
+        detect_fn=_claude_desktop_detect,
+        config_path_fn=_claude_desktop_config_path,
+    ),
+    "claude-code": ClientSpec(
+        key="claude-code",
+        label="Claude Code",
+        detect_fn=_claude_code_path,
+        config_path_fn=_claude_code_path,
+    ),
+    "cursor": ClientSpec(
+        key="cursor",
+        label="Cursor",
+        detect_fn=lambda: _cursor_path().parent,
+        config_path_fn=_cursor_path,
+    ),
+    "windsurf": ClientSpec(
+        key="windsurf",
+        label="Windsurf",
+        detect_fn=lambda: _windsurf_path().parent,
+        config_path_fn=_windsurf_path,
+    ),
+    "gemini": ClientSpec(
+        key="gemini",
+        label="Gemini CLI",
+        detect_fn=_gemini_path,
+        config_path_fn=_gemini_path,
+    ),
+    "lm-studio": ClientSpec(
+        key="lm-studio",
+        label="LM Studio",
+        detect_fn=lambda: _lm_studio_path().parent,
+        config_path_fn=_lm_studio_path,
+    ),
+}
+
+
+def _detect_installed_clients() -> list[ClientSpec]:
+    """Return the subset of CLIENTS whose detection path exists on disk."""
+    out: list[ClientSpec] = []
+    for spec in CLIENTS.values():
+        detect = spec.detect_fn()
+        if detect is not None and detect.exists():
+            out.append(spec)
+    return out
+
+
+def _config_path() -> Path:
+    """Back-compat alias for the Claude Desktop config path.
+
+    Retained because the ``cleanup`` command still operates Claude-Desktop-only
+    (the legacy ``opendata-mcp-*`` entries were only ever written there).
+    """
+    p = _claude_desktop_config_path()
+    if p is not None:
+        return p
+    # Fall back to the Windows-style path; preserves prior behaviour on
+    # unsupported OSes (callers handle non-existence).
     return Path(os.getenv("APPDATA") or "") / "Claude/claude_desktop_config.json"
 
 
@@ -79,6 +193,20 @@ def _load_config(config_path: Path) -> dict:
             err=True,
         )
         sys.exit(1)
+
+
+def _load_config_safe(config_path: Path) -> dict | None:
+    """Variant of ``_load_config`` that returns ``None`` on invalid JSON.
+
+    Used by the multi-client setup loop so a single corrupted config does
+    not abort writes to the other detected clients.
+    """
+    if not config_path.exists():
+        return {}
+    try:
+        return json.loads(config_path.read_text())
+    except json.JSONDecodeError:
+        return None
 
 
 def _server_entry(use_local: bool, repo_root: Path) -> dict:
@@ -264,17 +392,38 @@ def info(plugin: str | None) -> None:
         "MCP clients."
     ),
 )
-def setup(_extra: tuple, local: bool, force: bool, print_json: bool) -> None:
-    """Register the one meta-data-mcp server in Claude Desktop's config.
+@click.option(
+    "--client",
+    "client",
+    type=str,
+    default=None,
+    help=(
+        "Target a specific MCP client (claude-desktop, claude-code, cursor, "
+        "windsurf, gemini, lm-studio) or 'all'. Default: every client "
+        "detected as installed on this machine. Run `meta-data-mcp clients` "
+        "to list."
+    ),
+)
+def setup(
+    _extra: tuple, local: bool, force: bool, print_json: bool, client: str | None
+) -> None:
+    """Register the one meta-data-mcp server in every installed MCP client.
+
+    By default, scans candidate config paths for known MCP clients and
+    writes to each one whose parent directory exists on disk. Pass
+    ``--client KEY`` to target one explicitly, or ``--client all`` to
+    write to every supported client whether or not it's detected.
 
     Any legacy multi-server entries from older CLI versions are removed
     automatically.
     """
+    repo_root = Path(__file__).parent.parent.resolve()
+    is_local_repo = (repo_root / "pyproject.toml").exists()
+    use_local = is_local_repo or local
+    entry = _server_entry(use_local, repo_root)
+
     if print_json:
-        repo_root = Path(__file__).parent.parent.resolve()
-        is_local_repo = (repo_root / "pyproject.toml").exists()
-        use_local = is_local_repo or local
-        snippet = {SERVER_KEY: _server_entry(use_local, repo_root)}
+        snippet = {SERVER_KEY: entry}
         click.echo(json.dumps(snippet, indent=2))
 
         auth_token = os.getenv("META_DATA_MCP_AUTH_TOKEN")
@@ -296,37 +445,30 @@ def setup(_extra: tuple, local: bool, force: bool, print_json: bool) -> None:
             )
         return
 
-    system = platform.system()
-    if system not in ("Darwin", "Windows"):
-        click.echo("Setup is only supported on macOS and Windows.", err=True)
-        sys.exit(1)
+    # Resolve target clients.
+    if client == "all":
+        targets = list(CLIENTS.values())
+    elif client is not None:
+        if client not in CLIENTS:
+            click.echo(
+                f"Unknown client '{client}'. Supported keys: "
+                f"{', '.join(CLIENTS)}. Use 'all' to target every client.",
+                err=True,
+            )
+            sys.exit(1)
+        targets = [CLIENTS[client]]
+    else:
+        targets = _detect_installed_clients()
+        if not targets:
+            click.echo(
+                "No installed MCP clients detected. Pass --client KEY to "
+                "target one explicitly, --client all to write to every "
+                "supported client, or run `meta-data-mcp clients` for the "
+                "list of supported keys.",
+                err=True,
+            )
+            sys.exit(1)
 
-    config_path = _config_path()
-    if not config_path.parent.exists():
-        click.echo(
-            f"Couldn't find Claude config directory at {config_path.parent}.",
-            err=True,
-        )
-        sys.exit(1)
-
-    config = _load_config(config_path)
-    config.setdefault("mcpServers", {})
-
-    removed = _migrate_legacy_entries(config)
-    if removed:
-        click.echo(
-            f"Migrated: removed {len(removed)} legacy entry/entries "
-            f"({', '.join(removed[:5])}{'…' if len(removed) > 5 else ''})."
-        )
-
-    if SERVER_KEY in config["mcpServers"] and not force:
-        click.confirm(
-            f"Server '{SERVER_KEY}' is already configured. Overwrite?", abort=True
-        )
-
-    repo_root = Path(__file__).parent.parent.resolve()
-    is_local_repo = (repo_root / "pyproject.toml").exists()
-    use_local = is_local_repo or local
     mode_label = (
         f"LOCAL mode pointing to {repo_root}"
         if use_local
@@ -334,38 +476,189 @@ def setup(_extra: tuple, local: bool, force: bool, print_json: bool) -> None:
     )
     click.echo(f"Configuring '{SERVER_KEY}' in {mode_label}.")
 
-    config["mcpServers"][SERVER_KEY] = _server_entry(use_local, repo_root)
+    successes = 0
+    for spec in targets:
+        config_path = spec.config_path_fn()
+        if config_path is None:
+            click.echo(
+                f"  - {spec.label}: skipped (unsupported on this OS)", err=True
+            )
+            continue
+        if _write_server_to_client(spec, config_path, entry, force=force):
+            successes += 1
 
+    if successes:
+        click.echo(
+            f"\nConfigured '{SERVER_KEY}' in {successes} client(s). "
+            "Restart the affected MCP client(s) to apply."
+        )
+    else:
+        click.echo(
+            f"No requested MCP clients were configured for '{SERVER_KEY}'.",
+            err=True,
+        )
+        sys.exit(1)
+
+
+def _write_server_to_client(
+    spec: ClientSpec, config_path: Path, entry: dict, *, force: bool
+) -> bool:
+    """Write the SERVER_KEY entry into a single client config. Returns True on write."""
+    config_path = Path(config_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    config = _load_config_safe(config_path)
+    if config is None:
+        click.echo(
+            f"  ✗ {spec.label}: skipped ({config_path} contains invalid JSON)",
+            err=True,
+        )
+        return False
+    if not isinstance(config, dict):
+        click.echo(
+            f"  ✗ {spec.label}: skipped ({config_path} top-level is "
+            f"{type(config).__name__}, not an object)",
+            err=True,
+        )
+        return False
+
+    servers = config.get("mcpServers")
+    if servers is None:
+        # Missing or explicit `null` — initialise.
+        config["mcpServers"] = {}
+    elif not isinstance(servers, dict):
+        click.echo(
+            f"  ✗ {spec.label}: skipped ({config_path} has a non-object "
+            f"`mcpServers` value of type {type(servers).__name__}; "
+            "fix it manually).",
+            err=True,
+        )
+        return False
+
+    removed = _migrate_legacy_entries(config)
+    if removed:
+        click.echo(
+            f"  - {spec.label}: removed {len(removed)} legacy entry/entries."
+        )
+
+    if SERVER_KEY in config["mcpServers"] and not force:
+        if not click.confirm(
+            f"  {spec.label}: '{SERVER_KEY}' already present at {config_path}. "
+            "Overwrite?",
+            default=False,
+        ):
+            click.echo(f"  - {spec.label}: skipped.")
+            return False
+
+    config["mcpServers"][SERVER_KEY] = entry
     _backup_config(config_path)
     config_path.write_text(json.dumps(config, indent=2))
-    click.echo(
-        f"Successfully configured '{SERVER_KEY}'. Please restart Claude Desktop."
-    )
+    click.echo(f"  ✓ {spec.label}: {config_path}")
+    return True
 
 
 @cli.command(
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
 )
 @click.argument("_extra", nargs=-1)
-def remove(_extra: tuple) -> None:
-    """Unregister the meta-data-mcp server from Claude Desktop's config."""
-    config_path = _config_path()
-    if not config_path.exists():
-        click.echo("No Claude Desktop config file — nothing to remove.")
+@click.option(
+    "--client",
+    "client",
+    type=str,
+    default=None,
+    help=(
+        "Target a specific MCP client or 'all'. Default: every client where "
+        f"'{SERVER_KEY}' is currently registered."
+    ),
+)
+def remove(_extra: tuple, client: str | None) -> None:
+    """Unregister meta-data-mcp from every installed MCP client where it's set."""
+    if client == "all":
+        targets = list(CLIENTS.values())
+    elif client is not None:
+        if client not in CLIENTS:
+            click.echo(
+                f"Unknown client '{client}'. Supported: {', '.join(CLIENTS)}.",
+                err=True,
+            )
+            sys.exit(1)
+        targets = [CLIENTS[client]]
+    else:
+        targets = _detect_installed_clients()
+
+    if not targets:
+        click.echo("No MCP clients detected — nothing to remove.")
         return
 
-    config = _load_config(config_path)
-    servers = config.get("mcpServers", {})
-    if SERVER_KEY not in servers:
-        click.echo(f"'{SERVER_KEY}' is not configured.")
-        return
+    removed_count = 0
+    for spec in targets:
+        config_path = spec.config_path_fn()
+        if config_path is None or not config_path.exists():
+            continue
+        config = _load_config_safe(config_path)
+        if config is None:
+            click.echo(
+                f"  ✗ {spec.label}: skipped ({config_path} contains invalid JSON)",
+                err=True,
+            )
+            continue
+        if not isinstance(config, dict):
+            click.echo(
+                f"  ✗ {spec.label}: skipped ({config_path} top-level is "
+                f"{type(config).__name__}, not an object)",
+                err=True,
+            )
+            continue
+        servers = config.get("mcpServers")
+        if not isinstance(servers, dict):
+            # Missing, null, or malformed — nothing for us to remove.
+            continue
+        if SERVER_KEY not in servers:
+            continue
+        del servers[SERVER_KEY]
+        if not servers:
+            config.pop("mcpServers", None)
+        _backup_config(config_path)
+        config_path.write_text(json.dumps(config, indent=2))
+        click.echo(f"  ✓ {spec.label}: removed from {config_path}")
+        removed_count += 1
 
-    del servers[SERVER_KEY]
-    if not servers:
-        config.pop("mcpServers", None)
-    _backup_config(config_path)
-    config_path.write_text(json.dumps(config, indent=2))
-    click.echo(f"Removed '{SERVER_KEY}'. Restart Claude Desktop to apply.")
+    if removed_count == 0:
+        click.echo(f"'{SERVER_KEY}' is not configured in any detected client.")
+    else:
+        click.echo(
+            f"\nRemoved '{SERVER_KEY}' from {removed_count} client(s). "
+            "Restart the affected MCP client(s) to apply."
+        )
+
+
+@cli.command(name="clients")
+def list_clients_command() -> None:
+    """List supported MCP clients and their installed/configured status on this machine."""
+    detected_keys = {s.key for s in _detect_installed_clients()}
+    click.echo("Supported MCP clients:")
+    for key, spec in CLIENTS.items():
+        config_path = spec.config_path_fn()
+        if config_path is None:
+            status = "  unsupported on this OS"
+            path_str = "—"
+        else:
+            installed = key in detected_keys
+            configured = False
+            if installed and config_path.exists():
+                cfg = _load_config_safe(config_path)
+                if isinstance(cfg, dict):
+                    servers = cfg.get("mcpServers")
+                    if isinstance(servers, dict):
+                        configured = SERVER_KEY in servers
+            if configured:
+                status = "  ✓ configured"
+            elif installed:
+                status = "  • installed (not configured)"
+            else:
+                status = "    not detected"
+            path_str = str(config_path)
+        click.echo(f"  {status:<32}  {spec.label:<18}  {path_str}")
 
 
 @cli.command(
