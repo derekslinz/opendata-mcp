@@ -168,6 +168,11 @@ USER_HOME=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
 # mount them, otherwise the service fails with status=226/NAMESPACE.
 run sudo -u "$SERVICE_USER" mkdir -p "$USER_HOME/.cache" "$USER_HOME/.local/share"
 
+# PLUGIN_WRITE_PATHS is populated below in the --source branch (and stays
+# empty in the PyPI-install branch). Default to empty so the unit template
+# works either way.
+PLUGIN_WRITE_PATHS=""
+
 # 2. uv (for the service user)
 log "==> [2/6] ensuring uv is available for '$SERVICE_USER'"
 if [ "$DRY_RUN" -eq 0 ] && ! sudo -u "$SERVICE_USER" bash -lc 'command -v uv >/dev/null'; then
@@ -192,6 +197,11 @@ else
   # --no-sync at runtime: the venv is built; ProtectSystem=strict makes /opt
   # read-only at run-time, so we must not let `uv run` try to re-sync.
   EXEC_START="$USER_HOME/.local/bin/uv --directory $SOURCE_DIR run --no-sync meta-data-mcp run --transport sse --host $HOST --port $PORT"
+  # When running from a source checkout, opendata-create-plugin needs to
+  # write new plugin specs and provider modules back into the source tree.
+  # ProtectSystem=strict would block that, so expose the two specific
+  # directories as ReadWritePaths.
+  PLUGIN_WRITE_PATHS="$SOURCE_DIR/tools/specs $SOURCE_DIR/meta_data_mcp/providers"
 fi
 
 # 4. Bearer token + env file
@@ -248,7 +258,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=$USER_HOME/.cache $USER_HOME/.local/share
+ReadWritePaths=$USER_HOME/.cache $USER_HOME/.local/share $PLUGIN_WRITE_PATHS
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
