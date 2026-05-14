@@ -31,7 +31,50 @@ a built-in bearer-token middleware (see [Authentication](#authentication)).
 
 ---
 
-## 1. Install on the host
+## 1. Quick install (one command)
+
+If you're on Linux with systemd, the bundled installer does steps 1–5 in one shot:
+
+```bash
+# From the repo
+sudo ./scripts/install-systemd-service.sh --start --contact ops@yourdomain.example
+
+# Or remote-piped (review the script first)
+curl -fsSL https://raw.githubusercontent.com/derekslinz/meta-data-mcp/main/scripts/install-systemd-service.sh \
+  | sudo bash -s -- --start --contact ops@yourdomain.example
+```
+
+What it does (re-runnable; existing env/unit files get `.bak` backups):
+
+1. Creates a service user (`mcp` by default; `--user NAME` to override).
+2. Installs `uv` for that user, then `uv tool install meta-data-mcp`.
+3. Generates a 32-byte bearer token (`--token VALUE` to supply your own,
+   `--rotate-token` to force a fresh one on re-run).
+4. Writes `/etc/meta-data-mcp/env` (mode `0600`, owned by the service user)
+   with `META_DATA_MCP_AUTH_TOKEN` and optional `OPENDATA_MCP_CONTACT`.
+5. Writes `/etc/systemd/system/meta-data-mcp.service` with sensible hardening
+   (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=read-only`,
+   etc.) and `ExecStart` bound to `127.0.0.1:8000`.
+6. `systemctl daemon-reload` and (with `--start`) `enable --now`.
+
+At the end it prints the token once. Skip to step 4 for the TLS reverse proxy.
+
+To run from a source checkout instead of PyPI:
+
+```bash
+sudo ./scripts/install-systemd-service.sh --source /opt/meta-data-mcp --start
+```
+
+To remove it later:
+
+```bash
+sudo ./scripts/install-systemd-service.sh --uninstall
+```
+
+The remainder of this guide is the manual breakdown of what that script
+does, plus the TLS / client wiring that's the same either way.
+
+## 2. Install on the host (manual)
 
 ```bash
 # As an unprivileged user on the host (e.g. an Ubuntu droplet)
@@ -49,7 +92,7 @@ Verify:
 meta-data-mcp version
 ```
 
-## 2. Set the bearer token
+## 3. Set the bearer token
 
 The server only requires authentication when the
 `META_DATA_MCP_AUTH_TOKEN` environment variable is set. Generate a long
@@ -72,7 +115,7 @@ and serves SSE traffic without authentication. This is fine for local
 development on `127.0.0.1`, but is **not safe for public hosting**. The
 sections below assume you've set the variable.
 
-## 3. Run the server bound to localhost
+## 4. Run the server bound to localhost
 
 ```bash
 export META_DATA_MCP_AUTH_TOKEN="$(cat /etc/meta-data-mcp/token)"
@@ -124,7 +167,7 @@ sudo systemctl enable --now meta-data-mcp
 sudo systemctl status meta-data-mcp
 ```
 
-## 4. Put TLS in front (Caddy example)
+## 5. Put TLS in front (Caddy example)
 
 The smallest practical Caddy config (`/etc/caddy/Caddyfile`):
 
@@ -168,7 +211,7 @@ curl -sS https://mcp.linzalytics.com/sse -i | head -3
 # → www-authenticate: Bearer realm="meta-data-mcp"
 ```
 
-## 5. Wire a client to the hosted server
+## 6. Wire a client to the hosted server
 
 Run on **your laptop** (not the server):
 
