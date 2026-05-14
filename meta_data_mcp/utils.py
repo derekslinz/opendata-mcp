@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -342,11 +343,64 @@ def create_mcp_server(
     return server
 
 
+class BearerAuthMiddleware:
+    """Require ``Authorization: Bearer <token>`` on protected ASGI paths.
+
+    Pure ASGI middleware (not BaseHTTPMiddleware) so it does not buffer
+    streaming SSE responses. The health check at ``/`` is left open so
+    uptime probes work without credentials.
+    """
+
+    def __init__(
+        self,
+        app: Any,
+        token: str,
+        protected_prefixes: Sequence[str] = ("/sse", "/messages"),
+    ) -> None:
+        self.app = app
+        self.token = token
+        self.protected_prefixes = tuple(protected_prefixes)
+
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope.get("type") != "http" or not any(
+            scope.get("path", "").startswith(p) for p in self.protected_prefixes
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        auth_header = ""
+        for name, value in scope.get("headers", []):
+            if name == b"authorization":
+                auth_header = value.decode("latin-1")
+                break
+
+        prefix = "Bearer "
+        presented = (
+            auth_header[len(prefix):] if auth_header.startswith(prefix) else ""
+        )
+        if not presented or not hmac.compare_digest(presented, self.token):
+            from starlette.responses import JSONResponse
+
+            response = JSONResponse(
+                {"error": "unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": 'Bearer realm="meta-data-mcp"'},
+            )
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
 async def run_server(
     server: Server, transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"
 ):
     """
     Run the MCP server with the specified transport.
+
+    SSE auth: if ``META_DATA_MCP_AUTH_TOKEN`` is set, requests to ``/sse``
+    and ``/messages`` must include ``Authorization: Bearer <token>``. When
+    unset, SSE is served unauthenticated (logs a startup warning).
     """
     if transport == "stdio":
         from mcp.server.stdio import stdio_server
@@ -408,6 +462,19 @@ async def run_server(
             allow_headers=["*"],
             expose_headers=["*"],
         )
+
+        auth_token = os.getenv("META_DATA_MCP_AUTH_TOKEN")
+        if auth_token:
+            app.add_middleware(BearerAuthMiddleware, token=auth_token)
+            log.info(
+                "SSE bearer auth enabled (META_DATA_MCP_AUTH_TOKEN set; "
+                "protecting /sse and /messages)"
+            )
+        else:
+            log.warning(
+                "SSE bearer auth DISABLED — set META_DATA_MCP_AUTH_TOKEN to "
+                "require Authorization: Bearer <token> on /sse and /messages"
+            )
 
         config = uvicorn.Config(
             app,

@@ -254,12 +254,48 @@ def info(plugin: str | None) -> None:
     "--local", is_flag=True, help="Force local development mode using absolute paths."
 )
 @click.option("--force", is_flag=True, help="Overwrite an existing configuration.")
-def setup(_extra: tuple, local: bool, force: bool) -> None:
+@click.option(
+    "--print-json",
+    "print_json",
+    is_flag=True,
+    help=(
+        "Print the server's JSON configuration snippet to stdout and exit "
+        "without touching any config file. Useful for piping into other "
+        "MCP clients."
+    ),
+)
+def setup(_extra: tuple, local: bool, force: bool, print_json: bool) -> None:
     """Register the one meta-data-mcp server in Claude Desktop's config.
 
     Any legacy multi-server entries from older CLI versions are removed
     automatically.
     """
+    if print_json:
+        repo_root = Path(__file__).parent.parent.resolve()
+        is_local_repo = (repo_root / "pyproject.toml").exists()
+        use_local = is_local_repo or local
+        snippet = {SERVER_KEY: _server_entry(use_local, repo_root)}
+        click.echo(json.dumps(snippet, indent=2))
+
+        auth_token = os.getenv("META_DATA_MCP_AUTH_TOKEN")
+        if auth_token:
+            remote_snippet = {
+                SERVER_KEY: {
+                    "url": "https://YOUR-HOST/sse",
+                    "headers": {"Authorization": f"Bearer {auth_token}"},
+                }
+            }
+            click.echo(
+                "\n# SSE bearer auth is enabled (META_DATA_MCP_AUTH_TOKEN is set).\n"
+                "# The snippet above launches the server locally via stdio and does\n"
+                "# NOT need auth. To wire a REMOTE MCP client to this server over\n"
+                "# SSE, use the following client config (replace YOUR-HOST with\n"
+                "# the public hostname, e.g. linzalytics.com):\n"
+                f"#\n# {json.dumps(remote_snippet, indent=2).replace(chr(10), chr(10) + '# ')}",
+                err=True,
+            )
+        return
+
     system = platform.system()
     if system not in ("Darwin", "Windows"):
         click.echo("Setup is only supported on macOS and Windows.", err=True)

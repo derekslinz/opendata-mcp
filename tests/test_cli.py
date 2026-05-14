@@ -149,6 +149,82 @@ def test_setup_creates_backup_before_writing(runner, tmp_path):
     assert backup.read_text() == original_content
 
 
+def test_setup_print_json_emits_snippet_without_writing(runner, tmp_path):
+    """`setup --print-json` prints the snippet and does not touch disk."""
+    claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
+    claude_dir.mkdir(parents=True)
+    config_path = claude_dir / "claude_desktop_config.json"
+
+    with patch("meta_data_mcp.cli.platform.system", return_value="Darwin"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--print-json"])
+
+    assert result.exit_code == 0, result.output
+    snippet = json.loads(result.output)
+    assert list(snippet.keys()) == ["meta-data-mcp"]
+    entry = snippet["meta-data-mcp"]
+    assert "command" in entry
+    assert "args" in entry
+    # Did not create or modify the config file
+    assert not config_path.exists()
+    assert not config_path.with_suffix(".json.bak").exists()
+
+
+def test_setup_print_json_works_on_unsupported_platforms(runner, tmp_path):
+    """`setup --print-json` should not require macOS/Windows."""
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--print-json"])
+
+    assert result.exit_code == 0, result.output
+    snippet = json.loads(result.output)
+    assert "meta-data-mcp" in snippet
+
+
+def test_setup_print_json_respects_local_flag(runner, tmp_path):
+    """With --local, the printed entry uses 'uv --directory' invocation."""
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--print-json", "--local"])
+
+    assert result.exit_code == 0, result.output
+    entry = json.loads(result.output)["meta-data-mcp"]
+    assert entry["command"] == "uv"
+    assert "--directory" in entry["args"]
+
+
+def test_setup_print_json_omits_auth_when_token_unset(runner, tmp_path, monkeypatch):
+    """No auth instructions when META_DATA_MCP_AUTH_TOKEN is not set."""
+    monkeypatch.delenv("META_DATA_MCP_AUTH_TOKEN", raising=False)
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--print-json"])
+
+    assert result.exit_code == 0
+    json.loads(result.stdout)  # stdout is parseable JSON
+    assert "bearer" not in result.stderr.lower()
+
+
+def test_setup_print_json_surfaces_auth_when_token_set(
+    runner, tmp_path, monkeypatch
+):
+    """With token set, stderr surfaces SSE client config instructions."""
+    monkeypatch.setenv("META_DATA_MCP_AUTH_TOKEN", "test-token-abc123")
+    with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
+        with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
+            result = runner.invoke(cli, ["setup", "--print-json"])
+
+    assert result.exit_code == 0
+    # stdout remains a clean parseable snippet (pipeable to jq / >)
+    snippet = json.loads(result.stdout)
+    assert list(snippet.keys()) == ["meta-data-mcp"]
+    assert "headers" not in snippet["meta-data-mcp"]
+    # stderr carries the auth wiring instructions with the real token
+    assert "META_DATA_MCP_AUTH_TOKEN" in result.stderr
+    assert "Bearer test-token-abc123" in result.stderr
+    assert "https://YOUR-HOST/sse" in result.stderr
+
+
 def test_remove_removes_the_server_key(runner, tmp_path):
     claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
     claude_dir.mkdir(parents=True)
