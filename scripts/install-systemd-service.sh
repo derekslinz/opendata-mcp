@@ -164,6 +164,10 @@ fi
 USER_HOME=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
 [ -n "$USER_HOME" ] || die "could not resolve home dir for user '$SERVICE_USER'"
 
+# Ensure ReadWritePaths in the unit actually exist before systemd tries to
+# mount them, otherwise the service fails with status=226/NAMESPACE.
+run sudo -u "$SERVICE_USER" mkdir -p "$USER_HOME/.cache" "$USER_HOME/.local/share"
+
 # 2. uv (for the service user)
 log "==> [2/6] ensuring uv is available for '$SERVICE_USER'"
 if [ "$DRY_RUN" -eq 0 ] && ! sudo -u "$SERVICE_USER" bash -lc 'command -v uv >/dev/null'; then
@@ -178,11 +182,16 @@ if [ -z "$SOURCE_DIR" ]; then
 else
   [ -d "$SOURCE_DIR" ] || die "--source dir does not exist: $SOURCE_DIR"
   log "==> [3/6] using source checkout at $SOURCE_DIR (no PyPI install)"
-  # Make sure the service user can read the source dir
-  if [ "$DRY_RUN" -eq 0 ] && [ "$(stat -c %U "$SOURCE_DIR" 2>/dev/null || stat -f %Su "$SOURCE_DIR")" != "$SERVICE_USER" ]; then
-    log "    note: $SOURCE_DIR is not owned by $SERVICE_USER; verify read permissions"
+  if [ "$DRY_RUN" -eq 0 ]; then
+    # The service user needs read+write on the source dir (uv builds .venv
+    # there). chown if it isn't already owned; harmless when it already is.
+    chown -R "$SERVICE_USER:$SERVICE_USER" "$SOURCE_DIR"
+    log "    pre-building venv (uv sync --frozen --no-dev) as $SERVICE_USER"
+    sudo -u "$SERVICE_USER" bash -lc "cd '$SOURCE_DIR' && uv sync --frozen --no-dev" >/dev/null
   fi
-  EXEC_START="$USER_HOME/.local/bin/uv --directory $SOURCE_DIR run meta-data-mcp run --transport sse --host $HOST --port $PORT"
+  # --no-sync at runtime: the venv is built; ProtectSystem=strict makes /opt
+  # read-only at run-time, so we must not let `uv run` try to re-sync.
+  EXEC_START="$USER_HOME/.local/bin/uv --directory $SOURCE_DIR run --no-sync meta-data-mcp run --transport sse --host $HOST --port $PORT"
 fi
 
 # 4. Bearer token + env file
