@@ -374,11 +374,14 @@ class BearerAuthMiddleware:
                 auth_header = value.decode("latin-1")
                 break
 
-        prefix = "Bearer "
-        presented = (
-            auth_header[len(prefix):] if auth_header.startswith(prefix) else ""
-        )
-        if not presented or not hmac.compare_digest(presented, self.token):
+        scheme = ""
+        presented = ""
+        parts = auth_header.split(" ", 1)
+        if len(parts) == 2:
+            scheme, presented = parts
+        if scheme.casefold() != "bearer" or not presented or not hmac.compare_digest(
+            presented, self.token
+        ):
             from starlette.responses import JSONResponse
 
             response = JSONResponse(
