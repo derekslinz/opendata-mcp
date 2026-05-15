@@ -16,6 +16,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -126,14 +127,63 @@ def fetch_dbnomics_series(params: DBnomicsSeriesParams) -> Any:
     return response.json()
 
 
+def _dbnomics_series_to_shape_payload(data: dict) -> dict:
+    """Adapt DBnomics' ``{series: {docs: [{period, value, series_code, ...}]}}``
+    response to the ``ui://meta-data-mcp/shape/timeseries/v1`` payload:
+    ``{points: [{date, value, series}], axes: {x, y}}``.
+
+    Each series doc contributes one point per ``(period[i], value[i])`` pair,
+    tagged with the series code so multi-series requests render as separate
+    lines.
+    """
+    series_block = data.get("series") or {}
+    docs = series_block.get("docs") or []
+    points: list[dict[str, Any]] = []
+    unit_label = ""
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        series_code = (
+            doc.get("series_code")
+            or doc.get("series_name")
+            or doc.get("dataset_code")
+            or ""
+        )
+        if not unit_label:
+            unit_label = doc.get("unit") or doc.get("@frequency") or ""
+        periods = doc.get("period") or []
+        values = doc.get("value") or []
+        if not isinstance(periods, list) or not isinstance(values, list):
+            continue
+        for period, value in zip(periods, values):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            if not isinstance(period, str):
+                continue
+            point: dict[str, Any] = {"date": period, "value": value}
+            if series_code:
+                point["series"] = series_code
+            points.append(point)
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    return {
+        "points": points,
+        "axes": {"x": "Period", "y": unit_label or "Value"},
+    }
+
+
 async def handle_dbnomics_series(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the dbnomics-series tool call."""
+    """Handle the dbnomics-series tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/timeseries/v1``
+    payload format so MCP Apps hosts can render the chart inline.
+    """
     try:
         params = DBnomicsSeriesParams(**(arguments or {}))
         data = fetch_dbnomics_series(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _dbnomics_series_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching DBnomics series: {e}")
         raise
@@ -144,6 +194,7 @@ TOOLS.append(
         name="dbnomics-series",
         description="Fetch data for specific economic series from DBnomics.",
         inputSchema=DBnomicsSeriesParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["dbnomics-series"] = handle_dbnomics_series

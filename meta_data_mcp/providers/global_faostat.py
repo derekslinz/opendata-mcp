@@ -19,6 +19,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import (
     create_mcp_server,
     http_get,
@@ -194,13 +195,79 @@ def fetch_faostat_data(params: FaostatDataParams) -> Any:
     return response.json()
 
 
+def _faostat_data_to_shape_payload(data: dict) -> dict:
+    """Adapt FAOSTAT's ``{data: [{Year, Value, Area, Item, Element, Unit, ...}]}``
+    response to the ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    The series label combines the discriminator dimensions (area + item +
+    element) when more than one row varies on them, so plots stay
+    distinguishable for cross-country / cross-commodity queries. The Y-axis
+    uses the dataset Unit when uniform.
+    """
+    rows = data.get("data") or []
+    if not isinstance(rows, list):
+        return {"points": [], "axes": {"x": "Year", "y": "Value"}}
+
+    # Field-name variants: FAOSTAT sometimes serializes with capitalized
+    # space-separated labels ("Area"), sometimes with lowercase ("area").
+    def _pick(row: dict, *candidates: str) -> Any:
+        for c in candidates:
+            if c in row and row[c] is not None:
+                return row[c]
+        return None
+
+    units: set[str] = set()
+    points: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        year = _pick(row, "Year", "year")
+        if year is None:
+            continue
+        date = str(year)
+        raw_value = _pick(row, "Value", "value")
+        if raw_value is None:
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(raw_value, bool):
+            continue
+        unit = _pick(row, "Unit", "unit")
+        if unit:
+            units.add(unit)
+        series_bits = [
+            _pick(row, "Area", "area"),
+            _pick(row, "Item", "item"),
+            _pick(row, "Element", "element"),
+        ]
+        series_label = " · ".join(str(b) for b in series_bits if b)
+        point: dict[str, Any] = {"date": date, "value": value}
+        if series_label:
+            point["series"] = series_label
+        points.append(point)
+
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    y_label = (units.pop() if len(units) == 1 else "Value") if units else "Value"
+    return {
+        "points": points,
+        "axes": {"x": "Year", "y": y_label},
+    }
+
+
 async def handle_faostat_data(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the faostat-data tool call."""
+    """Handle the faostat-data tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     params = FaostatDataParams(**(arguments or {}))
     data = fetch_faostat_data(params)
-    return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    payload = _faostat_data_to_shape_payload(data)
+    return [types.TextContent(type="text", text=serialize_for_llm(payload))]
 
 
 TOOLS.append(
@@ -214,6 +281,7 @@ TOOLS.append(
             "first to discover codes."
         ),
         inputSchema=FaostatDataParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["faostat-data"] = handle_faostat_data

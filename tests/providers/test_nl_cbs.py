@@ -2,6 +2,8 @@ import json
 import pytest
 from unittest.mock import patch, Mock
 from meta_data_mcp.providers.nl_cbs import (
+    TOOLS,
+    _cbs_typed_dataset_to_shape_payload,
     fetch_cbs_data,
     CBSDataParams,
     handle_cbs_data,
@@ -12,6 +14,7 @@ from meta_data_mcp.providers.nl_cbs import (
     CBSListTablesParams,
     handle_cbs_list_tables,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -83,7 +86,9 @@ async def test_handle_cbs_data(mock_cbs_data_response):
         assert len(result) == 1
         assert "2023MM01" in result[0].text
         payload = json.loads(result[0].text)
-        assert payload["results"][0]["Periods"] == "2023MM01"
+        assert "points" in payload
+        # 3 numeric columns × 1 row = 3 points
+        assert len(payload["points"]) == 3
 
 
 def test_fetch_cbs_metadata(mock_cbs_metadata_response):
@@ -158,3 +163,79 @@ async def test_handle_cbs_data_pagination(mock_cbs_data_response):
         args, kwargs = mock_get.call_args
         assert kwargs["params"]["$top"] == 5
         assert kwargs["params"]["$skip"] == 10
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for cbs-get-typed-dataset.
+# ---------------------------------------------------------------------------
+
+
+def test_cbs_adapter_flattens_multi_column_table():
+    raw = {
+        "value": [
+            {
+                "ID": 0,
+                "Periods": "2023MM01",
+                "Euro95_1": 1.5,
+                "Diesel_2": 1.2,
+            },
+            {
+                "ID": 1,
+                "Periods": "2023MM02",
+                "Euro95_1": 1.6,
+                "Diesel_2": 1.3,
+            },
+        ]
+    }
+    payload = _cbs_typed_dataset_to_shape_payload(raw)
+    assert payload["axes"] == {"x": "Period", "y": "Value"}
+    assert len(payload["points"]) == 4
+    series = {p["series"] for p in payload["points"]}
+    assert series == {"Euro95_1", "Diesel_2"}
+
+
+def test_cbs_adapter_handles_perioden_field():
+    raw = {"value": [{"Perioden": "2023MM01", "Waarde": 1.5}]}
+    payload = _cbs_typed_dataset_to_shape_payload(raw)
+    assert payload["points"][0]["date"] == "2023MM01"
+    assert payload["points"][0]["series"] == "Waarde"
+
+
+def test_cbs_adapter_empty():
+    payload = _cbs_typed_dataset_to_shape_payload({})
+    assert payload["points"] == []
+
+
+def test_cbs_adapter_skips_non_numeric():
+    raw = {
+        "value": [
+            {
+                "Periods": "2023MM01",
+                "Euro95_1": "bad",
+                "Diesel_2": 1.2,
+                "Brand_3": True,
+            }
+        ]
+    }
+    payload = _cbs_typed_dataset_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+    assert payload["points"][0]["series"] == "Diesel_2"
+
+
+def test_cbs_typed_dataset_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "cbs-get-typed-dataset")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_cbs_typed_dataset_returns_shape_payload(mock_cbs_data_response):
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = mock_cbs_data_response
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_cbs_data({"table_id": "80416ENG"})
+        body = json.loads(result[0].text)
+        assert body["axes"]["x"] == "Period"
+        assert len(body["points"]) == 3

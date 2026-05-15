@@ -26,6 +26,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -186,16 +187,113 @@ def fetch_get_data(params: IMFGetDataParams) -> dict:
     return response.json()
 
 
+def _imf_get_data_to_shape_payload(data: dict) -> dict:
+    """Adapt IMF SDMX-JSON output to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    Same SDMX-JSON shape as ECB/OECD/Eurostat: observations indexed back
+    through the structure's TIME_PERIOD values; series key re-projected
+    through dimension code IDs (FREQ skipped).
+    """
+    block = data.get("data") or data
+    structure = block.get("structure") or {}
+    dimensions = structure.get("dimensions") or {}
+    obs_dims = dimensions.get("observation") or []
+    series_dims = dimensions.get("series") or []
+
+    time_values: list[str] = []
+    time_label = "Period"
+    if obs_dims:
+        first_obs = obs_dims[0]
+        time_label = first_obs.get("name") or first_obs.get("id") or "Period"
+        time_values = [v.get("id", "") for v in (first_obs.get("values") or [])]
+
+    y_label = "Value"
+    for attr in (structure.get("attributes") or {}).get("series", []) or []:
+        attr_id = (attr.get("id") or "").upper()
+        if attr_id in ("UNIT", "UNIT_MEASURE"):
+            values = attr.get("values") or []
+            if values:
+                y_label = values[0].get("name") or y_label
+            break
+
+    datasets = block.get("dataSets") or []
+    points: list[dict[str, Any]] = []
+    for dataset in datasets:
+        series_map = dataset.get("series") or {}
+        for series_key, series_block in series_map.items():
+            if not isinstance(series_block, dict):
+                continue
+            series_label = _imf_series_label(series_key, series_dims)
+            observations = series_block.get("observations") or {}
+            for obs_idx_str, obs_value in observations.items():
+                try:
+                    obs_idx = int(obs_idx_str)
+                except (TypeError, ValueError):
+                    continue
+                if obs_idx < 0 or obs_idx >= len(time_values):
+                    continue
+                if not isinstance(obs_value, list) or not obs_value:
+                    continue
+                value = obs_value[0]
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                point: dict[str, Any] = {
+                    "date": time_values[obs_idx],
+                    "value": value,
+                }
+                if series_label:
+                    point["series"] = series_label
+                points.append(point)
+
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    return {
+        "points": points,
+        "axes": {"x": time_label, "y": y_label},
+    }
+
+
+def _imf_series_label(series_key: str, series_dims: list[dict]) -> str:
+    """Re-project an SDMX series index key into a dotted label.
+
+    Skips ``FREQ`` (uniform per request); falls back to the raw key when
+    dimensions are missing.
+    """
+    if not series_dims:
+        return series_key
+    indexes = series_key.split(":")
+    parts: list[str] = []
+    for i, idx_str in enumerate(indexes):
+        if i >= len(series_dims):
+            break
+        dim = series_dims[i] or {}
+        if (dim.get("id") or "").upper() == "FREQ":
+            continue
+        try:
+            idx = int(idx_str)
+        except (TypeError, ValueError):
+            continue
+        values = dim.get("values") or []
+        if 0 <= idx < len(values):
+            parts.append(values[idx].get("id") or "")
+    return ".".join(p for p in parts if p) or series_key
+
+
 async def handle_get_data(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the imf-get-data tool call."""
+    """Handle the imf-get-data tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "flowRef" not in arguments:
             raise ValueError("flowRef is required")
         params = IMFGetDataParams(**arguments)
         data = fetch_get_data(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _imf_get_data_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching IMF data: {e}")
         raise
@@ -206,6 +304,7 @@ TOOLS.append(
         name="imf-get-data",
         description="Fetch IMF SDMX time-series data for a given flow reference and series key.",
         inputSchema=IMFGetDataParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["imf-get-data"] = handle_get_data

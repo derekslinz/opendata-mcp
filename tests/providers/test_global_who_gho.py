@@ -1,13 +1,18 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 from meta_data_mcp.providers.global_who_gho import (
+    TOOLS,
+    _who_gho_indicator_data_to_shape_payload,
     handle_list_indicators,
     handle_get_indicator_data,
     handle_list_dimensions,
     handle_list_dimension_values,
     handle_list_countries,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -53,6 +58,67 @@ async def test_who_gho_get_indicator_data_success():
         )
         assert "USA" in result[0].text
         assert "78.5" in result[0].text
+        assert "points" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for who-gho-get-indicator-data.
+# ---------------------------------------------------------------------------
+
+
+def test_who_gho_adapter_flattens_value_array():
+    raw = {
+        "value": [
+            {"SpatialDim": "USA", "TimeDim": 2020, "NumericValue": 78.5},
+            {"SpatialDim": "USA", "TimeDim": 2021, "NumericValue": 79.0},
+            {"SpatialDim": "GBR", "TimeDim": 2020, "NumericValue": 81.0},
+        ]
+    }
+    payload = _who_gho_indicator_data_to_shape_payload(raw)
+    assert payload["axes"] == {"x": "Year", "y": "Value"}
+    assert len(payload["points"]) == 3
+    series = {p["series"] for p in payload["points"]}
+    assert series == {"USA", "GBR"}
+
+
+def test_who_gho_adapter_empty():
+    payload = _who_gho_indicator_data_to_shape_payload({})
+    assert payload["points"] == []
+
+
+def test_who_gho_adapter_skips_null_numeric():
+    raw = {
+        "value": [
+            {"SpatialDim": "USA", "TimeDim": 2020, "NumericValue": None},
+            {"SpatialDim": "USA", "TimeDim": 2021, "NumericValue": 79.0},
+        ]
+    }
+    payload = _who_gho_indicator_data_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+
+
+def test_who_gho_indicator_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "who-gho-get-indicator-data")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_who_gho_indicator_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "value": [{"SpatialDim": "USA", "TimeDim": 2020, "NumericValue": 78.5}]
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_get_indicator_data({"indicator_code": "WHOSIS_000001"})
+        body = json.loads(result[0].text)
+        assert body["points"][0] == {
+            "date": "2020",
+            "value": 78.5,
+            "series": "USA",
+        }
 
 
 @pytest.mark.anyio

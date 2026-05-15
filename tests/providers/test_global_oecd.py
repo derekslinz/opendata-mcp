@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.global_oecd import (
+    TOOLS,
+    _oecd_get_data_to_shape_payload,
     handle_list_dataflows,
     handle_get_dataflow,
     handle_get_datastructure,
@@ -10,11 +14,45 @@ from meta_data_mcp.providers.global_oecd import (
     handle_list_codelist,
     handle_list_conceptscheme,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+def _oecd_sdmx_response() -> dict:
+    return {
+        "data": {
+            "structure": {
+                "dimensions": {
+                    "observation": [
+                        {
+                            "id": "TIME_PERIOD",
+                            "name": "Time period",
+                            "values": [{"id": "2020"}, {"id": "2021"}],
+                        }
+                    ],
+                    "series": [
+                        {"id": "FREQ", "values": [{"id": "A"}]},
+                        {"id": "REF_AREA", "values": [{"id": "USA"}, {"id": "GBR"}]},
+                    ],
+                },
+                "attributes": {
+                    "series": [{"id": "UNIT_MEASURE", "values": [{"name": "Index"}]}]
+                },
+            },
+            "dataSets": [
+                {
+                    "series": {
+                        "0:0": {"observations": {"0": [100.0], "1": [101.5]}},
+                        "0:1": {"observations": {"0": [99.0], "1": [98.0]}},
+                    }
+                }
+            ],
+        }
+    }
 
 
 @pytest.mark.anyio
@@ -83,9 +121,7 @@ async def test_oecd_get_datastructure_success():
 @pytest.mark.anyio
 async def test_oecd_get_data_success():
     with patch("httpx.get") as mock_get:
-        mock_get.return_value.json.return_value = {
-            "data": {"dataSets": [{"action": "Information", "series": {"0:0:0": {}}}]}
-        }
+        mock_get.return_value.json.return_value = _oecd_sdmx_response()
         mock_get.return_value.raise_for_status = Mock()
 
         result = await handle_get_data(
@@ -98,13 +134,58 @@ async def test_oecd_get_data_success():
                 "endPeriod": "2021",
             }
         )
-        assert "dataSets" in result[0].text
+        assert "points" in result[0].text
 
 
 @pytest.mark.anyio
 async def test_oecd_get_data_missing_args():
     with pytest.raises(ValueError):
         await handle_get_data({"agencyId": "OECD.SDD.NAD"})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for oecd-get-data.
+# ---------------------------------------------------------------------------
+
+
+def test_oecd_adapter_flattens_sdmx_to_points():
+    payload = _oecd_get_data_to_shape_payload(_oecd_sdmx_response())
+    assert payload["axes"] == {"x": "Time period", "y": "Index"}
+    assert len(payload["points"]) == 4
+    series_labels = {p["series"] for p in payload["points"]}
+    assert series_labels == {"USA", "GBR"}
+
+
+def test_oecd_adapter_handles_empty_response():
+    payload = _oecd_get_data_to_shape_payload({"data": {}})
+    assert payload["points"] == []
+
+
+def test_oecd_adapter_skips_non_numeric():
+    raw = _oecd_sdmx_response()
+    raw["data"]["dataSets"][0]["series"]["0:0"]["observations"]["0"] = ["NA"]
+    payload = _oecd_get_data_to_shape_payload(raw)
+    usa_points = [p for p in payload["points"] if p["series"] == "USA"]
+    assert len(usa_points) == 1
+
+
+def test_oecd_get_data_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "oecd-get-data")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_oecd_get_data_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = _oecd_sdmx_response()
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_get_data({"agencyId": "OECD.SDD.NAD", "flowId": "DF"})
+        body = json.loads(result[0].text)
+        assert "points" in body and "axes" in body
+        assert body["axes"]["y"] == "Index"
 
 
 @pytest.mark.anyio

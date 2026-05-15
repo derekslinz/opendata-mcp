@@ -21,6 +21,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
@@ -81,14 +82,64 @@ def fetch_weather_forecast(params: WeatherForecastParams) -> dict:
     return response.json()
 
 
+def _open_meteo_to_shape_payload(data: dict) -> dict:
+    """Adapt Open-Meteo's parallel-vector ``{hourly|daily: {time: [...],
+    var: [...], ...}, hourly_units: {...}}`` response to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    Each non-time variable becomes its own series, indexed positionally
+    against the ``time`` vector. We prefer the daily block when present
+    (more compact); otherwise we fall back to hourly.
+    """
+    block = data.get("daily") or data.get("hourly") or {}
+    units = data.get("daily_units") if data.get("daily") else data.get("hourly_units")
+    if not isinstance(block, dict):
+        return {"points": [], "axes": {"x": "Time", "y": "Value"}}
+    times = block.get("time") or []
+    if not isinstance(times, list):
+        return {"points": [], "axes": {"x": "Time", "y": "Value"}}
+
+    points: list[dict[str, Any]] = []
+    unit_set: set[str] = set()
+    for var_name, values in block.items():
+        if var_name == "time":
+            continue
+        if not isinstance(values, list):
+            continue
+        if isinstance(units, dict):
+            unit = units.get(var_name)
+            if isinstance(unit, str) and unit:
+                unit_set.add(unit)
+        for date, value in zip(times, values):
+            if not isinstance(date, str):
+                continue
+            if value is None or isinstance(value, bool):
+                continue
+            if not isinstance(value, (int, float)):
+                continue
+            points.append({"date": date, "value": value, "series": var_name})
+
+    points.sort(key=lambda p: (p["date"], p["series"]))
+    y_label = unit_set.pop() if len(unit_set) == 1 else "Value"
+    return {
+        "points": points,
+        "axes": {"x": "Time", "y": y_label},
+    }
+
+
 async def handle_get_forecast(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the weather-get-forecast tool call."""
+    """Handle the weather-get-forecast tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         params = WeatherForecastParams(**(arguments or {}))
         data = fetch_weather_forecast(params)
-        return [types.TextContent(type="text", text=to_json_text(data))]
+        payload = _open_meteo_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_json_text(payload))]
     except Exception as e:
         log.error(f"Error fetching weather forecast: {e}")
         raise
@@ -99,6 +150,7 @@ TOOLS.append(
         name="weather-get-forecast",
         description="Get current and upcoming weather forecast for a specific location.",
         inputSchema=WeatherForecastParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["weather-get-forecast"] = handle_get_forecast

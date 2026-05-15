@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.global_coingecko import (
+    TOOLS,
+    _coingecko_market_chart_to_shape_payload,
     handle_coingecko_simple_price,
     handle_coingecko_list_coins,
     handle_coingecko_coins_markets,
@@ -12,6 +16,7 @@ from meta_data_mcp.providers.global_coingecko import (
     handle_coingecko_search_trending,
     handle_coingecko_global,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -118,6 +123,70 @@ async def test_coingecko_coin_market_chart_success():
             {"id": "bitcoin", "days": "7"}
         )
         assert "50000" in result[0].text
+        assert "points" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for coingecko-coin-market-chart.
+# ---------------------------------------------------------------------------
+
+
+def test_coingecko_market_chart_adapter_flattens_three_series():
+    raw = {
+        "prices": [[1700000000000, 50000.0]],
+        "market_caps": [[1700000000000, 1.2e12]],
+        "total_volumes": [[1700000000000, 25e9]],
+    }
+    payload = _coingecko_market_chart_to_shape_payload(raw, vs_currency="usd")
+    assert payload["axes"] == {"x": "Time", "y": "Value (USD)"}
+    series = {p["series"] for p in payload["points"]}
+    assert series == {"Price", "Market cap", "Volume"}
+    assert len(payload["points"]) == 3
+    # ISO-8601 with Z suffix
+    assert payload["points"][0]["date"].endswith("Z")
+
+
+def test_coingecko_market_chart_adapter_handles_empty():
+    payload = _coingecko_market_chart_to_shape_payload({})
+    assert payload["points"] == []
+    assert payload["axes"]["y"] == "Value"
+
+
+def test_coingecko_market_chart_adapter_skips_malformed():
+    raw = {
+        "prices": [
+            [1700000000000, 50000.0],
+            "not-a-pair",
+            [1700000000000, "bad"],
+            [None, 1.0],
+        ]
+    }
+    payload = _coingecko_market_chart_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+
+
+def test_coingecko_market_chart_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "coingecko-coin-market-chart")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_coingecko_market_chart_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "prices": [[1700000000000, 50000.0], [1700100000000, 51000.0]],
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_coingecko_coin_market_chart(
+            {"id": "bitcoin", "vs_currency": "usd", "days": "1"}
+        )
+        body = json.loads(result[0].text)
+        assert body["axes"]["y"] == "Value (USD)"
+        assert len(body["points"]) == 2
+        assert all(p["series"] == "Price" for p in body["points"])
 
 
 @pytest.mark.anyio

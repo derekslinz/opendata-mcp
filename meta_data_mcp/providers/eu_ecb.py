@@ -29,6 +29,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -181,16 +182,122 @@ def fetch_ecb_get_data(params: ECBGetDataParams) -> dict:
     return response.json()
 
 
+def _ecb_get_data_to_shape_payload(data: dict) -> dict:
+    """Adapt SDMX-JSON output from the ECB Data Portal to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    SDMX-JSON nests observations as
+    ``data.dataSets[0].series[<series-key>].observations[<obs-idx>][0]``,
+    where the obs index maps back to ``data.structure.dimensions.observation[i].values[idx].id``
+    (typically ``TIME_PERIOD``). The series key is a colon-separated string
+    of dimension value indexes; we re-project it through
+    ``data.structure.dimensions.series`` to build a human-readable
+    ``series`` label (skipping the ``FREQ`` dimension, which is uniform per
+    call).
+    """
+    block = data.get("data") or data
+    structure = block.get("structure") or {}
+    dimensions = structure.get("dimensions") or {}
+    obs_dims = dimensions.get("observation") or []
+    series_dims = dimensions.get("series") or []
+
+    # Pre-extract the time axis from the first observation dimension.
+    time_values: list[str] = []
+    time_label = "Period"
+    if obs_dims:
+        first_obs = obs_dims[0]
+        time_label = first_obs.get("name") or first_obs.get("id") or "Period"
+        time_values = [v.get("id", "") for v in (first_obs.get("values") or [])]
+
+    # Y-axis label: try to find a UNIT / UNIT_MEASURE attribute, else fall
+    # back to the dataset name.
+    y_label = "Value"
+    for attr in (structure.get("attributes") or {}).get("series", []) or []:
+        attr_id = (attr.get("id") or "").upper()
+        if attr_id in ("UNIT", "UNIT_MEASURE"):
+            values = attr.get("values") or []
+            if values:
+                y_label = values[0].get("name") or y_label
+            break
+
+    datasets = block.get("dataSets") or []
+    points: list[dict[str, Any]] = []
+    for dataset in datasets:
+        series_map = dataset.get("series") or {}
+        for series_key, series_block in series_map.items():
+            if not isinstance(series_block, dict):
+                continue
+            series_label = _ecb_series_label(series_key, series_dims)
+            observations = series_block.get("observations") or {}
+            for obs_idx_str, obs_value in observations.items():
+                try:
+                    obs_idx = int(obs_idx_str)
+                except (TypeError, ValueError):
+                    continue
+                if obs_idx < 0 or obs_idx >= len(time_values):
+                    continue
+                if not isinstance(obs_value, list) or not obs_value:
+                    continue
+                value = obs_value[0]
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                point: dict[str, Any] = {
+                    "date": time_values[obs_idx],
+                    "value": value,
+                }
+                if series_label:
+                    point["series"] = series_label
+                points.append(point)
+
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    return {
+        "points": points,
+        "axes": {"x": time_label, "y": y_label},
+    }
+
+
+def _ecb_series_label(series_key: str, series_dims: list[dict]) -> str:
+    """Re-project an SDMX series index key (e.g. ``'0:1:2:0:0'``) into a
+    dotted, human-readable series label using the dimension code IDs.
+
+    Skips the ``FREQ`` dimension (frequency is uniform per request) and
+    falls back to the raw key when dimensions are missing.
+    """
+    if not series_dims:
+        return series_key
+    indexes = series_key.split(":")
+    parts: list[str] = []
+    for i, idx_str in enumerate(indexes):
+        if i >= len(series_dims):
+            break
+        dim = series_dims[i] or {}
+        if (dim.get("id") or "").upper() == "FREQ":
+            continue
+        try:
+            idx = int(idx_str)
+        except (TypeError, ValueError):
+            continue
+        values = dim.get("values") or []
+        if 0 <= idx < len(values):
+            parts.append(values[idx].get("id") or "")
+    return ".".join(p for p in parts if p) or series_key
+
+
 async def handle_ecb_get_data(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the ecb-get-data tool call."""
+    """Handle the ecb-get-data tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts can render the chart inline.
+    """
     try:
         if not arguments or "flow" not in arguments or "key" not in arguments:
             raise ValueError("flow and key are required")
         params = ECBGetDataParams(**arguments)
         data = fetch_ecb_get_data(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _ecb_get_data_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching ECB data: {e}")
         raise
@@ -204,6 +311,7 @@ TOOLS.append(
             "key='D.USD.EUR.SP00.A' for daily USD/EUR reference rate."
         ),
         inputSchema=ECBGetDataParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["ecb-get-data"] = handle_ecb_get_data

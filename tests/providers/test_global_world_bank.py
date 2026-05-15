@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.global_world_bank import (
+    TOOLS,
+    _world_bank_indicator_data_to_shape_payload,
     handle_list_countries,
     handle_get_country,
     handle_list_indicators,
@@ -12,6 +16,7 @@ from meta_data_mcp.providers.global_world_bank import (
     handle_list_sources,
     handle_list_income_levels,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -115,7 +120,6 @@ async def test_world_bank_get_indicator_data_success():
                 "end": 2021,
             }
         )
-        assert "NY.GDP.MKTP.CD" in result[0].text
         assert "United States" in result[0].text
 
 
@@ -123,6 +127,105 @@ async def test_world_bank_get_indicator_data_success():
 async def test_world_bank_get_indicator_data_missing_args():
     with pytest.raises(ValueError):
         await handle_get_indicator_data({"country": "USA"})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for world-bank-get-indicator-data.
+# ---------------------------------------------------------------------------
+
+
+def test_world_bank_adapter_flattens_obs_to_points():
+    raw = [
+        {"page": 1, "pages": 1},
+        [
+            {
+                "indicator": {"id": "NY.GDP.MKTP.CD", "value": "GDP (current US$)"},
+                "country": {"id": "US", "value": "United States"},
+                "value": 100.0,
+                "date": "2020",
+            },
+            {
+                "indicator": {"id": "NY.GDP.MKTP.CD", "value": "GDP (current US$)"},
+                "country": {"id": "GB", "value": "United Kingdom"},
+                "value": 50.0,
+                "date": "2020",
+            },
+        ],
+    ]
+    payload = _world_bank_indicator_data_to_shape_payload(raw)
+    assert payload["axes"] == {"x": "Year", "y": "GDP (current US$)"}
+    assert len(payload["points"]) == 2
+    series = {p["series"] for p in payload["points"]}
+    assert series == {"United States", "United Kingdom"}
+
+
+def test_world_bank_adapter_handles_empty():
+    payload = _world_bank_indicator_data_to_shape_payload([{}, []])
+    assert payload["points"] == []
+    assert payload["axes"]["x"] == "Year"
+
+
+def test_world_bank_adapter_handles_non_list():
+    payload = _world_bank_indicator_data_to_shape_payload({})
+    assert payload["points"] == []
+
+
+def test_world_bank_adapter_skips_null_values():
+    raw = [
+        {},
+        [
+            {
+                "indicator": {"value": "X"},
+                "country": {"value": "USA"},
+                "value": None,
+                "date": "2020",
+            },
+            {
+                "indicator": {"value": "X"},
+                "country": {"value": "USA"},
+                "value": 1.5,
+                "date": "2021",
+            },
+        ],
+    ]
+    payload = _world_bank_indicator_data_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+    assert payload["points"][0]["value"] == 1.5
+
+
+def test_world_bank_indicator_data_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "world-bank-get-indicator-data")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_world_bank_get_indicator_data_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = [
+            {},
+            [
+                {
+                    "indicator": {"value": "GDP"},
+                    "country": {"value": "USA"},
+                    "value": 100.0,
+                    "date": "2020",
+                }
+            ],
+        ]
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_get_indicator_data(
+            {"country": "USA", "indicator": "NY.GDP.MKTP.CD"}
+        )
+        body = json.loads(result[0].text)
+        assert body["axes"]["y"] == "GDP"
+        assert body["points"][0] == {
+            "date": "2020",
+            "value": 100.0,
+            "series": "USA",
+        }
 
 
 @pytest.mark.anyio

@@ -33,6 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -216,14 +217,67 @@ def fetch_historical_all(params: DiseaseShHistoricalAllParams) -> dict:
     return response.json()
 
 
+def _disease_sh_historical_to_shape_payload(data: dict) -> dict:
+    """Adapt disease.sh's ``{cases: {M/D/YY: n}, deaths: {...},
+    recovered: {...}}`` response to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    Each top-level metric becomes its own series. Dates are normalized
+    from ``M/D/YY`` to ISO-8601 ``YYYY-MM-DD`` so they sort lexically.
+    """
+    metric_keys = ("cases", "deaths", "recovered")
+    points: list[dict[str, Any]] = []
+    for key in metric_keys:
+        block = data.get(key)
+        if not isinstance(block, dict):
+            continue
+        for raw_date, value in block.items():
+            iso_date = _disease_sh_iso_date(raw_date)
+            if iso_date is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            points.append({"date": iso_date, "value": value, "series": key})
+
+    points.sort(key=lambda p: (p["date"], p["series"]))
+    return {
+        "points": points,
+        "axes": {"x": "Date", "y": "Count"},
+    }
+
+
+def _disease_sh_iso_date(raw: Any) -> Optional[str]:
+    """Convert disease.sh's ``M/D/YY`` keys into ISO ``YYYY-MM-DD``.
+
+    Returns ``None`` when the input is not recognizable; the caller skips.
+    """
+    if not isinstance(raw, str):
+        return None
+    parts = raw.split("/")
+    if len(parts) != 3:
+        return None
+    try:
+        month, day, year = (int(p) for p in parts)
+    except ValueError:
+        return None
+    if year < 100:
+        year += 2000
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
 async def handle_historical_all(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the disease-sh-historical-all tool call."""
+    """Handle the disease-sh-historical-all tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         params = DiseaseShHistoricalAllParams(**(arguments or {}))
         data = fetch_historical_all(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _disease_sh_historical_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching disease.sh historical all: {e}")
         raise
@@ -234,6 +288,7 @@ TOOLS.append(
         name="disease-sh-historical-all",
         description="Get worldwide historical COVID-19 data over the last N days.",
         inputSchema=DiseaseShHistoricalAllParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["disease-sh-historical-all"] = handle_historical_all

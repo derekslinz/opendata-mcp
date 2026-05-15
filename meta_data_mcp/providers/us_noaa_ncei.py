@@ -30,6 +30,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -82,16 +83,62 @@ def fetch_ncei_daily_summaries(params: NCEIDailySummariesParams) -> Any:
     return response.json()
 
 
+_NCEI_NON_NUMERIC_KEYS = {"STATION", "DATE", "NAME"}
+
+
+def _ncei_daily_summaries_to_shape_payload(data: Any) -> dict:
+    """Adapt the NCEI Access Data Service's row-list response (each row is
+    ``{STATION, DATE, TMAX, TMIN, PRCP, ...}``) to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    All numeric columns become separate series (one line per data type per
+    station). NCEI returns numbers as strings — we coerce defensively.
+    """
+    if not isinstance(data, list):
+        return {"points": [], "axes": {"x": "Date", "y": "Value"}}
+
+    points: list[dict[str, Any]] = []
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        date = row.get("DATE")
+        if not isinstance(date, str):
+            continue
+        station = row.get("STATION") or ""
+        for key, raw_value in row.items():
+            if key in _NCEI_NON_NUMERIC_KEYS:
+                continue
+            if raw_value is None or isinstance(raw_value, bool):
+                continue
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                continue
+            series_label = f"{station}:{key}" if station else key
+            points.append({"date": date, "value": value, "series": series_label})
+
+    points.sort(key=lambda p: (p["date"], p["series"]))
+    return {
+        "points": points,
+        "axes": {"x": "Date", "y": "Value"},
+    }
+
+
 async def handle_ncei_get_daily_summaries(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the noaa-ncei-get-daily-summaries tool call."""
+    """Handle the noaa-ncei-get-daily-summaries tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "stations" not in arguments:
             raise ValueError("stations is required")
         params = NCEIDailySummariesParams(**arguments)
         data = fetch_ncei_daily_summaries(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _ncei_daily_summaries_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching NCEI daily summaries: {e}")
         raise
@@ -102,6 +149,7 @@ TOOLS.append(
         name="noaa-ncei-get-daily-summaries",
         description="Fetch GHCN daily summaries (TMAX/TMIN/PRCP/etc.) from NCEI for one or more stations.",
         inputSchema=NCEIDailySummariesParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["noaa-ncei-get-daily-summaries"] = handle_ncei_get_daily_summaries
