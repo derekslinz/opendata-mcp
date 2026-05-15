@@ -219,3 +219,32 @@ async def test_usgs_eq_query_returns_shape_payload():
         body = json.loads(result[0].text)
         assert body["features"]["type"] == "FeatureCollection"
         assert body["features"]["features"][0]["id"] == "us1"
+
+
+@pytest.mark.anyio
+async def test_usgs_eq_query_caps_geojson_features_to_valid_json():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "type": "FeatureCollection",
+            "metadata": {"count": 2000},
+            "features": [
+                {
+                    "id": f"us{i}",
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [-122.0, 37.5, 10.0]},
+                    "properties": {
+                        "mag": 5.1,
+                        "place": "Off the coast",
+                        "blob": "z" * 400,
+                    },
+                }
+                for i in range(2000)
+            ],
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_usgs_eq_query({"starttime": "2024-01-01"})
+
+        body = json.loads(result[0].text)
+        assert body["features"]["type"] == "FeatureCollection"
+        assert 0 < len(body["features"]["features"]) < 2000

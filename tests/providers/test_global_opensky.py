@@ -246,3 +246,34 @@ async def test_opensky_states_all_returns_shape_payload():
         assert body["features"][0]["lat"] == 40.5
         assert body["features"][0]["lon"] == -74.0
         assert body["features"][0]["attrs"]["icao24"] == "abc123"
+
+
+@pytest.mark.anyio
+async def test_opensky_states_all_caps_features_to_valid_json():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "time": 1700000000,
+            "states": [
+                [
+                    f"icao{i:04d}",
+                    f"CALL{i:04d}",
+                    "United States",
+                    1700000000,
+                    1700000000,
+                    -74.0,
+                    40.5,
+                    11000.0,
+                    False,
+                    230.5,
+                    270.0,
+                ]
+                for i in range(2000)
+            ],
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_get_states_all({})
+
+        body = json.loads(result[0].text)
+        assert isinstance(body["features"], list)
+        assert 0 < len(body["features"]) < 2000

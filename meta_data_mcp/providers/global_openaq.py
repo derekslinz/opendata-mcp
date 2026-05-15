@@ -25,6 +25,7 @@ from meta_data_mcp.utils import (
     http_get,
     run_server,
     serialize_for_llm,
+    to_geofeatures_text,
 )
 
 log = logging.getLogger(__name__)
@@ -147,7 +148,7 @@ async def handle_openaq_list_locations(
     params = OpenAqListLocationsParams(**(arguments or {}))
     data = fetch_openaq_list_locations(params)
     payload = _openaq_locations_to_shape_payload(data)
-    return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+    return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
 
 
 TOOLS.append(

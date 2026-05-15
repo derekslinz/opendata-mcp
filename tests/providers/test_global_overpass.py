@@ -130,6 +130,7 @@ async def test_overpass_bbox_feature_success():
         # Should have both node and way clauses inside the bbox
         assert '"highway"="primary"' in called_kwargs["params"]["data"]
         assert "52.5,13.3,52.6,13.5" in called_kwargs["params"]["data"]
+        assert "out body center;" in called_kwargs["params"]["data"]
 
 
 @pytest.mark.anyio

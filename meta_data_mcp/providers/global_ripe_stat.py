@@ -33,7 +33,7 @@ import mcp.types as types
 from pydantic import BaseModel, Field
 
 from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
 
 log = logging.getLogger(__name__)
 
@@ -558,7 +558,7 @@ async def handle_ripestat_geoloc(
         params = RIPEStatGeolocParams(**arguments)
         data = fetch_ripestat_geoloc(params)
         payload = _ripestat_geoloc_to_shape_payload(data)
-        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+        return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
     except Exception as e:
         log.error(f"Error fetching RIPEstat geoloc: {e}")
         raise

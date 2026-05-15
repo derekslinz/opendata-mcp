@@ -38,7 +38,7 @@ from pydantic import BaseModel, Field
 
 from meta_data_mcp.fields import NonEmptyStr
 from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -264,7 +264,7 @@ def fetch_bbox_feature(params: OverpassBboxFeatureParams) -> Any:
         f'node["{params.key}"="{params.value}"]({params.s},{params.w},{params.n},{params.e});'
         f'way["{params.key}"="{params.value}"]({params.s},{params.w},{params.n},{params.e});'
         f");"
-        f"out body;"
+        f"out body center;"
     )
     return _run_overpass_query(query)
 
@@ -339,7 +339,7 @@ async def handle_bbox_feature(
         params = OverpassBboxFeatureParams(**arguments)
         data = fetch_bbox_feature(params)
         payload = _overpass_elements_to_shape_payload(data)
-        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+        return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
     except Exception as e:
         log.error(f"Error running Overpass bbox-feature query: {e}")
         raise
