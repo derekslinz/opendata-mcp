@@ -31,7 +31,7 @@ import mcp.types as types
 from pydantic import BaseModel, Field
 
 from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -138,7 +138,7 @@ async def handle_ncei_get_daily_summaries(
         params = NCEIDailySummariesParams(**arguments)
         data = fetch_ncei_daily_summaries(params)
         payload = _ncei_daily_summaries_to_shape_payload(data)
-        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+        return [types.TextContent(type="text", text=to_json_text(payload))]
     except Exception as e:
         log.error(f"Error fetching NCEI daily summaries: {e}")
         raise

@@ -303,9 +303,7 @@ async def handle_eurostat_get_dataset(
         params = EurostatDataParams(**arguments)
         data = fetch_eurostat_data(params)
         payload = _eurostat_dataset_to_shape_payload(data)
-        return [
-            types.TextContent(type="text", text=to_json_text(payload, max_chars=20000))
-        ]
+        return [types.TextContent(type="text", text=to_json_text(payload))]
     except Exception as e:
         log.error(f"Error fetching Eurostat data: {e}")
         raise

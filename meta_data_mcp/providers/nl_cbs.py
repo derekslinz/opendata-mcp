@@ -164,9 +164,7 @@ async def handle_cbs_data(
         params = CBSDataParams(**arguments)
         data = fetch_cbs_data(params)
         payload = _cbs_typed_dataset_to_shape_payload(data)
-        return [
-            types.TextContent(type="text", text=to_json_text(payload, max_chars=20000))
-        ]
+        return [types.TextContent(type="text", text=to_json_text(payload))]
     except Exception as e:
         log.error(f"Error fetching CBS data: {e}")
         raise
