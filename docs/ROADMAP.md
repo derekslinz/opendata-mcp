@@ -16,8 +16,8 @@ Meta-data-mcp is evolving from a simple provider registry into an intelligent di
 - ✅ Sophisticated multi-criteria routing (`RoutingEngine` in `meta_data_mcp/routing.py`)
 - ✅ 4 scoring strategies: `TokenScorer`, `FuzzyScorer`, `MetadataScorer`, `SimpleSemanticScorer`
 - ✅ LRU caching with TTL (`OrderedDict` in `RoutingEngine`, default `cache_size=1000`, `cache_ttl_seconds=3600`)
-- ✅ Explanation tool: `opendata-explain-choice` (`providers/meta_data_mcp.py:789`)
-- ✅ Discovery tools: `opendata-find-providers`, `opendata-list-domains`, `opendata-list-regions`, `opendata-describe-provider`, `opendata-list-providers`, `opendata-create-plugin`, `opendata-draft-spec`
+- ✅ Explanation tool: `opendata-explain-choice` (`providers/meta_data_mcp.py:825`)
+- ✅ Discovery tools: `opendata-find-providers`, `opendata-list-domains`, `opendata-list-regions`, `opendata-describe-provider`, `opendata-list-providers`, `opendata-create-plugin`, `opendata-draft-spec`, `opendata-activate-provider`, `opendata-deactivate-provider`, `opendata-list-active-providers`
 - ✅ CLI: `run`, `version`, `list`, `info`, `setup`, `remove`, `clients`, `cleanup`, `inspect` (`meta_data_mcp/cli.py`)
 - ✅ Backward compatibility maintained
 - ✅ Provider rename: `opendata_mcp_meta` → `meta_data_mcp`
@@ -67,13 +67,13 @@ They are dependencies for v1.3's reliability story and are partially active toda
   - `META_DATA_MCP_PRELOAD` environment variable selects which providers to preload at startup: comma-separated ids, `*` for "load all" (legacy behavior, full escape hatch), or unset/empty for pure discovery (the new default).
   - `opendata-create-plugin` now uses the same shared activation tracker, so newly-generated plugins also send `tools/list_changed`.
   - Tests: `tests/providers/test_lazy_activation.py` (+15 cases) cover default startup state, activate/deactivate semantics, id-form normalization, `activate_top` opt-in behavior, and the `META_DATA_MCP_PRELOAD` env var.
-- ✅ **Coverage gap closure: 5 new providers across 5 verticals** (registry +5 → 74 total; DOMAINS +3 → 30)
+- ✅ **Coverage gap closure: 5 new providers across 5 verticals** (registry +5 → 75 total; DOMAINS +3 → 30)
   - `global_openaq` — open global air-quality data (PM2.5, PM10, NO2, O3, etc.) from government monitors and low-cost sensors. Closes the *air-quality* vertical (no auth; optional `OPENAQ_API_KEY`).
   - `global_gdelt` — GDELT 2.0 news/events monitoring; article search and tone/volume time-series across 100+ languages. Closes the *news* vertical (no auth; new `news` domain).
   - `global_faostat` — UN FAO statistics: crop/livestock production, trade, food balances, prices, land use, fisheries, forestry, emissions since 1961. Closes the *agriculture* vertical (no auth; new `agriculture` domain).
   - `global_un_comtrade` — UN Comtrade bilateral merchandise/services trade (HS/SITC/BEC/EBOPS) since 1962. Closes the *trade* vertical (free anonymous tier; optional `UN_COMTRADE_API_KEY`; new `trade` domain).
   - `global_opensanctions` — sanctions/PEP/watchlist screening from 200+ official sources (OFAC SDN, UN, EU, UK HMT, national PEPs, ICIJ). Deepens the *security* vertical (no auth for low-volume; optional `OPENSANCTIONS_API_KEY`).
-  - All five pass `provider=` to `http_get`, raising kernel-feedback adoption to **9 / 74 providers**.
+  - All five pass `provider=` to `http_get`, raising kernel-feedback adoption to **10 / 75 providers**.
 
 ## v1.2: Hierarchical Discovery + Health Activation (Planned, in design)
 
@@ -374,11 +374,11 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 |--------|------|------|------|
 | Query latency (p99) | <100ms | <150ms | <500ms |
 | Cache hit rate | >90% | >85% | >80% |
-| Provider coverage | 74 | 74+ | Dynamic |
-| `ProviderConfig` adoption | 1 / 74 | 74 / 74 | 74 / 74 |
-| `errors.py` adoption | 1 / 74 | 74 / 74 | 74 / 74 |
-| `fields.py` adoption | 4 / 74 | 74 / 74 | 74 / 74 |
-| `http_get(provider=)` adoption | 9 / 74 | 74 / 74 | 74 / 74 |
+| Provider coverage | 75 | 75+ | Dynamic |
+| `ProviderConfig` adoption | 1 / 75 | 75 / 75 | 75 / 75 |
+| `errors.py` adoption | 1 / 75 | 75 / 75 | 75 / 75 |
+| `fields.py` adoption | 4 / 75 | 75 / 75 | 75 / 75 |
+| `http_get(provider=)` adoption | 10 / 75 | 75 / 75 | 75 / 75 |
 | `HealthScorer` weight | 0.0 (feed live, weight gated) | >0 | >0 |
 | User satisfaction | TBD | >4/5 | >4.5/5 |
 

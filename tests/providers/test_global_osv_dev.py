@@ -90,6 +90,26 @@ def test_osv_get_vuln_rejects_empty_id():
         OsvGetVulnParams(vuln_id="")
 
 
+def test_osv_get_vuln_rejects_path_traversal():
+    """vuln_id must not allow slashes or other URL-structural characters."""
+    for bad in ("../query", "CVE-2021-44228/extra", "a b", "id?query=x"):
+        with pytest.raises(Exception):
+            OsvGetVulnParams(vuln_id=bad)
+
+
+def test_osv_get_vuln_accepts_real_ids():
+    """Real id formats must continue to validate."""
+    for good in (
+        "CVE-2021-44228",
+        "GHSA-jfh8-c2jp-5v3q",
+        "PYSEC-2023-12",
+        "GO-2024-1234",
+        "RUSTSEC-2024-0001",
+        "OSV-2024-0123",
+    ):
+        OsvGetVulnParams(vuln_id=good)
+
+
 def test_osv_query_package_requires_name_and_ecosystem():
     with pytest.raises(Exception):
         OsvQueryPackageParams(name="", ecosystem="PyPI")

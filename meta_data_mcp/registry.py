@@ -413,6 +413,7 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         ),
         homepage="https://nvd.nist.gov/developers/vulnerabilities",
         license_note="NVD data is in the public domain; no attribution required. Set NVD_API_KEY env var for higher rate limits.",
+        requires_env=("NVD_API_KEY",),
     ),
     ProviderEntry(
         id="global_openalex",
@@ -474,6 +475,7 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         ),
         homepage="https://openaq.org",
         license_note="Most OpenAQ sources are CC BY 4.0; per-location attribution available on each entity.",
+        requires_env=("OPENAQ_API_KEY",),
     ),
     ProviderEntry(
         id="global_opensanctions",
@@ -495,6 +497,7 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         ),
         homepage="https://www.opensanctions.org",
         license_note="Most data is CC-BY 4.0; cite 'OpenSanctions'. Commercial use requires a license — see https://www.opensanctions.org/licensing/.",
+        requires_env=("OPENSANCTIONS_API_KEY",),
     ),
     ProviderEntry(
         id="global_opensky",
@@ -622,6 +625,7 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         ),
         homepage="https://comtradeplus.un.org/",
         license_note="UN Comtrade data is free for non-commercial use; cite 'UN Comtrade'. Higher-tier subscriptions remove the 500-rows/call limit.",
+        requires_env=("UN_COMTRADE_API_KEY",),
     ),
     ProviderEntry(
         id="global_unesco_heritage",

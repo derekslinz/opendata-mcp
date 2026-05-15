@@ -59,6 +59,27 @@ def test_search_schema_alias_threads_through():
         assert mock_get.call_args[1]["params"]["schema"] == "Person"
 
 
+@pytest.mark.anyio
+async def test_handle_search_accepts_schema_alias_from_mcp_args():
+    """LLM-supplied arguments will use the alias 'schema'; the handler must accept it.
+
+    Previously the handler used OpenSanctionsSearchParams(**arguments) which
+    would reject {'schema': 'Person'} because 'schema' is not a valid Python
+    keyword arg even with populate_by_name. The fix uses model_validate.
+    """
+    from meta_data_mcp.providers.global_opensanctions import handle_opensanctions_search
+
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value = _ok({"results": []})
+        # Simulate an MCP client passing the alias name as the LLM saw it.
+        result = await handle_opensanctions_search(
+            {"query": "putin", "schema": "Person", "countries": "ru"}
+        )
+        assert "results" in result[0].text
+        assert mock_get.call_args[1]["params"]["schema"] == "Person"
+        assert mock_get.call_args[1]["params"]["countries"] == "ru"
+
+
 def test_search_countries_and_topics():
     with patch("httpx.get") as mock_get:
         mock_get.return_value = _ok({"results": []})

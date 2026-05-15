@@ -122,11 +122,14 @@ class ComtradeTradeDataParams(BaseModel):
 
 
 def fetch_comtrade_trade_data(params: ComtradeTradeDataParams) -> Any:
-    """Query UN Comtrade for bilateral trade rows."""
+    """Query UN Comtrade for bilateral trade rows.
+
+    The Comtrade public-data API expects ``typeCode``, ``freqCode`` and
+    ``clCode`` as URL path segments — e.g.
+    ``/data/v1/get/C/A/HS?period=2022&reporterCode=840`` — not as query
+    parameters. Sending them as query params returns HTTP 404.
+    """
     query: dict[str, Any] = {
-        "typeCode": params.type_code,
-        "freqCode": params.freq_code,
-        "clCode": params.cl_code,
         "period": params.period,
         "reporterCode": params.reporter_code,
         "maxRecords": params.max_records,
@@ -138,7 +141,7 @@ def fetch_comtrade_trade_data(params: ComtradeTradeDataParams) -> Any:
     if params.flow_code is not None:
         query["flowCode"] = params.flow_code
     response = http_get(
-        f"{BASE_URL}/get",
+        f"{BASE_URL}/get/{params.type_code}/{params.freq_code}/{params.cl_code}",
         params=query,
         headers=_auth_headers() or None,
         provider=PROVIDER_ID,

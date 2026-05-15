@@ -137,10 +137,9 @@ async def handle_find_providers(
                 for entry in matches[: params.activate_top]:
                     activations.append(_activate_provider(entry.id))
                 payload["auto_activated"] = activations
-                if any(
-                    a.get("status") in ("activated", "already_active")
-                    for a in activations
-                ):
+                # Only fire when the catalog actually changed; "already_active"
+                # is a no-op and would force an unnecessary client refetch.
+                if any(a.get("status") == "activated" for a in activations):
                     await _notify_tools_changed()
                 payload["next_step"] = (
                     f"Loaded tools for the top {len(activations)} provider(s). "
@@ -1185,7 +1184,10 @@ async def handle_activate_provider(
     """Handle the opendata-activate-provider tool call."""
     params = ActivateProviderParams(**(arguments or {}))
     report = _activate_provider(params.provider_id)
-    if report.get("status") in ("activated", "already_active"):
+    # Only fire tools/list_changed when the catalog actually changed.
+    # "already_active" is a no-op — sending the notification would force the
+    # client to refetch tools/list for no semantic reason.
+    if report.get("status") == "activated":
         await _notify_tools_changed()
     return [types.TextContent(type="text", text=serialize_for_llm(report))]
 
@@ -1507,6 +1509,8 @@ def _load_all_plugins() -> tuple[int, int]:
     """
     import os
 
+    from meta_data_mcp.registry import DYNAMIC_REGISTRY
+
     raw = os.getenv("META_DATA_MCP_PRELOAD", "").strip()
     # Initialize the owner-map with the meta server's own tool names.
     for name in TOOLS_HANDLERS:
@@ -1516,7 +1520,11 @@ def _load_all_plugins() -> tuple[int, int]:
         return (0, 0)
 
     if raw == "*":
-        target_ids = [e.id for e in REGISTRY if e.id not in _NON_PLUGIN_MODULES]
+        target_ids = [
+            e.id
+            for e in (*REGISTRY, *DYNAMIC_REGISTRY)
+            if e.id not in _NON_PLUGIN_MODULES
+        ]
     else:
         target_ids = []
         for token in raw.split(","):

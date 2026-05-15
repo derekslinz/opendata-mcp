@@ -125,7 +125,9 @@ async def handle_opensanctions_search(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
     """Handle the opensanctions-search tool call."""
-    params = OpenSanctionsSearchParams(**(arguments or {}))
+    # Use model_validate (not **kwargs) so the 'schema' alias works —
+    # Python's keyword-arg unpack will not match the field name 'schema_'.
+    params = OpenSanctionsSearchParams.model_validate(arguments or {})
     data = fetch_opensanctions_search(params)
     return [types.TextContent(type="text", text=serialize_for_llm(data))]
 

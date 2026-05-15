@@ -109,6 +109,13 @@ def fetch_cisa_kev_list(params: CisaKevListParams) -> dict:
             entry.get("knownRansomwareCampaignUse", "Unknown") != "Known"
         ):
             return False
+        if params.known_ransomware is False and (
+            entry.get("knownRansomwareCampaignUse", "Unknown") == "Known"
+        ):
+            return False
+        # NOTE: this lexicographic compare is safe only because CISA emits
+        # dates in ISO YYYY-MM-DD format; if that ever changes the filter
+        # will return wrong results silently.
         if params.date_added_after and (
             entry.get("dateAdded", "") < params.date_added_after
         ):

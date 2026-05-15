@@ -26,15 +26,21 @@ def _ok(payload: dict) -> Mock:
 
 
 def test_required_params_sent():
+    """typeCode, freqCode, clCode go in the URL path; rest are query params."""
     payload = {"count": 0, "data": []}
     with patch("httpx.get") as mock_get:
         mock_get.return_value = _ok(payload)
         params = ComtradeTradeDataParams(period="2022", reporter_code="840")
         fetch_comtrade_trade_data(params)
+        # URL path: /get/{typeCode}/{freqCode}/{clCode}
+        called_url = mock_get.call_args[0][0]
+        assert called_url == "https://comtradeapi.un.org/data/v1/get/C/A/HS"
         sent = mock_get.call_args[1]["params"]
-        assert sent["typeCode"] == "C"
-        assert sent["freqCode"] == "A"
-        assert sent["clCode"] == "HS"
+        # These must NOT appear as query params anymore.
+        assert "typeCode" not in sent
+        assert "freqCode" not in sent
+        assert "clCode" not in sent
+        # These remain as query params.
         assert sent["period"] == "2022"
         assert sent["reporterCode"] == "840"
         assert sent["maxRecords"] == 500
@@ -52,11 +58,15 @@ def test_optional_filters_passed_through():
             freq_code="M",
         )
         fetch_comtrade_trade_data(params)
+        # freq_code='M' must end up in the URL path now, not query.
+        called_url = mock_get.call_args[0][0]
+        assert called_url == "https://comtradeapi.un.org/data/v1/get/C/M/HS"
         sent = mock_get.call_args[1]["params"]
         assert sent["partnerCode"] == "156"
         assert sent["cmdCode"] == "1001"
         assert sent["flowCode"] == "M,X"
-        assert sent["freqCode"] == "M"
+        # freqCode no longer appears as a query param.
+        assert "freqCode" not in sent
 
 
 def test_validates_required_fields():
