@@ -94,6 +94,16 @@ def test_fetch_cisa_kev_list_filters_by_ransomware(monkeypatch, mock_catalog):
     assert result["vulnerabilities"][0]["cveID"] == "CVE-2021-44228"
 
 
+def test_fetch_cisa_kev_list_excludes_ransomware_when_false(monkeypatch, mock_catalog):
+    """known_ransomware=False must EXCLUDE entries with knownRansomwareCampaignUse=='Known'."""
+    monkeypatch.setattr(utils.httpx, "get", _stub_catalog_get(mock_catalog))
+    result = fetch_cisa_kev_list(CisaKevListParams(known_ransomware=False))
+    cves = {v["cveID"] for v in result["vulnerabilities"]}
+    # CVE-2021-44228 is the ransomware-known entry in the fixture; it must be excluded.
+    assert "CVE-2021-44228" not in cves
+    assert {"CVE-2024-3094", "CVE-2024-21413"}.issubset(cves)
+
+
 def test_fetch_cisa_kev_list_date_added_after(monkeypatch, mock_catalog):
     monkeypatch.setattr(utils.httpx, "get", _stub_catalog_get(mock_catalog))
     params = CisaKevListParams(date_added_after="2024-01-01")

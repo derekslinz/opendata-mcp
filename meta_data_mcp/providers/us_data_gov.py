@@ -13,19 +13,14 @@ Usage:
     or its components can be imported and used individually.
 """
 
-import logging
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
 from pydantic import BaseModel, Field, ValidationError
 
-from meta_data_mcp.errors import ProviderError
 from meta_data_mcp.utils import http_get, to_json_text
 
 PROVIDER_ID = "us-data-gov"
-
-# Initialize logging
-log = logging.getLogger(__name__)
 
 # Constants
 BASE_URL = "https://catalog.data.gov"
@@ -88,38 +83,32 @@ async def handle_datagov_list_datasets(
         # native ValidationError type so callers can branch on it.
         raise
 
-    try:
-        result = list_datagov_datasets(params)
+    result = list_datagov_datasets(params)
 
-        # We simplify the output to just key fields to keep it readable
-        simplified_results = []
-        for pkg in result.get("results", []):
-            simplified_results.append(
-                {
-                    "identifier": pkg.get("identifier"),
-                    "slug": pkg.get("slug"),
-                    "title": pkg.get("title"),
-                    "publisher": pkg.get("publisher"),
-                    "organization": pkg.get("organization", {}).get("name"),
-                    "description": pkg.get("description", "")[:200] + "..."
-                    if pkg.get("description") and len(pkg.get("description")) > 200
-                    else pkg.get("description"),
-                    "harvest_record": pkg.get("harvest_record"),
-                }
-            )
+    # We simplify the output to just key fields to keep it readable
+    simplified_results = []
+    for pkg in result.get("results", []):
+        simplified_results.append(
+            {
+                "identifier": pkg.get("identifier"),
+                "slug": pkg.get("slug"),
+                "title": pkg.get("title"),
+                "publisher": pkg.get("publisher"),
+                "organization": pkg.get("organization", {}).get("name"),
+                "description": pkg.get("description", "")[:200] + "..."
+                if pkg.get("description") and len(pkg.get("description")) > 200
+                else pkg.get("description"),
+                "harvest_record": pkg.get("harvest_record"),
+            }
+        )
 
-        output = {
-            "count": len(simplified_results),
-            "after": result.get("after"),
-            "datasets": simplified_results,
-        }
+    output = {
+        "count": len(simplified_results),
+        "after": result.get("after"),
+        "datasets": simplified_results,
+    }
 
-        return [
-            types.TextContent(type="text", text=to_json_text(output, max_chars=20000))
-        ]
-    except ProviderError as e:
-        log.error(f"Error listing Data.gov datasets: {e}")
-        raise
+    return [types.TextContent(type="text", text=to_json_text(output, max_chars=20000))]
 
 
 TOOLS.append(
@@ -191,12 +180,8 @@ async def handle_datagov_get_dataset(
         # Pre-translation: keep schema errors as-is for the caller.
         raise
 
-    try:
-        result = fetch_datagov_dataset(params)
-        return [types.TextContent(type="text", text=to_json_text(result))]
-    except ProviderError as e:
-        log.error(f"Error fetching Data.gov dataset: {e}")
-        raise
+    result = fetch_datagov_dataset(params)
+    return [types.TextContent(type="text", text=to_json_text(result))]
 
 
 TOOLS.append(

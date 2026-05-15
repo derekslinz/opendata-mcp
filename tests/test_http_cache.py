@@ -344,6 +344,9 @@ def test_http_get_with_provider_translates_network_error(monkeypatch):
 
     health.reset()
     utils._response_cache.clear()
+    # Network errors are retried (NetworkError.retryable=True); patch sleep so
+    # the retry loop runs at zero wall time.
+    monkeypatch.setattr(utils.time, "sleep", lambda s: None)
 
     def _boom(*_args, **_kwargs):
         raise httpx.ConnectError("connect refused")
@@ -358,13 +361,57 @@ def test_http_get_with_provider_translates_network_error(monkeypatch):
     assert health.health_score("test-provider") < 1.0
 
 
+def test_http_post_with_provider_translates_network_error(monkeypatch):
+    """http_post must mirror http_get on RequestError: NetworkError + retry + health."""
+    from meta_data_mcp import health
+    from meta_data_mcp.errors import NetworkError
+
+    health.reset()
+    monkeypatch.setattr(utils.time, "sleep", lambda s: None)
+
+    calls: list[int] = []
+
+    def _boom(*_args, **_kwargs):
+        calls.append(1)
+        raise httpx.ReadTimeout("read timeout")
+
+    monkeypatch.setattr(utils.httpx, "post", _boom)
+
+    with pytest.raises(NetworkError) as exc_info:
+        utils.http_post(
+            "https://example.test/api", json={"x": 1}, provider="test-provider"
+        )
+
+    assert exc_info.value.provider == "test-provider"
+    assert exc_info.value.status is None
+    # NetworkError.retryable=True is now honored at the kernel level — the
+    # post helper should have retried before giving up.
+    assert len(calls) >= 2
+    assert health.health_score("test-provider") < 1.0
+
+
 def test_http_get_without_provider_keeps_raw_httpx_errors(monkeypatch):
-    """Without provider=, http_get preserves legacy raw-httpx behavior."""
+    """Without provider=, http_get preserves legacy raw-httpx behavior.
+
+    The control here: seed a known degraded score for a *different* provider
+    id, then call ``http_get`` without ``provider=`` and confirm the seeded
+    score is unchanged. A bug that wrongly recorded failures under a default
+    id would degrade *some* provider's score; seeding the only score in the
+    registry lets us prove the call left health state untouched.
+    """
     from meta_data_mcp import health
 
     health.reset()
     utils._response_cache.clear()
     monkeypatch.setattr(utils.time, "sleep", lambda s: None)
+    # Pin the health clock so the time-decay between record_failure and the
+    # final score readback can't move the baseline; we want to assert the call
+    # itself made no change.
+    monkeypatch.setattr(health, "_clock", lambda: 1000.0)
+
+    health.record_failure("control-provider", status=500)
+    baseline = health.health_score("control-provider")
+    assert baseline < 1.0  # sanity: seeded failure actually degraded the score.
 
     not_found = _response("nope", status_code=404)
     mock_get = Mock(side_effect=[not_found])
@@ -374,4 +421,4 @@ def test_http_get_without_provider_keeps_raw_httpx_errors(monkeypatch):
     with pytest.raises(httpx.HTTPStatusError):
         utils.http_get("https://example.test/missing")
 
-    assert health.health_score("test-provider") == 1.0
+    assert health.health_score("control-provider") == baseline

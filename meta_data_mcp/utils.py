@@ -248,6 +248,20 @@ def http_get(
             )
         except httpx.RequestError as e:
             # Network/connect/read failure before a response came back.
+            # These are retryable in principle (NetworkError.retryable=True);
+            # retry with backoff until attempts exhausted, then translate.
+            if attempt < max_attempts - 1:
+                sleep_for = _retry_sleep_seconds(attempt, None)
+                log.debug(
+                    "Retrying %s after %.2fs (attempt %d/%d, network error: %s)",
+                    url,
+                    sleep_for,
+                    attempt + 1,
+                    max_attempts,
+                    e,
+                )
+                time.sleep(sleep_for)
+                continue
             if provider is not None:
                 from meta_data_mcp import health
                 from meta_data_mcp.errors import translate_http_error
@@ -360,6 +374,19 @@ def http_post(
                 follow_redirects=True,
             )
         except httpx.RequestError as e:
+            # Network errors are retryable; retry with backoff until exhausted.
+            if attempt < max_attempts - 1:
+                sleep_for = _retry_sleep_seconds(attempt, None)
+                log.debug(
+                    "Retrying POST %s after %.2fs (attempt %d/%d, network error: %s)",
+                    url,
+                    sleep_for,
+                    attempt + 1,
+                    max_attempts,
+                    e,
+                )
+                time.sleep(sleep_for)
+                continue
             if provider is not None:
                 from meta_data_mcp import health
                 from meta_data_mcp.errors import translate_http_error

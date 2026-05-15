@@ -20,11 +20,17 @@ def anyio_backend():
 
 @pytest.fixture(autouse=True)
 def _isolate_meta_state():
-    """Snapshot and restore the meta server's mutable activation state."""
+    """Snapshot and restore the meta server's mutable activation state.
+
+    The module-level ``_server`` reference is also snapshot/restored so that a
+    test which assigns a stub Server (to exercise the ``tools/list_changed``
+    notification path) cannot leak that stub into subsequent tests.
+    """
     saved_tools = list(srv.TOOLS)
     saved_handlers = dict(srv.TOOLS_HANDLERS)
     saved_owner = dict(srv._owner_by_tool)
     saved_active = set(srv._active_providers)
+    saved_server = srv._server
     yield
     srv.TOOLS[:] = saved_tools
     srv.TOOLS_HANDLERS.clear()
@@ -33,6 +39,7 @@ def _isolate_meta_state():
     srv._owner_by_tool.update(saved_owner)
     srv._active_providers.clear()
     srv._active_providers.update(saved_active)
+    srv._server = saved_server
 
 
 def _payload(result) -> dict[str, Any]:
@@ -250,3 +257,6 @@ def test_load_all_plugins_preload_specific(monkeypatch):
     assert added >= 2
     assert "global_openaq" in srv._active_providers
     assert "us_data_gov" in srv._active_providers
+    # Unknown id ("no-such-thing") must be skipped, not silently mis-routed.
+    assert "no-such-thing" not in srv._active_providers
+    assert "no_such_thing" not in srv._active_providers

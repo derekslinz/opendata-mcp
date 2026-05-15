@@ -25,7 +25,10 @@ def anyio_backend():
 async def test_nvd_search_cves_success():
     """Smoke test: nvd-search-cves returns success payload."""
     with patch("httpx.get") as mock_get:
-        mock_get.return_value.json.return_value = {"ok": True, "marker": "GENERATED_TEST_MARKER"}
+        mock_get.return_value.json.return_value = {
+            "ok": True,
+            "marker": "GENERATED_TEST_MARKER",
+        }
         mock_get.return_value.raise_for_status = Mock()
         mock_get.return_value.status_code = 200
         result = await handle_nvd_search_cves({})
@@ -46,10 +49,13 @@ async def test_nvd_search_cves_http_error():
 async def test_nvd_get_cve_success():
     """Smoke test: nvd-get-cve returns success payload."""
     with patch("httpx.get") as mock_get:
-        mock_get.return_value.json.return_value = {"ok": True, "marker": "GENERATED_TEST_MARKER"}
+        mock_get.return_value.json.return_value = {
+            "ok": True,
+            "marker": "GENERATED_TEST_MARKER",
+        }
         mock_get.return_value.raise_for_status = Mock()
         mock_get.return_value.status_code = 200
-        result = await handle_nvd_get_cve({'cveId': 'test'})
+        result = await handle_nvd_get_cve({"cveId": "test"})
         assert len(result) == 1
         assert "GENERATED_TEST_MARKER" in result[0].text
 
@@ -60,14 +66,17 @@ async def test_nvd_get_cve_http_error():
     with patch("httpx.get") as mock_get:
         mock_get.side_effect = httpx.HTTPError("Network down")
         with pytest.raises(httpx.HTTPError):
-            await handle_nvd_get_cve({'cveId': 'test'})
+            await handle_nvd_get_cve({"cveId": "test"})
 
 
 @pytest.mark.anyio
 async def test_nvd_cve_history_success():
     """Smoke test: nvd-cve-history returns success payload."""
     with patch("httpx.get") as mock_get:
-        mock_get.return_value.json.return_value = {"ok": True, "marker": "GENERATED_TEST_MARKER"}
+        mock_get.return_value.json.return_value = {
+            "ok": True,
+            "marker": "GENERATED_TEST_MARKER",
+        }
         mock_get.return_value.raise_for_status = Mock()
         mock_get.return_value.status_code = 200
         result = await handle_nvd_cve_history({})

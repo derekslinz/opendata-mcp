@@ -47,10 +47,15 @@ class OsvGetVulnParams(BaseModel):
     vuln_id: str = Field(
         ...,
         min_length=1,
+        # Restrict to characters that appear in OSV / CVE / GHSA / PYSEC / GO
+        # / RUSTSEC / SNYK identifiers. Crucially rejects '/' so the value
+        # cannot break out of the /v1/vulns/{id} path component.
+        pattern=r"^[A-Za-z0-9._:\-]+$",
         description=(
             "Vulnerability id in any of the supported namespaces: "
             "CVE-YYYY-N, GHSA-xxxx-xxxx-xxxx, PYSEC-YYYY-N, GO-YYYY-N, "
-            "RUSTSEC-YYYY-N, OSV-YYYY-N, etc."
+            "RUSTSEC-YYYY-N, OSV-YYYY-N, etc. Restricted to alphanumerics, "
+            "dot, underscore, colon, and hyphen."
         ),
     )
 
