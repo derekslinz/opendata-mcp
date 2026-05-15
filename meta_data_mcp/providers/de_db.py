@@ -15,17 +15,17 @@ Usage:
 import logging
 from typing import Any, List, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
 
 # Constants
 # We use the public-transport-rest standard for DB data (key-less).
+PROVIDER_ID = "de-db"
 BASE_URL = "https://v6.db.transport.rest"
 
 # Registration Variables
@@ -51,8 +51,7 @@ def fetch_db_stations(params: DBStationParams) -> list:
     """Fetch live station data from the public DB transport API wrapper."""
     url = f"{BASE_URL}/locations"
     query_params = {"query": params.search, "results": 5}
-    response = httpx.get(url, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(url, params=query_params, timeout=10.0, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -101,8 +100,9 @@ def fetch_db_timetable(params: DBTimetableParams) -> list:
     """Fetch live departure/arrival data from the public DB transport API wrapper."""
     endpoint = f"{BASE_URL}/stops/{params.station_id}/{params.mode}"
     query_params = {"duration": params.duration}
-    response = httpx.get(endpoint, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        endpoint, params=query_params, timeout=10.0, provider=PROVIDER_ID
+    )
     # If the response is a dict containing the list, extract it. The v6 API usually returns a list or a list inside an object.
     data = response.json()
     if isinstance(data, dict):

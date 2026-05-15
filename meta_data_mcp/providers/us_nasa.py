@@ -20,14 +20,15 @@ import logging
 import os
 from typing import Any, List, Optional, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
+
+PROVIDER_ID = "us-nasa"
 
 # Constants
 BASE_URL = "https://api.nasa.gov"
@@ -60,10 +61,12 @@ def fetch_apod(params: APODParams) -> dict:
     if params.date:
         query_params["date"] = params.date
 
-    response = httpx.get(
-        f"{BASE_URL}/planetary/apod", params=query_params, timeout=10.0
+    response = http_get(
+        f"{BASE_URL}/planetary/apod",
+        params=query_params,
+        timeout=10.0,
+        provider=PROVIDER_ID,
     )
-    response.raise_for_status()
     return response.json()
 
 
@@ -116,10 +119,12 @@ def fetch_neows(params: NeoWsParams) -> dict:
         "start_date": params.start_date,
         "end_date": params.end_date,
     }
-    response = httpx.get(
-        f"{BASE_URL}/neo/rest/v1/feed", params=query_params, timeout=10.0
+    response = http_get(
+        f"{BASE_URL}/neo/rest/v1/feed",
+        params=query_params,
+        timeout=10.0,
+        provider=PROVIDER_ID,
     )
-    response.raise_for_status()
     return response.json()
 
 
@@ -174,12 +179,12 @@ def fetch_mars_photos(params: MarsRoverParams) -> dict:
     if params.camera:
         query_params["camera"] = params.camera
 
-    response = httpx.get(
+    response = http_get(
         f"{BASE_URL}/mars-photos/api/v1/rovers/{params.rover}/photos",
         params=query_params,
         timeout=10.0,
+        provider=PROVIDER_ID,
     )
-    response.raise_for_status()
     return response.json()
 
 
@@ -228,8 +233,7 @@ def fetch_ace_data(params: ACESolarWindParams) -> list:
     Note: Real-time API only provides the last 7 days of data.
     """
     url = "https://services.swpc.noaa.gov/products/solar-wind/plasma-7-day.json"
-    response = httpx.get(url, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(url, timeout=10.0, provider=PROVIDER_ID)
     data = response.json()
 
     if not data or len(data) < 2:

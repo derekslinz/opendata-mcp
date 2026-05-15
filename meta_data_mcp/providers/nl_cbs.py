@@ -19,16 +19,16 @@ Usage:
 import logging
 from typing import Any, List, Optional, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "nl-cbs"
 BASE_URL = "https://opendata.cbs.nl/ODataFeed/odata"
 CATALOG_URL = "https://opendata.cbs.nl/ODataCatalog/Tables"
 
@@ -91,8 +91,9 @@ def fetch_cbs_data(params: CBSDataParams) -> dict:
     if params.skip is not None:
         query_params["$skip"] = params.skip
 
-    response = httpx.get(endpoint, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        endpoint, params=query_params, timeout=10.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -143,8 +144,9 @@ class CBSMetadataParams(BaseModel):
 def fetch_cbs_metadata(params: CBSMetadataParams) -> dict:
     """Fetch metadata (DataProperties) for a specific CBS table."""
     endpoint = f"{BASE_URL}/{params.table_id}/DataProperties"
-    response = httpx.get(endpoint, params={"$format": "json"}, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        endpoint, params={"$format": "json"}, timeout=10.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -212,8 +214,9 @@ def list_cbs_tables(params: CBSListTablesParams) -> dict:
             f"substringof('{safe_search}', ShortTitle) or substringof('{safe_search}', Title)"
         )
 
-    response = httpx.get(CATALOG_URL, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        CATALOG_URL, params=query_params, timeout=10.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 

@@ -16,22 +16,31 @@ Module Structure:
 
 Usage:
     Copy this template and replace the placeholders with actual implementation.
+
+Kernel contract:
+    Always call HTTP through ``http_get`` / ``http_post`` and always pass
+    ``provider=PROVIDER_ID``. That single kwarg enables retry-on-429/5xx
+    and pre-response network-error retry, partitioned response caching,
+    health-registry feedback, and URL-redacted ProviderError translation.
+    Direct ``httpx.get`` / ``httpx.post`` is a regression — every kernel
+    guarantee opts out with it.
 """
 
 # 1. Standard Imports Section
 import logging
 from typing import Any, List, Optional, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.fields import NonEmptyStr  # noqa: F401 — example shared field type
+from meta_data_mcp.utils import http_get, to_json_text  # add http_post if you POST
 
 # Initialize logging
 log = logging.getLogger(__name__)
 
 # 2. Constants Section
+PROVIDER_ID = "service-name"  # MUST match the server_name in registry.py
 BASE_URL = "https://api.example.com/v1"
 
 # 3. Registration Variables
@@ -53,7 +62,7 @@ TOOLS_HANDLERS: dict[
 class EndpointParams(BaseModel):
     """Input parameters for the endpoint."""
 
-    param1: str = Field(..., description="Description of param1")
+    param1: NonEmptyStr = Field(..., description="Description of param1")
     param2: Optional[int] = Field(None, description="Description of param2")
 
 
@@ -82,11 +91,16 @@ def fetch_endpoint_data(params: EndpointParams) -> EndpointResponse:
         EndpointResponse object containing the results
 
     Raises:
-        httpx.HTTPError: If the API request fails
+        meta_data_mcp.errors.ProviderError: translated kernel exception on
+            HTTP / network failure. Pre-response network errors and 429/5xx
+            responses are retried with capped backoff by ``http_get``.
     """
     endpoint = f"{BASE_URL}/endpoint"
-    response = httpx.get(endpoint, params=params.model_dump(exclude_none=True))
-    response.raise_for_status()
+    response = http_get(
+        endpoint,
+        params=params.model_dump(exclude_none=True),
+        provider=PROVIDER_ID,
+    )
     return EndpointResponse(**response.json())
 
 
@@ -106,14 +120,8 @@ async def handle_endpoint(
     Raises:
         Exception: If the handling fails
     """
-    try:
-        response = fetch_endpoint_data(EndpointParams(**(arguments or {})))
-        return [
-            types.TextContent(type="text", text=to_json_text(response.model_dump()))
-        ]
-    except Exception as e:
-        log.error(f"Error handling endpoint: {e}")
-        raise
+    response = fetch_endpoint_data(EndpointParams(**(arguments or {})))
+    return [types.TextContent(type="text", text=to_json_text(response.model_dump()))]
 
 
 # 4. Tool Registration

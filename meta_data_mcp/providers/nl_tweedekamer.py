@@ -16,14 +16,15 @@ Usage:
 import logging
 from typing import Any, List, Optional, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
+
+PROVIDER_ID = "nl-tweedekamer"
 
 # Constants
 BASE_URL = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
@@ -130,9 +131,12 @@ def query_tk_entity(params: TkQueryEntityParams) -> dict:
     if params.expand:
         query_params["$expand"] = params.expand
 
-    headers = {"Accept": "application/json"}
-    response = httpx.get(url, params=query_params, headers=headers, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        url,
+        params=query_params,
+        timeout=10.0,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 

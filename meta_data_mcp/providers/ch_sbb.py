@@ -19,14 +19,14 @@ import logging
 from datetime import datetime
 from typing import Any, List, Optional, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, to_json_text
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "ch-sbb"
 BASE_URL = "https://data.sbb.ch/api/explore/v2.1"
 
 # Registration Variables
@@ -138,12 +138,12 @@ def fetch_rail_traffic_info(params: TrafficInfoParams) -> TrafficInfoResponse:
         TrafficInfoResponse object containing the results
     """
     endpoint = f"{BASE_URL}/catalog/datasets/rail-traffic-information/records"
-    response = httpx.get(
-        endpoint, params=params.model_dump(exclude_none=True), timeout=10.0
+    response = http_get(
+        endpoint,
+        params=params.model_dump(exclude_none=True),
+        timeout=10.0,
+        provider=PROVIDER_ID,
     )
-
-    response.raise_for_status()
-
     return TrafficInfoResponse(**response.json())
 
 
@@ -267,10 +267,12 @@ def fetch_railway_lines(params: RailwayLineParams) -> RailwayLineResponse:
         RailwayLineResponse object containing the results
     """
     endpoint = f"{BASE_URL}/catalog/datasets/linie/records"
-    response = httpx.get(
-        endpoint, params=params.model_dump(exclude_none=True), timeout=10.0
+    response = http_get(
+        endpoint,
+        params=params.model_dump(exclude_none=True),
+        timeout=10.0,
+        provider=PROVIDER_ID,
     )
-    response.raise_for_status()
     return RailwayLineResponse(**response.json())
 
 
@@ -372,10 +374,12 @@ def fetch_rolling_stock(params: RollingStockParams) -> RollingStockResponse:
         RollingStockResponse object containing the results
     """
     endpoint = f"{BASE_URL}/catalog/datasets/rollmaterial/records"
-    response = httpx.get(
-        endpoint, params=params.model_dump(exclude_none=True), timeout=10.0
+    response = http_get(
+        endpoint,
+        params=params.model_dump(exclude_none=True),
+        timeout=10.0,
+        provider=PROVIDER_ID,
     )
-    response.raise_for_status()
     return RollingStockResponse(**response.json())
 
 
