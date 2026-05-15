@@ -217,9 +217,12 @@ class RoutingEngine:
             "fuzzy": FuzzyScorer(),
             "metadata": MetadataScorer(),
             "semantic": SimpleSemanticScorer(),
-            # Health is wired in but defaults to weight 0.0, so existing
-            # behavior is unchanged. Callers can opt in by passing custom
-            # weights once translate_http_error feeds the registry.
+            # Health is now fed by ``http_get`` whenever callers pass
+            # ``provider=``. Default weight stays 0.0 until enough providers
+            # are migrated to the kernel feed — otherwise the 1.0 baseline
+            # for unrecorded providers would lift no-match scores above
+            # find-providers thresholds. Callers can opt in by passing a
+            # non-zero ``health`` weight in ``weights``.
             "health": HealthScorer(),
         }
 

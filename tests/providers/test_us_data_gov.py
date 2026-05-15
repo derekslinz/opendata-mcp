@@ -69,11 +69,10 @@ def test_list_datagov_datasets(mock_search_response):
         result = list_datagov_datasets(params)
         assert result["after"] == "next-cursor"
         assert result["results"][0]["slug"] == "consumer-complaint-database"
-        mock_get.assert_called_once_with(
-            "https://catalog.data.gov/search",
-            params={"q": "complaints", "per_page": 20},
-            timeout=10.0,
-        )
+        mock_get.assert_called_once()
+        assert mock_get.call_args[0][0] == "https://catalog.data.gov/search"
+        assert mock_get.call_args[1]["params"] == {"q": "complaints", "per_page": 20}
+        assert mock_get.call_args[1]["timeout"] == 10.0
 
 
 @pytest.mark.anyio
@@ -99,11 +98,13 @@ def test_fetch_datagov_dataset(mock_show_response):
         result = fetch_datagov_dataset(params)
         assert result["title"] == "Consumer Complaint Database"
         assert len(result["dcat"]["distribution"]) == 1
-        mock_get.assert_called_once_with(
-            "https://catalog.data.gov/search",
-            params={"q": "consumer-complaint-database", "per_page": 25},
-            timeout=10.0,
-        )
+        mock_get.assert_called_once()
+        assert mock_get.call_args[0][0] == "https://catalog.data.gov/search"
+        assert mock_get.call_args[1]["params"] == {
+            "q": "consumer-complaint-database",
+            "per_page": 25,
+        }
+        assert mock_get.call_args[1]["timeout"] == 10.0
 
 
 @pytest.mark.anyio

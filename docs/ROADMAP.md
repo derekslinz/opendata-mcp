@@ -35,8 +35,9 @@ They are dependencies for v1.3's reliability story and are partially active toda
   - **Adoption: 1 / 66 providers** (`au_data_gov`). Migrating the rest is tracked under v1.2 below.
 - ✅ **Provider health registry + `HealthScorer`** (`meta_data_mcp/health.py`, `routing.py:179`, PR #42)
   - Thread-safe failure/success tracking with time-decay back to 1.0
-  - Wired into `RoutingEngine.scorers` but **default weight = 0.0** (dormant)
-  - Activation blocked on: an HTTP error-translation hook (provisionally named `translate_http_error`, implemented in `errors.py` per PR #43 but not yet called from `utils.py`) that classifies responses and calls `record_failure` / `record_success`. Tracked under v1.2 below.
+  - Wired into `RoutingEngine.scorers`
+  - Feed: `http_get` now invokes `translate_http_error` and `health.record_failure` / `health.record_success` automatically when callers pass `provider=` (kernel wiring landed; see "Kernel wiring" below)
+  - **Default weight = 0.0** until enough providers feed the registry — bumping it before the migration sweep would lift unrecorded-but-healthy providers above no-match thresholds. Raised once the sweep below progresses.
 - ✅ **`ProviderError` hierarchy + http→domain translator** (`meta_data_mcp/errors.py`, PR #43)
   - Subclasses: `BadRequestError` (400/422), `NotFoundError` (404), `AuthError` (401/403), `RateLimitError` (429 with `retry_after`), `UpstreamError` (5xx), `NetworkError` (httpx connect/read failures)
   - `translate_http_error(provider, exc)` maps `httpx.HTTPStatusError` / `httpx.RequestError` to the right subclass; `str(err)` is URL-free for safe LLM-client exposure
@@ -45,6 +46,10 @@ They are dependencies for v1.3's reliability story and are partially active toda
   - `NonEmptyStr`, `Slug` (`^[a-z0-9-]+$`), `PageInt` (`default=1, ge=1`), `PageSize` (`default=20, ge=1, le=1000`)
   - Project-wide validation policy: providers stop re-declaring `min_length=1` and `ge=1` inline
   - **Adoption: 4 / 66 providers** (`us_noaa_awc`, `us_federal_register`, `us_courtlistener`, `global_overpass`). Sweep tracked under v1.2 below.
+- ✅ **Kernel wiring: `http_get` → `translate_http_error` + health feed** (`meta_data_mcp/utils.py`)
+  - Added `provider: str | None = None` kwarg to `http_get`. When set, the kernel translates `httpx.HTTPStatusError` / `RequestError` into the appropriate `ProviderError` subclass and calls `health.record_success` / `health.record_failure` automatically. When unset, legacy raw-httpx behavior is preserved.
+  - Migrated `us_data_gov.py` (the existing error-aware provider) onto `http_get(..., provider=PROVIDER_ID)`, removing its now-redundant handler-level `translate_http_error` calls.
+  - Activates the dormant `HealthScorer` feed end-to-end; with `health` weight still `0.0`, routing behavior is unchanged until the sweep below progresses.
 
 ## v1.2: Hierarchical Discovery + Health Activation (Planned, in design)
 
@@ -57,11 +62,11 @@ is no longer realistic — design has not produced code. Re-baseline below.
 
 ### Carry-over work from v1.1.x
 
-- [ ] Wire `translate_http_error` (from `errors.py`, PR #43) into `http_get`'s error path in `utils.py` and add explicit success-path `health.record_success()` in `http_get`, so both failures and successful responses feed the dormant `HealthScorer`
-- [ ] Raise the default `health` weight in `RoutingEngine.weights` once the feed exists (currently `0.0`)
+- [x] Wire `translate_http_error` (from `errors.py`, PR #43) into `http_get`'s error path in `utils.py` so it classifies responses and calls `health.record_failure` / `health.record_success`, feeding the dormant `HealthScorer` *(landed via `provider=` kwarg in `http_get`; see v1.1.x "Kernel wiring" above)*
+- [ ] Migrate the remaining 65 providers to pass `provider=` to `http_get` so the health feed reflects fleet-wide reliability (1/66 today: `us_data_gov`)
+- [ ] Raise the default `health` weight in `RoutingEngine.weights` once enough providers feed the registry (currently `0.0` — see explanatory comment in `routing.py`)
 - [ ] Migrate the remaining 65 providers to `ProviderConfig` (1/66 today: `au_data_gov`)
-- [ ] Migrate the remaining 65 providers to call `translate_http_error` in their handlers (1/66 today: `us_data_gov`)
-- [ ] Migrate the remaining 62 providers to use `NonEmptyStr` / `Slug` / `PageInt` / `PageSize` from `fields.py` (4/66 today from PR #44: `us_noaa_awc`, `us_federal_register`, `us_courtlistener`, `global_overpass`)
+- [ ] Migrate the remaining 62 providers to use `NonEmptyStr` / `Slug` / `PageInt` / `PageSize` from `fields.py` (4/66 today: providers from PR #36 follow-up)
 - [ ] Have `http_get` consume `ProviderConfig` directly instead of accepting `base_url`/auth per-call (noted as "future work" in `provider_config.py:6`)
 
 ### Scope
@@ -349,7 +354,8 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 | `ProviderConfig` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
 | `errors.py` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
 | `fields.py` adoption | 4 / 66 | 66 / 66 | 66 / 66 |
-| `HealthScorer` weight | 0.0 (dormant) | >0 | >0 |
+| `http_get(provider=)` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
+| `HealthScorer` weight | 0.0 (feed live, weight gated) | >0 | >0 |
 | User satisfaction | TBD | >4/5 | >4.5/5 |
 
 ---
