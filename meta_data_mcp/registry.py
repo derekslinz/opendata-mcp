@@ -1149,12 +1149,19 @@ class Registry:
         """Remove a provider by id. Returns True if it was present.
 
         Removing a static entry is supported but should be rare — it's
-        primarily here for tests.
+        primarily here for tests. When the removed entry was part of the
+        static seed, ``_static_count`` is decremented so subsequent
+        ``dynamic()`` slices keep their correct frontier; otherwise a
+        later ``add()`` would land inside the static range and be
+        invisible to ``dynamic()``.
         """
         entry = self._by_id.pop(provider_id, None)
         if entry is None:
             return False
-        self._entries.remove(entry)
+        index = self._entries.index(entry)
+        del self._entries[index]
+        if index < self._static_count:
+            self._static_count -= 1
         return True
 
     def find(self, provider_id: str) -> ProviderEntry | None:
