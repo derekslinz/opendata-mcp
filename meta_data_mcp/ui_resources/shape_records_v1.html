@@ -153,7 +153,12 @@
     // ----- Ingress: postMessage, URL param, global, in priority order -----
 
     window.addEventListener('message', function (ev) {
-      var msg = ev && ev.data;
+      // Only accept messages from the embedding host (the parent
+      // window). Other frames that can reach this iframe (ad iframes,
+      // dev-tools console, etc.) MUST NOT be able to trigger re-renders
+      // or feed arbitrary payloads.
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
       if (!msg || typeof msg !== 'object') return;
       // The MCP Apps host contract is still settling; accept the two
       // likeliest shapes plus a bare payload.
@@ -171,11 +176,19 @@
         var params = new URLSearchParams(window.location.search);
         var b64 = params.get('data');
         if (!b64) return null;
-        // base64 → JSON, tolerant of url-safe variants
-        var s = b64.replace(/-/g, '+').replace(/_/g, '/');
+        // URLSearchParams decodes '+' to ' ' (form-encoding semantics);
+        // also accept url-safe base64 ('-' / '_'). Normalize all to
+        // standard base64 before atob.
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
         var pad = s.length % 4;
         if (pad) s += new Array(5 - pad).join('=');
-        return JSON.parse(atob(s));
+        // atob → binary string. For UTF-8-safe JSON (emoji, non-Latin
+        // text), round through bytes + TextDecoder rather than the
+        // legacy decodeURIComponent(escape(...)) pattern.
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
       } catch (e) {
         showError('Invalid ?data= URL parameter: ' + e.message);
         return null;
