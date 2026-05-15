@@ -18,14 +18,15 @@ import re
 from typing import Any, List, Sequence
 from urllib.parse import urljoin
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
+
+PROVIDER_ID = "nl-ndov"
 
 # Constants
 BASE_URL = "https://data.ndovloket.nl/"
@@ -69,8 +70,13 @@ def list_ndov_path(path: str) -> List[dict]:
         raise ValueError(
             f"Resolved URL '{url}' is outside the allowed host '{BASE_URL}'"
         )
-    response = httpx.get(url, timeout=10.0)
-    response.raise_for_status()
+    # Apache directory index is HTML — override the kernel's JSON default.
+    response = http_get(
+        url,
+        timeout=10.0,
+        headers={"Accept": "text/html"},
+        provider=PROVIDER_ID,
+    )
 
     # Simple regex-based parsing of the directory listing
     # Example line: <a href="haltes/">haltes/</a>

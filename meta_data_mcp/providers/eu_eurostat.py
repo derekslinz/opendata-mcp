@@ -19,11 +19,12 @@ import logging
 import xml.etree.ElementTree as ET
 from typing import Any, List, Optional, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, to_json_text
+
+PROVIDER_ID = "eu-eurostat"
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -71,8 +72,14 @@ def list_eurostat_datasets(
     params: EurostatListDatasetsParams,
 ) -> List[EurostatDatasetInfo]:
     """Search or list available Eurostat datasets from the TOC XML."""
-    response = httpx.get(TOC_URL, timeout=30.0)
-    response.raise_for_status()
+    # TOC is XML — override the kernel's default Accept: application/json
+    # so eurostat doesn't refuse content negotiation.
+    response = http_get(
+        TOC_URL,
+        timeout=30.0,
+        headers={"Accept": "application/xml"},
+        provider=PROVIDER_ID,
+    )
 
     root = ET.fromstring(response.content)
     datasets = []
@@ -161,8 +168,9 @@ def fetch_eurostat_data(params: EurostatDataParams) -> dict:
     endpoint = f"{DATA_URL}/{params.dataset_code}"
     query_params = {"format": "JSON", "lang": params.lang}
 
-    response = httpx.get(endpoint, params=query_params, timeout=30.0)
-    response.raise_for_status()
+    response = http_get(
+        endpoint, params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -217,8 +225,9 @@ def fetch_eurostat_metadata(params: EurostatMetadataParams) -> dict:
     endpoint = f"{DATA_URL}/{params.dataset_code}"
     query_params = {"format": "JSON", "lang": params.lang}
 
-    response = httpx.get(endpoint, params=query_params, timeout=30.0)
-    response.raise_for_status()
+    response = http_get(
+        endpoint, params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     data = response.json()
     # Return only structural metadata, not the full data values
     return {

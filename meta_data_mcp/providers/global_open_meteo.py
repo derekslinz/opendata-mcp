@@ -18,16 +18,16 @@ Usage:
 import logging
 from typing import Any, List, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-open-meteo"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -75,8 +75,9 @@ def fetch_weather_forecast(params: WeatherForecastParams) -> dict:
         "forecast_days": params.forecast_days,
         "timezone": "auto",
     }
-    response = httpx.get(FORECAST_URL, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        FORECAST_URL, params=query_params, timeout=10.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -138,8 +139,9 @@ def fetch_historical_weather(params: HistoricalWeatherParams) -> dict:
         "daily": params.daily,
         "timezone": "auto",
     }
-    response = httpx.get(ARCHIVE_URL, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        ARCHIVE_URL, params=query_params, timeout=10.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -193,8 +195,9 @@ def fetch_air_quality(params: AirQualityParams) -> dict:
         "hourly": params.hourly,
         "timezone": "auto",
     }
-    response = httpx.get(AIR_QUALITY_URL, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        AIR_QUALITY_URL, params=query_params, timeout=10.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 

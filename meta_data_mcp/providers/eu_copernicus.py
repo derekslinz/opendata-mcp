@@ -17,16 +17,16 @@ Usage:
 import logging
 from typing import Any, List, Optional, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import http_get, http_post, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "eu-copernicus"
 STAC_BASE_URL = "https://stac.dataspace.copernicus.eu/v1"
 ODATA_BASE_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1"
 
@@ -62,9 +62,7 @@ class CollectionInfo(BaseModel):
 def list_copernicus_collections(params: ListCollectionsParams) -> List[CollectionInfo]:
     """Fetch available satellite data collections from STAC API."""
     endpoint = f"{STAC_BASE_URL}/collections"
-    response = httpx.get(endpoint, timeout=10.0)
-    response.raise_for_status()
-
+    response = http_get(endpoint, timeout=10.0, provider=PROVIDER_ID)
     data = response.json()
     collections = []
     for col in data.get("collections", []):
@@ -139,8 +137,9 @@ def search_copernicus_products(params: SearchProductsParams) -> dict:
     if params.datetime:
         query_params["datetime"] = params.datetime
 
-    response = httpx.post(endpoint, json=query_params, timeout=15.0)
-    response.raise_for_status()
+    response = http_post(
+        endpoint, json=query_params, timeout=15.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -195,8 +194,7 @@ class ProductMetadataParams(BaseModel):
 def fetch_product_metadata(params: ProductMetadataParams) -> dict:
     """Fetch detailed metadata for a specific product ID via OData."""
     endpoint = f"{ODATA_BASE_URL}/Products({params.product_id})"
-    response = httpx.get(endpoint, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(endpoint, timeout=10.0, provider=PROVIDER_ID)
     return response.json()
 
 
