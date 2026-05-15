@@ -13,10 +13,12 @@ from meta_data_mcp.routing import HealthScorer, RoutingEngine
 
 @pytest.fixture(autouse=True)
 def _clean_health_state():
-    """Ensure each test starts with an empty health registry."""
+    """Ensure each test starts with an empty health registry and a real clock."""
+    original_clock = health._clock
     health.reset()
     yield
     health.reset()
+    health._clock = original_clock
 
 
 @pytest.fixture
@@ -67,9 +69,12 @@ def test_record_success_decays_failure_counter():
 
 
 def test_reset_clears_all_state():
+    health._clock = lambda: 0.0
     health.record_failure("p4")
     health.record_failure("p5")
-    assert health.health_score("p4") < 1.0 or health.health_score("p4") == 1.0
+    # Scores should be below 1.0 immediately after failures with no decay.
+    assert health.health_score("p4", now=0.0) < 1.0
+    assert health.health_score("p5", now=0.0) < 1.0
     health.reset()
     assert health.health_score("p4") == 1.0
     assert health.health_score("p5") == 1.0
@@ -99,10 +104,14 @@ def test_thread_safety_failure_count_is_exact():
     for t in threads:
         t.join()
 
-    # Peek under the lock — the registry should have counted every call.
+    # All 3200 failure events must have been applied. Because each call decays
+    # the existing mass first, the final mass will be slightly less than the
+    # raw count (tiny real-time decay over the short test duration). We check
+    # that it's within 1 % of the expected count.
+    expected = threads_count * per_thread
     with health._lock:
         entry = health._state["contended"]
-        assert entry.failures == threads_count * per_thread
+        assert entry.failure_mass == pytest.approx(expected, rel=0.01)
 
 
 # ---------- Routing integration ----------

@@ -352,10 +352,13 @@ class RoutingEngine:
         combined = 0.0
 
         for strategy_name, scorer in self.scorers.items():
-            strategy_score = await scorer.score(query, provider)
             weight = self.weights.get(strategy_name, 0.0)
-            weighted = strategy_score * weight
-            combined += weighted
+            # Skip zero-weight scorers entirely: they don't affect the combined
+            # score and would add noise to the explain breakdown.
+            if weight == 0.0:
+                continue
+            strategy_score = await scorer.score(query, provider)
+            combined += strategy_score * weight
 
             if explain:
                 breakdown[strategy_name] = strategy_score
