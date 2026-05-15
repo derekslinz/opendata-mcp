@@ -1,6 +1,8 @@
 import json
+import httpx
 import pytest
 from unittest.mock import patch, Mock
+from meta_data_mcp.errors import NotFoundError
 from meta_data_mcp.providers.us_data_gov import (
     list_datagov_datasets,
     DataGovListDatasetsParams,
@@ -127,3 +129,34 @@ def test_api_error_handling():
         params = DataGovGetDatasetParams(dataset_id="invalid")
         with pytest.raises(ValueError, match="API Error: dataset not found: invalid"):
             fetch_datagov_dataset(params)
+
+
+@pytest.mark.anyio
+async def test_handle_get_dataset_translates_http_404_to_not_found():
+    """An upstream 404 from inside the handler must surface as NotFoundError."""
+    req = httpx.Request("GET", "https://catalog.data.gov/search")
+    resp = httpx.Response(status_code=404, request=req)
+    status_err = httpx.HTTPStatusError("not found", request=req, response=resp)
+
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.raise_for_status = Mock(side_effect=status_err)
+
+        with pytest.raises(NotFoundError) as exc_info:
+            await handle_datagov_get_dataset({"dataset_id": "missing"})
+
+        err = exc_info.value
+        assert err.provider == "us-data-gov"
+        assert err.status == 404
+        assert err.kind == "not_found"
+        # str() form must not leak the upstream URL.
+        assert "catalog.data.gov" not in str(err)
+
+
+@pytest.mark.anyio
+async def test_handle_get_dataset_does_not_translate_non_http_errors():
+    with patch(
+        "meta_data_mcp.providers.us_data_gov.fetch_datagov_dataset",
+        side_effect=ValueError("boom"),
+    ):
+        with pytest.raises(ValueError, match="boom"):
+            await handle_datagov_get_dataset({"dataset_id": "missing"})
