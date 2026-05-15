@@ -134,6 +134,31 @@ TOOLS.append(
 )
 TOOLS_HANDLERS["endpoint-name"] = handle_endpoint
 
+# --- Optional: MCP Apps UI binding -----------------------------------------
+# To render this tool's result in a host-side iframe app (Claude Desktop's
+# Apps tab, MCP Inspector's App tab, etc.), register a ui:// resource via
+# ``utils.register_ui_resource`` and bind it to the tool with the alias
+# keyword ``_meta=`` (NOT ``meta=`` — see test_ui_resource.py for the
+# regression that pins this footgun).
+#
+# from meta_data_mcp.utils import register_ui_resource
+# APP_URI = register_ui_resource(
+#     name="endpoint-app",
+#     html=ENDPOINT_APP_HTML,
+#     description="Custom UI for endpoint-name.",
+#     resources=RESOURCES,
+#     resources_handlers=RESOURCES_HANDLERS,
+# )
+# TOOLS.append(
+#     types.Tool(
+#         name="endpoint-name",
+#         description="...",
+#         inputSchema=EndpointParams.model_json_schema(),
+#         _meta={"ui": {"resourceUri": APP_URI}},
+#     )
+# )
+# ---------------------------------------------------------------------------
+
 
 ###################
 # [Another Endpoint Name]
