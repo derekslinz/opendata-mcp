@@ -18,9 +18,12 @@ from typing import Any, List, Optional, Sequence
 
 import httpx
 import mcp.types as types
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
+from meta_data_mcp.errors import translate_http_error
 from meta_data_mcp.utils import to_json_text
+
+PROVIDER_ID = "us-data-gov"
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -80,6 +83,12 @@ async def handle_datagov_list_datasets(
     """Handle the us-datagov-list-datasets tool call."""
     try:
         params = DataGovListDatasetsParams(**(arguments or {}))
+    except ValidationError:
+        # Pre-translation: caller-supplied schema errors should keep their
+        # native ValidationError type so callers can branch on it.
+        raise
+
+    try:
         result = list_datagov_datasets(params)
 
         # We simplify the output to just key fields to keep it readable
@@ -110,7 +119,7 @@ async def handle_datagov_list_datasets(
         ]
     except Exception as e:
         log.error(f"Error listing Data.gov datasets: {e}")
-        raise
+        raise translate_http_error(PROVIDER_ID, e) from e
 
 
 TOOLS.append(
@@ -172,16 +181,21 @@ async def handle_datagov_get_dataset(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
     """Handle the us-datagov-get-dataset tool call."""
-    try:
-        if not arguments or "dataset_id" not in arguments:
-            raise ValueError("dataset_id is required")
+    if not arguments or "dataset_id" not in arguments:
+        raise ValueError("dataset_id is required")
 
+    try:
         params = DataGovGetDatasetParams(**arguments)
+    except ValidationError:
+        # Pre-translation: keep schema errors as-is for the caller.
+        raise
+
+    try:
         result = fetch_datagov_dataset(params)
         return [types.TextContent(type="text", text=to_json_text(result))]
     except Exception as e:
         log.error(f"Error fetching Data.gov dataset: {e}")
-        raise
+        raise translate_http_error(PROVIDER_ID, e) from e
 
 
 TOOLS.append(
