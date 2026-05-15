@@ -211,7 +211,7 @@ def _frankfurter_time_series_to_shape_payload(data: dict) -> dict:
         if not isinstance(per_currency, dict):
             continue
         for currency, value in per_currency.items():
-            if not isinstance(value, (int, float)) or isinstance(value, bool):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
                 continue
             points.append({"date": date, "value": value, "series": currency})
     payload = {
