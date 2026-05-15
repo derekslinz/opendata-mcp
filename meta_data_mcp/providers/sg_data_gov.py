@@ -28,7 +28,8 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -36,6 +37,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "sg-data-gov"
 BASE_URL = "https://api-production.data.gov.sg/v2/public/api"
+
+# Records-shape adapter constants
+_MAX_DESC_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -74,14 +78,90 @@ def fetch_sg_datagov_list_datasets(params: SGDataGovListDatasetsParams) -> dict:
     return response.json()
 
 
+def _sg_datasets_to_shape_payload(data: dict) -> dict:
+    """Adapt a data.gov.sg v2 ``/datasets`` response to the
+    ``ui://meta-data-mcp/shape/records/v1`` payload.
+
+    The v2 API wraps results in ``{code, data: {datasets: [...], pages}}``.
+    """
+    inner = data.get("data", {}) if isinstance(data, dict) else {}
+    raw_rows = inner.get("datasets", []) if isinstance(inner, dict) else []
+    rows: list[dict[str, Any]] = []
+    for ds in raw_rows:
+        if not isinstance(ds, dict):
+            continue
+        desc = ds.get("description") or ""
+        if isinstance(desc, str) and len(desc) > _MAX_DESC_CHARS:
+            desc = desc[:_MAX_DESC_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "datasetId": ds.get("datasetId"),
+                "name": ds.get("name"),
+                "format": ds.get("format"),
+                "status": ds.get("status"),
+                "managedByAgencyName": ds.get("managedByAgencyName"),
+                "createdAt": ds.get("createdAt"),
+                "lastUpdatedAt": ds.get("lastUpdatedAt"),
+                "description": desc,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "datasetId", "type": "string", "description": "Dataset id"},
+                {"name": "name", "type": "string", "description": "Dataset name"},
+                {
+                    "name": "format",
+                    "type": "string",
+                    "description": "Distribution format",
+                },
+                {
+                    "name": "status",
+                    "type": "string",
+                    "description": "Lifecycle status",
+                },
+                {
+                    "name": "managedByAgencyName",
+                    "type": "string",
+                    "description": "Managing agency",
+                },
+                {
+                    "name": "createdAt",
+                    "type": "date",
+                    "description": "Creation timestamp",
+                },
+                {
+                    "name": "lastUpdatedAt",
+                    "type": "date",
+                    "description": "Last-updated timestamp",
+                },
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "Description (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["managedByAgencyName", "format", "status"],
+    }
+    if isinstance(inner, dict) and "pages" in inner:
+        payload["pages"] = inner["pages"]
+    return payload
+
+
 async def handle_sg_datagov_list_datasets(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the sg-data-gov-list-datasets tool call."""
+    """Handle the sg-data-gov-list-datasets tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = SGDataGovListDatasetsParams(**(arguments or {}))
         data = fetch_sg_datagov_list_datasets(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _sg_datasets_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error listing data.gov.sg datasets: {e}")
         raise
@@ -92,6 +172,7 @@ TOOLS.append(
         name="sg-data-gov-list-datasets",
         description="List datasets in the Singapore data.gov.sg catalog (paged).",
         inputSchema=SGDataGovListDatasetsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["sg-data-gov-list-datasets"] = handle_sg_datagov_list_datasets

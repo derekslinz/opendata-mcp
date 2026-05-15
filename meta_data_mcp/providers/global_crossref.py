@@ -30,7 +30,8 @@ from urllib.parse import quote
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -38,6 +39,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "global-crossref"
 BASE_URL = "https://api.crossref.org"
+
+# Records-shape adapter constants
+_MAX_ABSTRACT_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -94,14 +98,115 @@ def fetch_crossref_works_search(params: CrossrefWorksSearchParams) -> dict:
     return response.json()
 
 
+def _crossref_works_to_shape_payload(data: dict) -> dict:
+    """Adapt Crossref's ``/works`` response to the records shape primitive.
+
+    Crossref wraps results in ``{status, message: {items: [...], total-results}}``;
+    each item carries DOI, title (array), author (array of dicts),
+    container-title (array), publisher, type, and a nested published date.
+    """
+    message = data.get("message") if isinstance(data, dict) else None
+    raw_rows = message.get("items", []) if isinstance(message, dict) else []
+    rows: list[dict[str, Any]] = []
+    for work in raw_rows:
+        if not isinstance(work, dict):
+            continue
+        title_list = work.get("title") or []
+        title = title_list[0] if isinstance(title_list, list) and title_list else ""
+        authors = work.get("author") or []
+        author_names = []
+        if isinstance(authors, list):
+            for a in authors:
+                if isinstance(a, dict):
+                    given = a.get("given") or ""
+                    family = a.get("family") or a.get("name") or ""
+                    name = (f"{given} {family}").strip()
+                    if name:
+                        author_names.append(name)
+        container = work.get("container-title") or []
+        container_title = (
+            container[0] if isinstance(container, list) and container else ""
+        )
+        published = (
+            work.get("published-print")
+            or work.get("published-online")
+            or work.get("published")
+        )
+        published_date = None
+        if isinstance(published, dict):
+            parts = published.get("date-parts")
+            if isinstance(parts, list) and parts and isinstance(parts[0], list):
+                published_date = "-".join(
+                    f"{int(p):02d}" if len(str(int(p))) == 1 and i > 0 else str(int(p))
+                    for i, p in enumerate(parts[0])
+                    if isinstance(p, (int, float))
+                )
+        abstract = work.get("abstract") or ""
+        if isinstance(abstract, str) and len(abstract) > _MAX_ABSTRACT_CHARS:
+            abstract = abstract[:_MAX_ABSTRACT_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "DOI": work.get("DOI"),
+                "title": title,
+                "authors": ", ".join(author_names),
+                "container_title": container_title,
+                "publisher": work.get("publisher"),
+                "type": work.get("type"),
+                "published": published_date,
+                "is_referenced_by_count": work.get("is-referenced-by-count"),
+                "abstract": abstract,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "DOI", "type": "string", "description": "DOI"},
+                {"name": "title", "type": "string", "description": "Work title"},
+                {"name": "authors", "type": "string", "description": "Authors (csv)"},
+                {
+                    "name": "container_title",
+                    "type": "string",
+                    "description": "Journal/book title",
+                },
+                {"name": "publisher", "type": "string", "description": "Publisher"},
+                {"name": "type", "type": "string", "description": "Work type"},
+                {
+                    "name": "published",
+                    "type": "string",
+                    "description": "Publication date (Y-M-D where available)",
+                },
+                {
+                    "name": "is_referenced_by_count",
+                    "type": "number",
+                    "description": "Citation count",
+                },
+                {
+                    "name": "abstract",
+                    "type": "string",
+                    "description": "Abstract (truncated, HTML/JATS)",
+                },
+            ]
+        },
+        "default_facets": ["type", "publisher", "container_title"],
+    }
+    if isinstance(message, dict) and "total-results" in message:
+        payload["total_results"] = message["total-results"]
+    return payload
+
+
 async def handle_crossref_works_search(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the crossref-works-search tool call."""
+    """Handle the crossref-works-search tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = CrossrefWorksSearchParams(**(arguments or {}))
         data = fetch_crossref_works_search(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _crossref_works_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching Crossref works: {e}")
         raise
@@ -112,6 +217,7 @@ TOOLS.append(
         name="crossref-works-search",
         description="Search Crossref scholarly works with full-text query, filters, sort, and field selection.",
         inputSchema=CrossrefWorksSearchParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["crossref-works-search"] = handle_crossref_works_search

@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.us_fda_openfda import (
+    TOOLS,
+    _openfda_drug_enforcement_to_shape_payload,
     handle_drug_events,
     handle_drug_labels,
     handle_drug_enforcement,
@@ -12,6 +16,7 @@ from meta_data_mcp.providers.us_fda_openfda import (
     handle_food_enforcement,
     handle_animal_veterinary_events,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -129,3 +134,65 @@ async def test_openfda_http_error_propagates():
         mock_get.side_effect = httpx.HTTPError("Boom")
         with pytest.raises(httpx.HTTPError):
             await handle_drug_events({"search": "anything"})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for openfda-drug-enforcement.
+#
+# We bind drug enforcement (recalls), not drug events: events are deeply
+# nested FAERS reports (patient.drug[], patient.reaction[]) that would
+# need row-explosion to fit the records contract; enforcement records
+# are already flat (one row per recall).
+# ---------------------------------------------------------------------------
+
+
+def test_openfda_drug_enforcement_adapter_flattens_results_to_rows():
+    raw = {
+        "meta": {"results": {"total": 1}},
+        "results": [
+            {
+                "recall_number": "D-001",
+                "classification": "Class I",
+                "status": "Ongoing",
+                "recalling_firm": "Acme Pharma",
+                "product_description": "Aspirin 100mg tablets",
+                "voluntary_mandated": "Voluntary",
+                "country": "United States",
+                "state": "NY",
+                "reason_for_recall": "Contamination.",
+                "recall_initiation_date": "20240101",
+            }
+        ],
+    }
+    payload = _openfda_drug_enforcement_to_shape_payload(raw)
+    assert payload["total"] == 1
+    row = payload["rows"][0]
+    assert row["classification"] == "Class I"
+    assert row["recalling_firm"] == "Acme Pharma"
+    assert payload["default_facets"] == ["classification", "status", "country"]
+
+
+def test_openfda_drug_enforcement_adapter_handles_missing_results():
+    assert _openfda_drug_enforcement_to_shape_payload({})["rows"] == []
+
+
+def test_drug_enforcement_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "openfda-drug-enforcement")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+@pytest.mark.anyio
+async def test_openfda_drug_enforcement_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "results": [{"classification": "Class I", "recall_number": "D-001"}]
+        }
+        mock_get.return_value.raise_for_status = Mock()
+        result = await handle_drug_enforcement(
+            {"search": "classification:Class I", "limit": 1}
+        )
+        body = json.loads(result[0].text)
+        assert body["rows"][0]["classification"] == "Class I"
+        assert "schema" in body

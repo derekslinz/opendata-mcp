@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
@@ -6,6 +8,7 @@ from urllib.parse import urlparse
 from meta_data_mcp.providers.global_wikipedia import (
     TOOLS,
     TOOLS_HANDLERS,
+    _wikipedia_opensearch_to_shape_payload,
     handle_wikipedia_get_summary,
     handle_wikipedia_get_html,
     handle_wikipedia_get_mobile_sections,
@@ -15,6 +18,7 @@ from meta_data_mcp.providers.global_wikipedia import (
     handle_wikipedia_get_page_views,
     handle_wikipedia_get_on_this_day,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -158,3 +162,54 @@ async def test_wikipedia_get_summary_http_error():
 
         with pytest.raises(httpx.HTTPError):
             await handle_wikipedia_get_summary({"title": "Anything"})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for wikipedia-search-title.
+# ---------------------------------------------------------------------------
+
+
+def test_wikipedia_adapter_zips_opensearch_arrays_to_rows():
+    raw = [
+        "Pyth",
+        ["Python", "Python (programming language)"],
+        ["", "Programming language"],
+        [
+            "https://en.wikipedia.org/wiki/Python",
+            "https://en.wikipedia.org/wiki/Python_(programming_language)",
+        ],
+    ]
+    payload = _wikipedia_opensearch_to_shape_payload(raw)
+    assert payload["query"] == "Pyth"
+    assert len(payload["rows"]) == 2
+    assert payload["rows"][0]["title"] == "Python"
+    assert payload["rows"][1]["description"] == "Programming language"
+
+
+def test_wikipedia_adapter_handles_malformed_response():
+    assert _wikipedia_opensearch_to_shape_payload([])["rows"] == []
+    assert _wikipedia_opensearch_to_shape_payload(None)["rows"] == []
+    assert _wikipedia_opensearch_to_shape_payload(["only", "two"])["rows"] == []
+
+
+def test_search_title_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "wikipedia-search-title")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+@pytest.mark.anyio
+async def test_wikipedia_search_title_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = [
+            "Pyth",
+            ["Python"],
+            [""],
+            ["https://en.wikipedia.org/wiki/Python"],
+        ]
+        mock_get.return_value.raise_for_status = Mock()
+        result = await handle_wikipedia_search_title({"search": "Pyth"})
+        body = json.loads(result[0].text)
+        assert body["rows"][0]["title"] == "Python"
+        assert "schema" in body

@@ -32,12 +32,18 @@ Usage:
 """
 
 import logging
+import xml.etree.ElementTree as ET
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, MAX_RESPONSE_CHARS
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import (
+    MAX_RESPONSE_CHARS,
+    http_get,
+    to_records_text,
+)
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -49,6 +55,10 @@ BASE_URL = "https://www.legislation.gov.uk"
 _ATOM_HEADERS = {"Accept": "application/atom+xml"}
 _XML_HEADERS = {"Accept": "application/xml"}
 _HTML_HEADERS = {"Accept": "text/html"}
+
+# Records-shape adapter constants
+_MAX_SUMMARY_CHARS = 500
+_ATOM_NS = "{http://www.w3.org/2005/Atom}"
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -101,14 +111,116 @@ def fetch_uk_legislation_search(params: UkLegislationSearchParams) -> str:
     return response.text
 
 
+def _uk_legislation_atom_to_shape_payload(xml_text: str) -> dict:
+    """Adapt legislation.gov.uk Atom feed to the records shape primitive.
+
+    Each Atom ``<entry>`` corresponds to a piece of legislation. We pull
+    title, id (acts-like URL), updated, and the document type / year via
+    the ``category`` attributes the feed exposes.
+    """
+    rows: list[dict[str, Any]] = []
+    if not isinstance(xml_text, str) or not xml_text.strip():
+        return {
+            "rows": rows,
+            "schema": _uk_legislation_schema(),
+            "default_facets": ["type", "year"],
+        }
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        log.warning(
+            "uk_legislation adapter: failed to parse Atom XML; returning empty rows"
+        )
+        return {
+            "rows": rows,
+            "schema": _uk_legislation_schema(),
+            "default_facets": ["type", "year"],
+        }
+    for entry in root.findall(f"{_ATOM_NS}entry"):
+        title_el = entry.find(f"{_ATOM_NS}title")
+        title = (
+            " ".join(title_el.text.split())
+            if title_el is not None and title_el.text
+            else ""
+        )
+        id_el = entry.find(f"{_ATOM_NS}id")
+        link_el = entry.find(f"{_ATOM_NS}link")
+        summary_el = entry.find(f"{_ATOM_NS}summary")
+        summary = (
+            " ".join(summary_el.text.split())
+            if summary_el is not None and summary_el.text
+            else ""
+        )
+        if len(summary) > _MAX_SUMMARY_CHARS:
+            summary = summary[:_MAX_SUMMARY_CHARS].rstrip() + "…"
+        updated_el = entry.find(f"{_ATOM_NS}updated")
+        leg_type = None
+        year = None
+        for cat in entry.findall(f"{_ATOM_NS}category"):
+            scheme = cat.get("scheme") or ""
+            term = cat.get("term")
+            if scheme.endswith("type") and not leg_type:
+                leg_type = term
+            elif scheme.endswith("year") and not year:
+                year = term
+        rows.append(
+            {
+                "title": title,
+                "id": id_el.text if id_el is not None else None,
+                "link": link_el.get("href") if link_el is not None else None,
+                "type": leg_type,
+                "year": year,
+                "updated": updated_el.text if updated_el is not None else None,
+                "summary": summary,
+            }
+        )
+    return {
+        "rows": rows,
+        "schema": _uk_legislation_schema(),
+        "default_facets": ["type", "year"],
+    }
+
+
+def _uk_legislation_schema() -> dict[str, Any]:
+    return {
+        "columns": [
+            {"name": "title", "type": "string", "description": "Legislation title"},
+            {"name": "id", "type": "string", "description": "Atom entry id"},
+            {"name": "link", "type": "string", "description": "Resource URL"},
+            {
+                "name": "type",
+                "type": "string",
+                "description": "Legislation type code",
+            },
+            {"name": "year", "type": "string", "description": "Year"},
+            {"name": "updated", "type": "date", "description": "Updated timestamp"},
+            {
+                "name": "summary",
+                "type": "string",
+                "description": "Summary (truncated)",
+            },
+        ]
+    }
+
+
 async def handle_uk_legislation_search(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the uk-legislation-search tool call."""
+    """Handle the uk-legislation-search tool call.
+
+    Returns the response in the records shape primitive payload (parsed
+    from the upstream Atom feed). The legacy text-truncation behaviour
+    is replaced by structured rows.
+    """
     try:
         params = UkLegislationSearchParams(**(arguments or {}))
         text = fetch_uk_legislation_search(params)
-        return [types.TextContent(type="text", text=text[:MAX_RESPONSE_CHARS])]
+        payload = _uk_legislation_atom_to_shape_payload(text)
+        return [
+            types.TextContent(
+                type="text", text=to_records_text(payload)[:MAX_RESPONSE_CHARS]
+            )
+        ]
     except Exception as e:
         log.error(f"Error searching UK legislation: {e}")
         raise
@@ -119,9 +231,10 @@ TOOLS.append(
         name="uk-legislation-search",
         description=(
             "Search legislation.gov.uk across all legislation by title, free "
-            "text, type, and/or year. Returns Atom XML."
+            "text, type, and/or year."
         ),
         inputSchema=UkLegislationSearchParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["uk-legislation-search"] = handle_uk_legislation_search

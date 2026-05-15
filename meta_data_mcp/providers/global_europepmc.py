@@ -29,7 +29,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -37,6 +38,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "global-europepmc"
 BASE_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest"
+
+# Records-shape adapter constants
+_MAX_ABSTRACT_CHARS = 500
 
 # Europe PMC fullTextXML endpoint returns XML.
 _XML_HEADERS = {"Accept": "application/xml"}
@@ -86,16 +90,104 @@ def fetch_europepmc_search(params: EuropePmcSearchParams) -> dict:
     return response.json()
 
 
+def _europepmc_search_to_shape_payload(data: dict) -> dict:
+    """Adapt Europe PMC's ``/search`` response to the records shape primitive.
+
+    Europe PMC wraps results in ``{hitCount, nextCursorMark, resultList: {result: [...]}}``;
+    each result carries id, source, pmid, doi, title, authorString,
+    journalTitle, pubYear, pubType, and isOpenAccess.
+    """
+    result_list = data.get("resultList") if isinstance(data, dict) else None
+    raw_rows = result_list.get("result", []) if isinstance(result_list, dict) else []
+    rows: list[dict[str, Any]] = []
+    for art in raw_rows:
+        if not isinstance(art, dict):
+            continue
+        abstract = art.get("abstractText") or ""
+        if isinstance(abstract, str) and len(abstract) > _MAX_ABSTRACT_CHARS:
+            abstract = abstract[:_MAX_ABSTRACT_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "id": art.get("id"),
+                "source": art.get("source"),
+                "pmid": art.get("pmid"),
+                "doi": art.get("doi"),
+                "title": art.get("title"),
+                "authors": art.get("authorString"),
+                "journal": art.get("journalTitle"),
+                "pubYear": art.get("pubYear"),
+                "pubType": art.get("pubType"),
+                "isOpenAccess": art.get("isOpenAccess"),
+                "citedByCount": art.get("citedByCount"),
+                "abstract": abstract,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "id", "type": "string", "description": "Europe PMC id"},
+                {
+                    "name": "source",
+                    "type": "string",
+                    "description": "Source database (MED, PMC, etc.)",
+                },
+                {"name": "pmid", "type": "string", "description": "PubMed id"},
+                {"name": "doi", "type": "string", "description": "DOI"},
+                {"name": "title", "type": "string", "description": "Article title"},
+                {"name": "authors", "type": "string", "description": "Author string"},
+                {"name": "journal", "type": "string", "description": "Journal title"},
+                {
+                    "name": "pubYear",
+                    "type": "number",
+                    "description": "Publication year",
+                },
+                {
+                    "name": "pubType",
+                    "type": "string",
+                    "description": "Publication type",
+                },
+                {
+                    "name": "isOpenAccess",
+                    "type": "string",
+                    "description": "Open-access flag",
+                },
+                {
+                    "name": "citedByCount",
+                    "type": "number",
+                    "description": "Citation count",
+                },
+                {
+                    "name": "abstract",
+                    "type": "string",
+                    "description": "Abstract (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["source", "pubType", "journal"],
+    }
+    if isinstance(data, dict):
+        if "hitCount" in data:
+            payload["hitCount"] = data["hitCount"]
+        if "nextCursorMark" in data:
+            payload["nextCursorMark"] = data["nextCursorMark"]
+    return payload
+
+
 async def handle_europepmc_search(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the europepmc-search tool call."""
+    """Handle the europepmc-search tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         if not arguments or "query" not in arguments:
             raise ValueError("query is required")
         params = EuropePmcSearchParams(**arguments)
         data = fetch_europepmc_search(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _europepmc_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching Europe PMC: {e}")
         raise
@@ -106,6 +198,7 @@ TOOLS.append(
         name="europepmc-search",
         description="Search Europe PMC biomedical literature with cursor-based pagination.",
         inputSchema=EuropePmcSearchParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["europepmc-search"] = handle_europepmc_search

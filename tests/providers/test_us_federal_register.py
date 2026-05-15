@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.us_federal_register import (
+    TOOLS,
+    _fedreg_search_to_shape_payload,
     FedRegListExecutiveOrdersParams,
     FedRegSearchDocumentsParams,
     handle_fedreg_search_documents,
@@ -13,6 +17,7 @@ from meta_data_mcp.providers.us_federal_register import (
     handle_fedreg_list_executive_orders,
     handle_fedreg_suggested_searches,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -163,3 +168,57 @@ def test_fedreg_page_schema_keeps_default_and_optional(param_model_class):
     schema = param_model_class.model_json_schema()
     assert schema["properties"]["page"]["default"] == 1
     assert "required" not in schema or "page" not in schema["required"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for fedreg-search-documents.
+# ---------------------------------------------------------------------------
+
+
+def test_fedreg_adapter_flattens_results_to_rows():
+    raw = {
+        "count": 1,
+        "results": [
+            {
+                "document_number": "2024-12345",
+                "title": "Clean Air Act amendments",
+                "type": "Rule",
+                "publication_date": "2024-06-01",
+                "agencies": [{"name": "EPA"}],
+                "html_url": "https://federalregister.gov/d/2024-12345",
+                "abstract": "Rule about CAA.",
+            }
+        ],
+    }
+    payload = _fedreg_search_to_shape_payload(raw)
+    assert payload["count"] == 1
+    row = payload["rows"][0]
+    assert row["title"] == "Clean Air Act amendments"
+    assert row["type"] == "Rule"
+    assert row["agencies"] == "EPA"
+    assert payload["default_facets"] == ["type", "agencies"]
+
+
+def test_fedreg_adapter_handles_missing_results():
+    assert _fedreg_search_to_shape_payload({})["rows"] == []
+
+
+def test_fedreg_search_documents_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "fedreg-search-documents")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+@pytest.mark.anyio
+async def test_fedreg_search_documents_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "count": 1,
+            "results": [{"document_number": "2024-12345", "title": "Clean Air"}],
+        }
+        mock_get.return_value.raise_for_status = Mock()
+        result = await handle_fedreg_search_documents({"term": "clean air"})
+        body = json.loads(result[0].text)
+        assert body["rows"][0]["title"] == "Clean Air"
+        assert "schema" in body

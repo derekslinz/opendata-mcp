@@ -13,11 +13,12 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 from meta_data_mcp.utils import (
+    to_records_text,
     create_mcp_server,
     http_get,
     run_server,
-    serialize_for_llm,
 )
 
 
@@ -25,6 +26,9 @@ log = logging.getLogger(__name__)
 
 PROVIDER_ID = "us-ncdeq-gis"
 BASE_URL = "https://data-ncdenr.opendata.arcgis.com"
+
+# Records-shape adapter constants
+_MAX_DESC_CHARS = 500
 
 RESOURCES: List[Any] = []
 RESOURCES_HANDLERS: dict[str, Any] = {}
@@ -63,14 +67,89 @@ def fetch_us_ncdeq_search_catalog(params: UsNcdeqSearchCatalogParams) -> Any:
     return response.json()
 
 
+def _arcgis_search_to_shape_payload(data: Any) -> dict:
+    """Adapt an ArcGIS Hub ``/api/search/v1`` JSON-API response to the
+    ``ui://meta-data-mcp/shape/records/v1`` payload.
+
+    ArcGIS returns ``{data: [{id, type, attributes: {...}}], meta}``;
+    we hoist the relevant attributes (name, type, owner, tags, source,
+    timestamps) to top-level columns.
+    """
+    raw_rows = data.get("data", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for entry in raw_rows:
+        if not isinstance(entry, dict):
+            continue
+        attrs = entry.get("attributes") or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+        tags = attrs.get("tags") or []
+        tag_csv = (
+            ", ".join(t for t in tags if isinstance(t, str))
+            if isinstance(tags, list)
+            else ""
+        )
+        snippet = attrs.get("snippet") or attrs.get("description") or ""
+        if isinstance(snippet, str) and len(snippet) > _MAX_DESC_CHARS:
+            snippet = snippet[:_MAX_DESC_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "id": entry.get("id"),
+                "name": attrs.get("name") or attrs.get("title"),
+                "type": entry.get("type") or attrs.get("type"),
+                "owner": attrs.get("owner"),
+                "source": attrs.get("source"),
+                "tags": tag_csv,
+                "created": attrs.get("created"),
+                "modified": attrs.get("modified"),
+                "url": attrs.get("url"),
+                "description": snippet,
+            }
+        )
+    return {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "id", "type": "string", "description": "ArcGIS item id"},
+                {"name": "name", "type": "string", "description": "Item name/title"},
+                {"name": "type", "type": "string", "description": "ArcGIS item type"},
+                {"name": "owner", "type": "string", "description": "Owner"},
+                {"name": "source", "type": "string", "description": "Source"},
+                {"name": "tags", "type": "string", "description": "Tags (csv)"},
+                {
+                    "name": "created",
+                    "type": "number",
+                    "description": "Created at (epoch)",
+                },
+                {
+                    "name": "modified",
+                    "type": "number",
+                    "description": "Modified at (epoch)",
+                },
+                {"name": "url", "type": "string", "description": "Source URL"},
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "Snippet (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["type", "owner", "source"],
+    }
+
+
 async def handle_us_ncdeq_search_catalog(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the us-ncdeq-search-catalog tool call."""
+    """Handle the us-ncdeq-search-catalog tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = UsNcdeqSearchCatalogParams(**(arguments or {}))
         data = fetch_us_ncdeq_search_catalog(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _arcgis_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error handling us-ncdeq-search-catalog: {e}")
         raise
@@ -81,6 +160,7 @@ TOOLS.append(
         name="us-ncdeq-search-catalog",
         description="Search NCDEQ / NC DENR ArcGIS Hub catalog.",
         inputSchema=UsNcdeqSearchCatalogParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["us-ncdeq-search-catalog"] = handle_us_ncdeq_search_catalog

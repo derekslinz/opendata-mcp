@@ -30,7 +30,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -82,14 +83,88 @@ def fetch_open_library_search_books(params: OpenLibrarySearchBooksParams) -> dic
     return response.json()
 
 
+def _openlibrary_search_to_shape_payload(data: dict) -> dict:
+    """Adapt Open Library ``/search.json`` to the records shape primitive.
+
+    Open Library returns ``{numFound, docs: [...]}`` with each doc carrying
+    key (work id), title, author_name (list), first_publish_year, language
+    (list), publisher (list), and cover_i.
+    """
+    raw_rows = data.get("docs", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for doc in raw_rows:
+        if not isinstance(doc, dict):
+            continue
+        authors = doc.get("author_name") or []
+        languages = doc.get("language") or []
+        publishers = doc.get("publisher") or []
+        rows.append(
+            {
+                "key": doc.get("key"),
+                "title": doc.get("title"),
+                "authors": ", ".join(a for a in authors if isinstance(a, str))
+                if isinstance(authors, list)
+                else "",
+                "first_publish_year": doc.get("first_publish_year"),
+                "languages": ", ".join(la for la in languages if isinstance(la, str))
+                if isinstance(languages, list)
+                else "",
+                "publishers": ", ".join(p for p in publishers[:5] if isinstance(p, str))
+                if isinstance(publishers, list)
+                else "",
+                "edition_count": doc.get("edition_count"),
+                "cover_i": doc.get("cover_i"),
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "key", "type": "string", "description": "Open Library key"},
+                {"name": "title", "type": "string", "description": "Book title"},
+                {"name": "authors", "type": "string", "description": "Authors (csv)"},
+                {
+                    "name": "first_publish_year",
+                    "type": "number",
+                    "description": "Earliest publication year",
+                },
+                {
+                    "name": "languages",
+                    "type": "string",
+                    "description": "Languages (csv)",
+                },
+                {
+                    "name": "publishers",
+                    "type": "string",
+                    "description": "Publishers (first 5, csv)",
+                },
+                {
+                    "name": "edition_count",
+                    "type": "number",
+                    "description": "Edition count",
+                },
+                {"name": "cover_i", "type": "number", "description": "Cover image id"},
+            ]
+        },
+        "default_facets": ["first_publish_year", "languages"],
+    }
+    if isinstance(data, dict) and "numFound" in data:
+        payload["numFound"] = data["numFound"]
+    return payload
+
+
 async def handle_openlibrary_search_books(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the openlibrary-search-books tool call."""
+    """Handle the openlibrary-search-books tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = OpenLibrarySearchBooksParams(**(arguments or {}))
         data = fetch_open_library_search_books(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _openlibrary_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching Open Library books: {e}")
         raise
@@ -100,6 +175,7 @@ TOOLS.append(
         name="openlibrary-search-books",
         description="Search Open Library books by title, author, or free-text query.",
         inputSchema=OpenLibrarySearchBooksParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["openlibrary-search-books"] = handle_openlibrary_search_books

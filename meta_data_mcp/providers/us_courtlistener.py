@@ -36,7 +36,8 @@ import mcp.types as types
 from pydantic import BaseModel, Field
 
 from meta_data_mcp.fields import PageInt
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -44,6 +45,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "us-courtlistener"
 BASE_URL = "https://www.courtlistener.com/api/rest/v4"
+
+# Records-shape adapter constants
+_MAX_SNIPPET_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -104,14 +108,90 @@ def fetch_courtlistener_search(params: CourtListenerSearchParams) -> dict:
     return response.json()
 
 
+def _courtlistener_search_to_shape_payload(data: dict) -> dict:
+    """Adapt CourtListener's ``/search/`` response to the records shape
+    primitive's payload.
+
+    CourtListener returns ``{count, next, previous, results: [...]}``;
+    each result varies by ``type`` (opinions, RECAP, people, oral args)
+    so we capture a defensive set of the most-common fields and let the
+    records bundle infer types for missing-sparse columns.
+    """
+    raw_rows = data.get("results", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for hit in raw_rows:
+        if not isinstance(hit, dict):
+            continue
+        citation = hit.get("citation") or hit.get("citeCount")
+        if isinstance(citation, list):
+            citation = ", ".join(c for c in citation if isinstance(c, str))
+        snippet = hit.get("snippet") or hit.get("plain_text") or ""
+        if isinstance(snippet, str) and len(snippet) > _MAX_SNIPPET_CHARS:
+            snippet = snippet[:_MAX_SNIPPET_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "id": hit.get("id"),
+                "caseName": hit.get("caseName") or hit.get("name"),
+                "court": hit.get("court") or hit.get("court_id"),
+                "dateFiled": hit.get("dateFiled"),
+                "citation": citation,
+                "docketNumber": hit.get("docketNumber"),
+                "status": hit.get("status"),
+                "snippet": snippet,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "id", "type": "number", "description": "Result id"},
+                {"name": "caseName", "type": "string", "description": "Case name"},
+                {"name": "court", "type": "string", "description": "Court id/name"},
+                {"name": "dateFiled", "type": "date", "description": "Date filed"},
+                {
+                    "name": "citation",
+                    "type": "string",
+                    "description": "Citation (csv if multiple)",
+                },
+                {
+                    "name": "docketNumber",
+                    "type": "string",
+                    "description": "Docket number",
+                },
+                {
+                    "name": "status",
+                    "type": "string",
+                    "description": "Publication status",
+                },
+                {
+                    "name": "snippet",
+                    "type": "string",
+                    "description": "Snippet (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["court", "status"],
+    }
+    if isinstance(data, dict):
+        if "count" in data:
+            payload["count"] = data["count"]
+        if "next" in data:
+            payload["next"] = data["next"]
+    return payload
+
+
 async def handle_courtlistener_search(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the courtlistener-search tool call."""
+    """Handle the courtlistener-search tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = CourtListenerSearchParams(**(arguments or {}))
         data = fetch_courtlistener_search(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _courtlistener_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching CourtListener: {e}")
         raise
@@ -125,6 +205,7 @@ TOOLS.append(
             "people/judges ('p'), or oral arguments ('oa')."
         ),
         inputSchema=CourtListenerSearchParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["courtlistener-search"] = handle_courtlistener_search

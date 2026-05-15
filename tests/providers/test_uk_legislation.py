@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.uk_legislation import (
+    TOOLS,
+    _uk_legislation_atom_to_shape_payload,
     handle_uk_legislation_search,
     handle_uk_legislation_list_by_year,
     handle_uk_legislation_get_document_xml,
@@ -10,6 +14,7 @@ from meta_data_mcp.providers.uk_legislation import (
     handle_uk_legislation_list_types,
     handle_uk_legislation_changes_feed,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -151,3 +156,44 @@ async def test_uk_legislation_changes_feed_success():
 async def test_uk_legislation_changes_feed_requires_args():
     with pytest.raises(ValueError):
         await handle_uk_legislation_changes_feed({"type": "ukpga", "year": 2018})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for uk-legislation-search.
+# ---------------------------------------------------------------------------
+
+
+def test_uk_legislation_adapter_parses_atom_feed_into_rows():
+    payload = _uk_legislation_atom_to_shape_payload(ATOM_SAMPLE)
+    assert payload["rows"][0]["title"] == "Data Protection Act 2018"
+    assert payload["rows"][0]["link"] == "https://www.legislation.gov.uk/ukpga/2018/12"
+    assert payload["default_facets"] == ["type", "year"]
+
+
+def test_uk_legislation_adapter_handles_empty_feed():
+    payload = _uk_legislation_atom_to_shape_payload(
+        '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+    )
+    assert payload["rows"] == []
+
+
+def test_uk_legislation_adapter_handles_malformed_xml():
+    assert _uk_legislation_atom_to_shape_payload("<bad")["rows"] == []
+
+
+def test_uk_legislation_search_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "uk-legislation-search")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+@pytest.mark.anyio
+async def test_uk_legislation_search_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.text = ATOM_SAMPLE
+        mock_get.return_value.raise_for_status = Mock()
+        result = await handle_uk_legislation_search({"title": "Data Protection"})
+        body = json.loads(result[0].text)
+        assert body["rows"][0]["title"] == "Data Protection Act 2018"
+        assert "schema" in body

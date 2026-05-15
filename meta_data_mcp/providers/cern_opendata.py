@@ -29,7 +29,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -37,6 +38,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "cern-opendata"
 BASE_URL = "https://opendata.cern.ch/api"
+
+# Records-shape adapter constants
+_MAX_ABSTRACT_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -74,14 +78,118 @@ def fetch_search_records(params: CERNSearchRecordsParams) -> dict:
     return response.json()
 
 
+def _cern_search_to_shape_payload(data: dict) -> dict:
+    """Adapt the CERN Invenio search response to the
+    ``ui://meta-data-mcp/shape/records/v1`` payload.
+
+    Invenio wraps results in ``{hits: {hits: [{id, metadata: {...}}]}}``;
+    we flatten the most-useful metadata fields (title, experiment, type,
+    collections, accelerator, collision energy, year, publication date)
+    to top-level columns.
+    """
+    hits_outer = data.get("hits") if isinstance(data, dict) else None
+    raw_rows = hits_outer.get("hits", []) if isinstance(hits_outer, dict) else []
+    rows: list[dict[str, Any]] = []
+    for hit in raw_rows:
+        if not isinstance(hit, dict):
+            continue
+        meta = hit.get("metadata") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        collections = meta.get("collections") or []
+        if isinstance(collections, list):
+            collection_csv = ", ".join(c for c in collections if isinstance(c, str))
+        else:
+            collection_csv = ""
+        experiment = meta.get("experiment") or ""
+        if isinstance(experiment, list):
+            experiment = ", ".join(e for e in experiment if isinstance(e, str))
+        type_obj = meta.get("type") or {}
+        record_type = (
+            type_obj.get("primary") if isinstance(type_obj, dict) else type_obj
+        )
+        abstract = meta.get("abstract")
+        if isinstance(abstract, dict):
+            abstract_text = abstract.get("description") or ""
+        else:
+            abstract_text = abstract or ""
+        if isinstance(abstract_text, str) and len(abstract_text) > _MAX_ABSTRACT_CHARS:
+            abstract_text = abstract_text[:_MAX_ABSTRACT_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "recid": hit.get("id") or meta.get("recid"),
+                "title": meta.get("title"),
+                "experiment": experiment,
+                "type": record_type,
+                "collections": collection_csv,
+                "accelerator": meta.get("accelerator"),
+                "collision_energy": meta.get("collision_energy"),
+                "year": meta.get("date_created")
+                if not meta.get("year")
+                else meta.get("year"),
+                "publication_date": meta.get("publication_date"),
+                "abstract": abstract_text,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "recid", "type": "string", "description": "Record id"},
+                {"name": "title", "type": "string", "description": "Record title"},
+                {
+                    "name": "experiment",
+                    "type": "string",
+                    "description": "Experiment(s)",
+                },
+                {"name": "type", "type": "string", "description": "Record type"},
+                {
+                    "name": "collections",
+                    "type": "string",
+                    "description": "Collection memberships (csv)",
+                },
+                {
+                    "name": "accelerator",
+                    "type": "string",
+                    "description": "Accelerator",
+                },
+                {
+                    "name": "collision_energy",
+                    "type": "string",
+                    "description": "Collision energy",
+                },
+                {"name": "year", "type": "string", "description": "Data year"},
+                {
+                    "name": "publication_date",
+                    "type": "date",
+                    "description": "Publication date",
+                },
+                {
+                    "name": "abstract",
+                    "type": "string",
+                    "description": "Abstract (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["experiment", "type", "accelerator"],
+    }
+    if isinstance(hits_outer, dict) and "total" in hits_outer:
+        payload["total"] = hits_outer["total"]
+    return payload
+
+
 async def handle_search_records(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the cern-search-records tool call."""
+    """Handle the cern-search-records tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = CERNSearchRecordsParams(**(arguments or {}))
         data = fetch_search_records(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _cern_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching CERN Open Data records: {e}")
         raise
@@ -92,6 +200,7 @@ TOOLS.append(
         name="cern-search-records",
         description="Search the CERN Open Data Portal for datasets, software, and documentation.",
         inputSchema=CERNSearchRecordsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["cern-search-records"] = handle_search_records

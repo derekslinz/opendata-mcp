@@ -30,7 +30,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -38,6 +39,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "uk-gov"
 BASE_URL = "https://data.gov.uk/api/3/action"
+
+# Records-shape adapter constants
+_MAX_NOTES_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -81,14 +85,128 @@ def fetch_uk_gov_search_datasets(params: UKGovSearchDatasetsParams) -> dict:
     return response.json()
 
 
+def _ckan_package_search_to_shape_payload(data: dict) -> dict:
+    """Adapt a CKAN ``package_search`` response to the
+    ``ui://meta-data-mcp/shape/records/v1`` payload.
+
+    Flattens the most-useful dataset fields (title, organisation, tags,
+    license, resource counts, dates) to top-level columns so the records
+    table renders without nested objects, and surfaces ``organization``,
+    ``license_title``, and ``num_resources`` as default facets.
+    """
+    result = data.get("result") if isinstance(data, dict) else None
+    raw_rows = result.get("results", []) if isinstance(result, dict) else []
+    rows: list[dict[str, Any]] = []
+    for pkg in raw_rows:
+        if not isinstance(pkg, dict):
+            continue
+        org = pkg.get("organization") or {}
+        org_title = (
+            org.get("title") or org.get("name") if isinstance(org, dict) else None
+        )
+        tags = pkg.get("tags") or []
+        tag_names = [
+            t.get("display_name") or t.get("name") for t in tags if isinstance(t, dict)
+        ]
+        groups = pkg.get("groups") or []
+        group_titles = [
+            g.get("title") or g.get("display_name") or g.get("name")
+            for g in groups
+            if isinstance(g, dict)
+        ]
+        resources = pkg.get("resources") or []
+        formats = sorted(
+            {
+                (r.get("format") or "").upper()
+                for r in resources
+                if isinstance(r, dict) and r.get("format")
+            }
+        )
+        notes = pkg.get("notes") or ""
+        if isinstance(notes, str) and len(notes) > _MAX_NOTES_CHARS:
+            notes = notes[:_MAX_NOTES_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "name": pkg.get("name"),
+                "title": pkg.get("title"),
+                "organization": org_title,
+                "license": pkg.get("license_title"),
+                "tags": ", ".join(t for t in tag_names if t),
+                "groups": ", ".join(g for g in group_titles if g),
+                "num_resources": pkg.get("num_resources")
+                or (len(resources) if resources else 0),
+                "formats": ", ".join(formats),
+                "metadata_created": pkg.get("metadata_created"),
+                "metadata_modified": pkg.get("metadata_modified"),
+                "notes": notes,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "name", "type": "string", "description": "CKAN slug"},
+                {"name": "title", "type": "string", "description": "Dataset title"},
+                {
+                    "name": "organization",
+                    "type": "string",
+                    "description": "Publishing organisation",
+                },
+                {"name": "license", "type": "string", "description": "Licence title"},
+                {"name": "tags", "type": "string", "description": "Tag names (csv)"},
+                {
+                    "name": "groups",
+                    "type": "string",
+                    "description": "Group/theme titles (csv)",
+                },
+                {
+                    "name": "num_resources",
+                    "type": "number",
+                    "description": "Resource count",
+                },
+                {
+                    "name": "formats",
+                    "type": "string",
+                    "description": "Resource formats (csv)",
+                },
+                {
+                    "name": "metadata_created",
+                    "type": "date",
+                    "description": "Catalog creation timestamp",
+                },
+                {
+                    "name": "metadata_modified",
+                    "type": "date",
+                    "description": "Catalog last-modified timestamp",
+                },
+                {
+                    "name": "notes",
+                    "type": "string",
+                    "description": "Description (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["organization", "license", "formats"],
+    }
+    if isinstance(result, dict) and "count" in result:
+        payload["count"] = result["count"]
+    return payload
+
+
 async def handle_uk_gov_search_datasets(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the uk-gov-search-datasets tool call."""
+    """Handle the uk-gov-search-datasets tool call.
+
+    Returns the response in the ``ui://meta-data-mcp/shape/records/v1``
+    payload format so the MCP Apps host renders the dataset list as a
+    faceted, sortable table.
+    """
     try:
         params = UKGovSearchDatasetsParams(**(arguments or {}))
         data = fetch_uk_gov_search_datasets(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _ckan_package_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching data.gov.uk datasets: {e}")
         raise
@@ -99,6 +217,9 @@ TOOLS.append(
         name="uk-gov-search-datasets",
         description="Search the UK Government data.gov.uk catalog (CKAN package_search).",
         inputSchema=UKGovSearchDatasetsParams.model_json_schema(),
+        # MCP Apps binding: render via the shared records shape primitive.
+        # See tests/test_ui_resource.py for the populate_by_name footgun.
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["uk-gov-search-datasets"] = handle_uk_gov_search_datasets

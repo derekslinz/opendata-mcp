@@ -35,7 +35,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -43,6 +44,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "fr-data-gouv"
 BASE_URL = "https://www.data.gouv.fr/api/1"
+
+# Records-shape adapter constants
+_MAX_DESC_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -87,14 +91,115 @@ def fetch_fr_datagouv_search_datasets(params: FRDataGouvSearchDatasetsParams) ->
     return response.json()
 
 
+def _udata_search_to_shape_payload(data: dict) -> dict:
+    """Adapt a uData ``/datasets/`` response (data.gouv.fr) to the
+    ``ui://meta-data-mcp/shape/records/v1`` payload.
+
+    uData uses ``{data: [...], total, page, page_size, next_page}``
+    rather than CKAN's ``{result: {results: [...]}}`` envelope.
+    """
+    raw_rows = data.get("data", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for ds in raw_rows:
+        if not isinstance(ds, dict):
+            continue
+        org = ds.get("organization") or {}
+        org_name = (
+            org.get("name") or org.get("acronym") if isinstance(org, dict) else None
+        )
+        tags = ds.get("tags") or []
+        if isinstance(tags, list):
+            tag_csv = ", ".join(t for t in tags if isinstance(t, str))
+        else:
+            tag_csv = ""
+        license_ = ds.get("license") or ""
+        resources = ds.get("resources") or []
+        if isinstance(resources, list):
+            formats = sorted(
+                {
+                    (r.get("format") or "").upper()
+                    for r in resources
+                    if isinstance(r, dict) and r.get("format")
+                }
+            )
+        else:
+            formats = []
+        desc = ds.get("description") or ""
+        if isinstance(desc, str) and len(desc) > _MAX_DESC_CHARS:
+            desc = desc[:_MAX_DESC_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "slug": ds.get("slug"),
+                "title": ds.get("title"),
+                "organization": org_name,
+                "license": license_,
+                "tags": tag_csv,
+                "num_resources": len(resources) if isinstance(resources, list) else 0,
+                "formats": ", ".join(formats),
+                "created_at": ds.get("created_at"),
+                "last_modified": ds.get("last_modified"),
+                "description": desc,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "slug", "type": "string", "description": "Dataset slug"},
+                {"name": "title", "type": "string", "description": "Dataset title"},
+                {
+                    "name": "organization",
+                    "type": "string",
+                    "description": "Publishing organisation",
+                },
+                {"name": "license", "type": "string", "description": "Licence id"},
+                {"name": "tags", "type": "string", "description": "Tags (csv)"},
+                {
+                    "name": "num_resources",
+                    "type": "number",
+                    "description": "Resource count",
+                },
+                {
+                    "name": "formats",
+                    "type": "string",
+                    "description": "Resource formats (csv)",
+                },
+                {
+                    "name": "created_at",
+                    "type": "date",
+                    "description": "Creation timestamp",
+                },
+                {
+                    "name": "last_modified",
+                    "type": "date",
+                    "description": "Last-modified timestamp",
+                },
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "Description (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["organization", "license", "formats"],
+    }
+    if isinstance(data, dict) and "total" in data:
+        payload["total"] = data["total"]
+    return payload
+
+
 async def handle_fr_datagouv_search_datasets(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the fr-data-gouv-search-datasets tool call."""
+    """Handle the fr-data-gouv-search-datasets tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = FRDataGouvSearchDatasetsParams(**(arguments or {}))
         data = fetch_fr_datagouv_search_datasets(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _udata_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching data.gouv.fr datasets: {e}")
         raise
@@ -105,6 +210,7 @@ TOOLS.append(
         name="fr-data-gouv-search-datasets",
         description="Search the France data.gouv.fr catalog (uData /datasets/).",
         inputSchema=FRDataGouvSearchDatasetsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["fr-data-gouv-search-datasets"] = handle_fr_datagouv_search_datasets

@@ -4,6 +4,8 @@ import pytest
 from unittest.mock import patch, Mock
 from meta_data_mcp.errors import NotFoundError
 from meta_data_mcp.providers.us_data_gov import (
+    TOOLS,
+    _datagov_search_to_shape_payload,
     list_datagov_datasets,
     DataGovListDatasetsParams,
     handle_datagov_list_datasets,
@@ -11,6 +13,7 @@ from meta_data_mcp.providers.us_data_gov import (
     DataGovGetDatasetParams,
     handle_datagov_get_dataset,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -77,6 +80,9 @@ def test_list_datagov_datasets(mock_search_response):
 
 @pytest.mark.anyio
 async def test_handle_datagov_list_datasets(mock_search_response):
+    """Handler returns the records shape primitive's payload format
+    (v2.0 Phase 4): rows + schema replace the legacy {datasets: [...]}
+    envelope."""
     with patch("httpx.get") as mock_get:
         mock_get.return_value.json.return_value = mock_search_response
         mock_get.return_value.raise_for_status = Mock()
@@ -86,7 +92,9 @@ async def test_handle_datagov_list_datasets(mock_search_response):
         assert "Consumer Complaint Database" in result[0].text
         payload = json.loads(result[0].text)
         assert payload["count"] == 1
-        assert payload["datasets"][0]["title"] == "Consumer Complaint Database"
+        assert payload["rows"][0]["title"] == "Consumer Complaint Database"
+        assert "schema" in payload
+        assert payload["after"] == "next-cursor"
 
 
 def test_fetch_datagov_dataset(mock_show_response):
@@ -161,3 +169,31 @@ async def test_handle_get_dataset_does_not_translate_non_http_errors():
     ):
         with pytest.raises(ValueError, match="boom"):
             await handle_datagov_get_dataset({"dataset_id": "missing"})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for us-datagov-list-datasets.
+# ---------------------------------------------------------------------------
+
+
+def test_datagov_adapter_flattens_search_results_to_rows(mock_search_response):
+    payload = _datagov_search_to_shape_payload(mock_search_response)
+    assert payload["count"] == 1
+    assert payload["after"] == "next-cursor"
+    row = payload["rows"][0]
+    assert row["title"] == "Consumer Complaint Database"
+    assert row["organization"] == "Consumer Financial Protection Bureau"
+    assert payload["default_facets"] == ["organization", "publisher"]
+
+
+def test_datagov_adapter_handles_empty_results():
+    payload = _datagov_search_to_shape_payload({"results": []})
+    assert payload["rows"] == []
+    assert payload["count"] == 0
+
+
+def test_list_datasets_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "us-datagov-list-datasets")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI

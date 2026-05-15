@@ -13,7 +13,9 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 from meta_data_mcp.utils import (
+    to_records_text,
     create_mcp_server,
     http_get,
     run_server,
@@ -25,6 +27,9 @@ log = logging.getLogger(__name__)
 
 PROVIDER_ID = "us-cary"
 BASE_URL = "https://data.townofcary.org"
+
+# Records-shape adapter constants
+_MAX_DESC_CHARS = 500
 
 RESOURCES: List[Any] = []
 RESOURCES_HANDLERS: dict[str, Any] = {}
@@ -63,14 +68,104 @@ def fetch_us_cary_search_catalog(params: UsCarySearchCatalogParams) -> Any:
     return response.json()
 
 
+def _socrata_views_to_shape_payload(data: Any) -> dict:
+    """Adapt a Socrata ``/api/views`` response to the
+    ``ui://meta-data-mcp/shape/records/v1`` payload.
+
+    Socrata returns a flat JSON array of view objects; we flatten the
+    most-useful catalog fields (id, name, description, category, owner,
+    attribution, view type, timestamps) to top-level columns.
+    """
+    raw_rows = data if isinstance(data, list) else []
+    rows: list[dict[str, Any]] = []
+    for view in raw_rows:
+        if not isinstance(view, dict):
+            continue
+        owner = view.get("owner") or {}
+        owner_name = (
+            owner.get("displayName") or owner.get("screenName")
+            if isinstance(owner, dict)
+            else None
+        )
+        tags = view.get("tags") or []
+        tag_csv = (
+            ", ".join(t for t in tags if isinstance(t, str))
+            if isinstance(tags, list)
+            else ""
+        )
+        desc = view.get("description") or ""
+        if isinstance(desc, str) and len(desc) > _MAX_DESC_CHARS:
+            desc = desc[:_MAX_DESC_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "id": view.get("id"),
+                "name": view.get("name"),
+                "category": view.get("category"),
+                "attribution": view.get("attribution"),
+                "owner": owner_name,
+                "viewType": view.get("viewType"),
+                "tags": tag_csv,
+                "rowsUpdatedAt": view.get("rowsUpdatedAt"),
+                "createdAt": view.get("createdAt"),
+                "description": desc,
+            }
+        )
+    return {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "id", "type": "string", "description": "Socrata dataset id"},
+                {"name": "name", "type": "string", "description": "Dataset name"},
+                {
+                    "name": "category",
+                    "type": "string",
+                    "description": "Catalog category",
+                },
+                {
+                    "name": "attribution",
+                    "type": "string",
+                    "description": "Attribution",
+                },
+                {"name": "owner", "type": "string", "description": "Owner name"},
+                {
+                    "name": "viewType",
+                    "type": "string",
+                    "description": "Socrata view type",
+                },
+                {"name": "tags", "type": "string", "description": "Tags (csv)"},
+                {
+                    "name": "rowsUpdatedAt",
+                    "type": "number",
+                    "description": "Last data update (epoch)",
+                },
+                {
+                    "name": "createdAt",
+                    "type": "number",
+                    "description": "Created at (epoch)",
+                },
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "Description (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["category", "viewType", "attribution"],
+    }
+
+
 async def handle_us_cary_search_catalog(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the us-cary-search-catalog tool call."""
+    """Handle the us-cary-search-catalog tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = UsCarySearchCatalogParams(**(arguments or {}))
         data = fetch_us_cary_search_catalog(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _socrata_views_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error handling us-cary-search-catalog: {e}")
         raise
@@ -81,6 +176,7 @@ TOOLS.append(
         name="us-cary-search-catalog",
         description="Search Cary open data catalog metadata.",
         inputSchema=UsCarySearchCatalogParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["us-cary-search-catalog"] = handle_us_cary_search_catalog
