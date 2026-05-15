@@ -1,6 +1,6 @@
 import pytest
 
-from meta_data_mcp.registry import DYNAMIC_REGISTRY, ProviderEntry, register_plugin
+from meta_data_mcp.registry import REGISTRY, ProviderEntry, register_plugin
 from meta_data_mcp.routing import RoutingEngine
 
 
@@ -51,9 +51,7 @@ async def test_route_sees_dynamically_registered_plugins():
     Now it iterates `iter_registry()` which yields both lists.
     """
     sentinel_id = "_test_dynamic_route_sentinel"
-    DYNAMIC_REGISTRY[:] = [
-        e for e in DYNAMIC_REGISTRY if e.id != sentinel_id
-    ]  # clean any prior run
+    REGISTRY.remove(sentinel_id)  # clean any prior run
     try:
         register_plugin(
             ProviderEntry(
@@ -75,4 +73,4 @@ async def test_route_sees_dynamically_registered_plugins():
             f"dynamic plugin not visible in route() output; got {[r.entry.id for r in results]}"
         )
     finally:
-        DYNAMIC_REGISTRY[:] = [e for e in DYNAMIC_REGISTRY if e.id != sentinel_id]
+        REGISTRY.remove(sentinel_id)
