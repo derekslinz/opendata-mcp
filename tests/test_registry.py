@@ -5,6 +5,7 @@ from meta_data_mcp.registry import (
     DOMAINS,
     REGIONS,
     REGISTRY,
+    ProviderEntry,
     _check_registry_vocabulary,
     all_ids,
     find_providers,
@@ -111,3 +112,86 @@ def test_list_domains_is_subset_of_controlled_vocabulary():
 
 def test_list_regions_is_subset_of_controlled_vocabulary():
     assert set(list_regions()).issubset(set(REGIONS))
+
+
+# ---------------------------------------------------------------------------
+# Registry.remove() must keep _static_count consistent so dynamic() never
+# silently drops newly added entries. Regression for PR #58 review comment
+# discussion_r3249823414 — the original implementation updated _entries and
+# _by_id but never touched _static_count, so removing a static then adding
+# a dynamic produced an empty dynamic() result.
+# ---------------------------------------------------------------------------
+
+
+def _make_entry(eid: str, server_name: str | None = None) -> ProviderEntry:
+    return ProviderEntry(
+        id=eid,
+        server_name=server_name or eid.replace("_", "-"),
+        title=f"Test entry {eid}",
+        description="Used only by the registry-isolation tests.",
+        domains=("statistics",),
+        regions=("global",),
+        keywords=(eid,),
+        homepage="https://example.invalid/",
+    )
+
+
+def test_remove_static_then_add_dynamic_remains_visible():
+    """After removing a *static* entry, a subsequently added dynamic entry
+    must still appear in ``dynamic()`` — i.e. ``_static_count`` was
+    decremented so the slice frontier didn't lap the new entry."""
+    snap = REGISTRY.snapshot()
+    try:
+        # Pick a real static id (alphabetically first) to remove.
+        victim_id = next(iter(REGISTRY)).id
+        assert REGISTRY.remove(victim_id) is True
+
+        sentinel = _make_entry("_v2_phase0_sentinel")
+        assert REGISTRY.add(sentinel) is True
+
+        dyn = REGISTRY.dynamic()
+        assert any(e.id == sentinel.id for e in dyn), (
+            "Newly added dynamic entry disappeared from dynamic() — "
+            "Registry.remove() failed to decrement _static_count."
+        )
+    finally:
+        REGISTRY.restore(snap)
+
+
+def test_remove_static_keeps_dynamic_slice_correct_with_existing_dynamics():
+    """Same invariant when there's already a dynamic entry: removing a
+    static must not shift the dynamic frontier so as to swallow the
+    pre-existing dynamic."""
+    snap = REGISTRY.snapshot()
+    try:
+        existing_dyn = _make_entry("_v2_phase0_pre_existing_dyn")
+        REGISTRY.add(existing_dyn)
+        assert any(e.id == existing_dyn.id for e in REGISTRY.dynamic())
+
+        victim_id = next(iter(REGISTRY)).id
+        REGISTRY.remove(victim_id)
+
+        dyn_after = REGISTRY.dynamic()
+        ids_after = {e.id for e in dyn_after}
+        assert existing_dyn.id in ids_after, (
+            "Pre-existing dynamic entry vanished from dynamic() after a "
+            "static removal — _static_count drifted past it."
+        )
+    finally:
+        REGISTRY.restore(snap)
+
+
+def test_remove_dynamic_leaves_static_count_alone():
+    """Removing a dynamic entry must NOT decrement _static_count."""
+    snap = REGISTRY.snapshot()
+    try:
+        before = REGISTRY.snapshot()[2]  # _static_count
+        sentinel = _make_entry("_v2_phase0_dyn_only")
+        REGISTRY.add(sentinel)
+        REGISTRY.remove(sentinel.id)
+        after = REGISTRY.snapshot()[2]
+        assert after == before, (
+            f"Removing a dynamic entry shifted _static_count: {before} -> {after}"
+        )
+    finally:
+        REGISTRY.restore(snap)
