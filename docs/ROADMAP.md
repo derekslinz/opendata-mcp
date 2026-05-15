@@ -17,14 +17,14 @@ Meta-data-mcp is evolving from a simple provider registry into an intelligent di
 - ✅ 4 scoring strategies: `TokenScorer`, `FuzzyScorer`, `MetadataScorer`, `SimpleSemanticScorer`
 - ✅ LRU caching with TTL (`OrderedDict` in `RoutingEngine`, default `cache_size=1000`, `cache_ttl_seconds=3600`)
 - ✅ Explanation tool: `opendata-explain-choice` (`providers/meta_data_mcp.py:789`)
-- ✅ Discovery tools: `opendata-find-providers`, `opendata-list-domains`, `opendata-list-regions`, `opendata-describe-provider`
-- ✅ CLI: `run`, `setup`, `remove`, `cleanup`, `inspect`, `list`, `info`, `version` (`meta_data_mcp/cli.py`)
+- ✅ Discovery tools: `opendata-find-providers`, `opendata-list-domains`, `opendata-list-regions`, `opendata-describe-provider`, `opendata-list-providers`, `opendata-create-plugin`, `opendata-draft-spec`
+- ✅ CLI: `run`, `version`, `info`, `setup`, `remove`, `cleanup`, `inspect` (`meta_data_mcp/cli.py`)
 - ✅ Backward compatibility maintained
 - ✅ Provider rename: `opendata_mcp_meta` → `meta_data_mcp`
 
 ### v1.1.x — Infrastructure landed since v1.1 (Merged, not previously tracked here)
 
-These shipped via PRs #40–#42 and are not yet reflected in any version label.
+These shipped via PRs #40–#44 and are not yet reflected in any version label.
 They are dependencies for v1.3's reliability story and are partially active today.
 
 - ✅ **HTTP retry + auth-aware response cache** (`meta_data_mcp/utils.py`, PR #40)
@@ -36,7 +36,15 @@ They are dependencies for v1.3's reliability story and are partially active toda
 - ✅ **Provider health registry + `HealthScorer`** (`meta_data_mcp/health.py`, `routing.py:179`, PR #42)
   - Thread-safe failure/success tracking with time-decay back to 1.0
   - Wired into `RoutingEngine.scorers` but **default weight = 0.0** (dormant)
-  - Activation blocked on: an HTTP error-translation hook (provisionally named `translate_http_error`, not yet implemented in `utils.py`) that classifies responses and calls `record_failure` / `record_success`. Tracked under v1.2 below.
+  - Activation blocked on: an HTTP error-translation hook (provisionally named `translate_http_error`, implemented in `errors.py` per PR #43 but not yet called from `utils.py`) that classifies responses and calls `record_failure` / `record_success`. Tracked under v1.2 below.
+- ✅ **`ProviderError` hierarchy + http→domain translator** (`meta_data_mcp/errors.py`, PR #43)
+  - Subclasses: `BadRequestError` (400/422), `NotFoundError` (404), `AuthError` (401/403), `RateLimitError` (429 with `retry_after`), `UpstreamError` (5xx), `NetworkError` (httpx connect/read failures)
+  - `translate_http_error(provider, exc)` maps `httpx.HTTPStatusError` / `httpx.RequestError` to the right subclass; `str(err)` is URL-free for safe LLM-client exposure
+  - **Adoption: 1 / 66 providers** (`us_data_gov`). Sweep tracked under v1.2 below.
+- ✅ **Shared Pydantic parameter types** (`meta_data_mcp/fields.py`, PR #44)
+  - `NonEmptyStr`, `Slug` (`^[a-z0-9-]+$`), `PageInt` (`default=1, ge=1`), `PageSize` (`default=20, ge=1, le=1000`)
+  - Project-wide validation policy: providers stop re-declaring `min_length=1` and `ge=1` inline
+  - **Adoption: 4 / 66 providers** (`us_noaa_awc`, `us_federal_register`, `us_courtlistener`, `global_overpass`). Sweep tracked under v1.2 below.
 
 ## v1.2: Hierarchical Discovery + Health Activation (Planned, in design)
 
@@ -49,9 +57,11 @@ is no longer realistic — design has not produced code. Re-baseline below.
 
 ### Carry-over work from v1.1.x
 
-- [ ] Add an HTTP error-translation hook in `utils.py` (provisionally `translate_http_error`) that inspects responses/exceptions in `http_get`'s error path and calls `record_failure` / `record_success`, so `HealthScorer` produces non-trivial signal
-- [ ] Raise the default `health` weight in `RoutingEngine.weights` once feed exists (currently 0.0)
-- [ ] Migrate the remaining 65 providers to `ProviderConfig`
+- [ ] Wire `translate_http_error` (from `errors.py`, PR #43) into `http_get`'s error path in `utils.py` so it classifies responses and calls `health.record_failure` / `health.record_success`, feeding the dormant `HealthScorer`
+- [ ] Raise the default `health` weight in `RoutingEngine.weights` once the feed exists (currently `0.0`)
+- [ ] Migrate the remaining 65 providers to `ProviderConfig` (1/66 today: `au_data_gov`)
+- [ ] Migrate the remaining 65 providers to call `translate_http_error` in their handlers (1/66 today: `us_data_gov`)
+- [ ] Migrate the remaining 62 providers to use `NonEmptyStr` / `Slug` / `PageInt` / `PageSize` from `fields.py` (4/66 today: providers from PR #36 follow-up)
 - [ ] Have `http_get` consume `ProviderConfig` directly instead of accepting `base_url`/auth per-call (noted as "future work" in `provider_config.py:6`)
 
 ### Scope
@@ -337,6 +347,8 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 | Cache hit rate | >90% | >85% | >80% |
 | Provider coverage | 66 | 66 | Dynamic |
 | `ProviderConfig` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
+| `errors.py` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
+| `fields.py` adoption | 4 / 66 | 66 / 66 | 66 / 66 |
 | `HealthScorer` weight | 0.0 (dormant) | >0 | >0 |
 | User satisfaction | TBD | >4/5 | >4.5/5 |
 
@@ -363,7 +375,7 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 
 **Last Updated**: 2026-05-15  
 **Maintained By**: meta-data-mcp team  
-**Status**: v1.1 merged + v1.1.x infra (PRs #40–#42) merged; v1.2 in design phase, 0% implemented
+**Status**: v1.1 merged + v1.1.x infra (PRs #40–#44) merged; v1.2 in design phase, 0% implemented
 
 > Note: `docs/development-roadmap.md` is the legacy OpenDataMCP-era roadmap and is
 > superseded by this file. It should be removed in a follow-up cleanup.
