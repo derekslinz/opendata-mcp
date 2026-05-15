@@ -1,0 +1,106 @@
+id: global_nvd_cve
+server_name: global-nvd-cve
+title: NVD CVE Database
+base_url: https://services.nvd.nist.gov
+description: "NIST National Vulnerability Database CVE 2.0 API — search and fetch CVE records by keyword, CPE name, CVSS v3 severity, or publish/modify date range. Includes CVE change history."
+homepage: https://nvd.nist.gov/developers/vulnerabilities
+domains:
+- security
+- government
+regions:
+- us
+- global
+keywords:
+- cve
+- vulnerability
+- security
+- advisory
+- nvd
+- nist
+- cvss
+- cpe
+- exploit
+tools:
+- name: nvd-search-cves
+  description: 'Search the NVD CVE 2.0 database. Combine any of: keywordSearch (free-text), cpeName (CPE 2.3), cvssV3Severity (NONE|LOW|MEDIUM|HIGH|CRITICAL), pubStartDate/pubEndDate, lastModStartDate/lastModEndDate. Returns up to 2000 results per page; paginate with startIndex.'
+  endpoint: /rest/json/cves/2.0
+  response_format: json
+  params:
+  - name: keywordSearch
+    type: str
+    required: false
+    description: Free-text search across CVE descriptions (e.g. 'log4j RCE').
+  - name: cveId
+    type: str
+    required: false
+    description: "Specific CVE id (e.g. CVE-2024-1234) — returns just that one record."
+  - name: cpeName
+    type: str
+    required: false
+    description: CPE 2.3 name filter, e.g. cpe:2.3:o:linux:linux_kernel:6.6.1:*:*:*:*:*:*:*
+  - name: cvssV3Severity
+    type: str
+    required: false
+    description: 'Severity bucket: NONE, LOW, MEDIUM, HIGH, or CRITICAL.'
+  - name: pubStartDate
+    type: str
+    required: false
+    description: "ISO 8601 (e.g. 2024-01-01T00:00:00.000) — CVEs published on/after this date."
+  - name: pubEndDate
+    type: str
+    required: false
+    description: "ISO 8601 — CVEs published on/before this date."
+  - name: lastModStartDate
+    type: str
+    required: false
+    description: "ISO 8601 — CVEs last-modified on/after this date."
+  - name: lastModEndDate
+    type: str
+    required: false
+    description: "ISO 8601 — CVEs last-modified on/before this date."
+  - name: resultsPerPage
+    type: int
+    required: false
+    description: Results per page (max 2000).
+    default: 20
+  - name: startIndex
+    type: int
+    required: false
+    description: Offset for pagination (0-indexed).
+    default: 0
+- name: nvd-get-cve
+  description: Fetch a single CVE record by id. Convenience wrapper over search.
+  endpoint: /rest/json/cves/2.0
+  response_format: json
+  params:
+  - name: cveId
+    type: str
+    required: true
+    description: CVE id, e.g. CVE-2021-44228.
+- name: nvd-cve-history
+  description: List CVE change-history events. Filter by CVE id or change date range; paginate with startIndex.
+  endpoint: /rest/json/cvehistory/2.0
+  response_format: json
+  params:
+  - name: cveId
+    type: str
+    required: false
+    description: Specific CVE id.
+  - name: changeStartDate
+    type: str
+    required: false
+    description: "ISO 8601 — changes on/after this date."
+  - name: changeEndDate
+    type: str
+    required: false
+    description: "ISO 8601 — changes on/before this date."
+  - name: resultsPerPage
+    type: int
+    required: false
+    description: Results per page.
+    default: 20
+  - name: startIndex
+    type: int
+    required: false
+    description: Offset for pagination.
+    default: 0

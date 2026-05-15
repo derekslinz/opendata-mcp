@@ -50,6 +50,7 @@ DOMAINS: tuple[str, ...] = (
     "biology",
     "chemistry",
     "networking",
+    "security",
 )
 
 REGIONS: tuple[str, ...] = (
@@ -327,6 +328,27 @@ REGISTRY: tuple[ProviderEntry, ...] = (
         regions=("global", "us"),
         keywords=("met", "museum", "art", "collection", "metropolitan"),
         homepage="https://www.metmuseum.org/art/collection",
+    ),
+    ProviderEntry(
+        id="global_nvd_cve",
+        server_name="global-nvd-cve",
+        title="NVD CVE Database",
+        description="NIST National Vulnerability Database CVE 2.0 API — search and fetch CVE records by keyword, CPE name, CVSS v3 severity, or publish/modify date range. Includes CVE change history.",
+        domains=("security", "government"),
+        regions=("us", "global"),
+        keywords=(
+            "cve",
+            "vulnerability",
+            "security",
+            "advisory",
+            "nvd",
+            "nist",
+            "cvss",
+            "cpe",
+            "exploit",
+        ),
+        homepage="https://nvd.nist.gov/developers/vulnerabilities",
+        license_note="NVD data is in the public domain; no attribution required. Set NVD_API_KEY env var for higher rate limits.",
     ),
     ProviderEntry(
         id="global_openalex",
