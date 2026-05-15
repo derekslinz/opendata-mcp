@@ -287,3 +287,91 @@ def test_http_get_retries_env_var_negative_treated_as_zero(monkeypatch):
         utils.http_get("https://example.test/api")
 
     assert mock_get.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# provider= kwarg: health-registry feedback + ProviderError translation
+# ---------------------------------------------------------------------------
+
+
+def test_http_get_with_provider_records_success(monkeypatch):
+    """Successful response records a health success for the provider."""
+    from meta_data_mcp import health
+
+    health.reset()
+    utils._response_cache.clear()
+
+    ok = _response("ok", status_code=200)
+    mock_get = Mock(side_effect=[ok])
+    monkeypatch.setattr(utils.httpx, "get", mock_get)
+
+    # Seed a failure so we can observe the success undoing it.
+    health.record_failure("test-provider")
+    assert health.health_score("test-provider") < 1.0
+
+    result = utils.http_get("https://example.test/api", provider="test-provider")
+    assert result is ok
+    assert health.health_score("test-provider") == 1.0
+
+
+def test_http_get_with_provider_translates_404(monkeypatch):
+    """A 404 with provider= raises NotFoundError and records a failure."""
+    from meta_data_mcp import health
+    from meta_data_mcp.errors import NotFoundError
+
+    health.reset()
+    utils._response_cache.clear()
+    monkeypatch.setattr(utils.time, "sleep", lambda s: None)
+
+    not_found = _response("nope", status_code=404)
+    mock_get = Mock(side_effect=[not_found])
+    monkeypatch.setattr(utils.httpx, "get", mock_get)
+
+    with pytest.raises(NotFoundError) as exc_info:
+        utils.http_get("https://example.test/missing", provider="test-provider")
+
+    err = exc_info.value
+    assert err.provider == "test-provider"
+    assert err.status == 404
+    assert "example.test" not in str(err)
+    assert health.health_score("test-provider") < 1.0
+
+
+def test_http_get_with_provider_translates_network_error(monkeypatch):
+    """A pre-response network error raises NetworkError and records a failure."""
+    from meta_data_mcp import health
+    from meta_data_mcp.errors import NetworkError
+
+    health.reset()
+    utils._response_cache.clear()
+
+    def _boom(*_args, **_kwargs):
+        raise httpx.ConnectError("connect refused")
+
+    monkeypatch.setattr(utils.httpx, "get", _boom)
+
+    with pytest.raises(NetworkError) as exc_info:
+        utils.http_get("https://example.test/api", provider="test-provider")
+
+    assert exc_info.value.provider == "test-provider"
+    assert exc_info.value.status is None
+    assert health.health_score("test-provider") < 1.0
+
+
+def test_http_get_without_provider_keeps_raw_httpx_errors(monkeypatch):
+    """Without provider=, http_get preserves legacy raw-httpx behavior."""
+    from meta_data_mcp import health
+
+    health.reset()
+    utils._response_cache.clear()
+    monkeypatch.setattr(utils.time, "sleep", lambda s: None)
+
+    not_found = _response("nope", status_code=404)
+    mock_get = Mock(side_effect=[not_found])
+    monkeypatch.setattr(utils.httpx, "get", mock_get)
+
+    # No provider= → raw httpx.HTTPStatusError, no health side-effect.
+    with pytest.raises(httpx.HTTPStatusError):
+        utils.http_get("https://example.test/missing")
+
+    assert health.health_score("test-provider") == 1.0

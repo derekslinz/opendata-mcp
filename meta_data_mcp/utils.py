@@ -168,6 +168,7 @@ def http_get(
     timeout: float = 10.0,
     headers: dict[str, str] | None = None,
     cache_ttl: float | None = None,
+    provider: str | None = None,
 ) -> httpx.Response:
     """Perform a GET request with sensible defaults for open-data APIs.
 
@@ -185,6 +186,11 @@ def http_get(
       ``OPENDATA_MCP_HTTP_RETRIES`` env var, default 2 retries = 3 attempts).
       Honors ``Retry-After`` when present (capped at 30s); otherwise uses
       capped exponential backoff. Only successful responses are cached.
+    - When ``provider`` is set, error responses are translated to the
+      :mod:`meta_data_mcp.errors` ``ProviderError`` hierarchy and the
+      :mod:`meta_data_mcp.health` registry is updated (record_success on 2xx,
+      record_failure on non-recoverable error). When ``provider`` is ``None``
+      the function preserves the legacy raw-httpx exception behavior.
 
     Args:
         url: The endpoint URL.
@@ -193,6 +199,8 @@ def http_get(
         headers: Optional header overrides merged on top of defaults.
         cache_ttl: Seconds to cache this response. ``None`` uses the global
             default (``OPENDATA_MCP_CACHE_TTL`` env var, default 0 = off).
+        provider: Stable provider id (e.g. ``"us-data-gov"``). When set,
+            enables health-registry feedback and ProviderError translation.
 
     Returns:
         The httpx.Response (already status-checked). When served from cache
@@ -230,13 +238,23 @@ def http_get(
         max_attempts = _DEFAULT_HTTP_RETRIES + 1
     response: httpx.Response | None = None
     for attempt in range(max_attempts):
-        response = httpx.get(
-            url,
-            params=params,
-            timeout=timeout,
-            headers=merged_headers,
-            follow_redirects=True,
-        )
+        try:
+            response = httpx.get(
+                url,
+                params=params,
+                timeout=timeout,
+                headers=merged_headers,
+                follow_redirects=True,
+            )
+        except httpx.RequestError as e:
+            # Network/connect/read failure before a response came back.
+            if provider is not None:
+                from meta_data_mcp import health
+                from meta_data_mcp.errors import translate_http_error
+
+                health.record_failure(provider, status=None)
+                raise translate_http_error(provider, e) from e
+            raise
         status = getattr(response, "status_code", None)
         is_retryable = isinstance(status, int) and (
             status == 429 or 500 <= status < 600
@@ -260,7 +278,22 @@ def http_get(
         time.sleep(sleep_for)
 
     assert response is not None  # loop runs at least once
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        if provider is not None:
+            from meta_data_mcp import health
+            from meta_data_mcp.errors import translate_http_error
+
+            status_code = getattr(e.response, "status_code", None)
+            health.record_failure(provider, status=status_code)
+            raise translate_http_error(provider, e) from e
+        raise
+
+    if provider is not None:
+        from meta_data_mcp import health
+
+        health.record_success(provider)
 
     if effective_ttl > 0 and cache_key is not None:
         _response_cache.set(cache_key, response, ttl=effective_ttl)

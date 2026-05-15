@@ -16,12 +16,11 @@ Usage:
 import logging
 from typing import Any, List, Optional, Sequence
 
-import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field, ValidationError
 
-from meta_data_mcp.errors import ProviderError, translate_http_error
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.errors import ProviderError
+from meta_data_mcp.utils import http_get, to_json_text
 
 PROVIDER_ID = "us-data-gov"
 
@@ -72,8 +71,9 @@ def list_datagov_datasets(params: DataGovListDatasetsParams) -> dict:
     if params.org_slug:
         query_params["org_slug"] = params.org_slug
 
-    response = httpx.get(SEARCH_URL, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        SEARCH_URL, params=query_params, timeout=10.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -117,11 +117,9 @@ async def handle_datagov_list_datasets(
         return [
             types.TextContent(type="text", text=to_json_text(output, max_chars=20000))
         ]
-    except ProviderError:
-        raise
-    except httpx.HTTPError as e:
+    except ProviderError as e:
         log.error(f"Error listing Data.gov datasets: {e}")
-        raise translate_http_error(PROVIDER_ID, e) from e
+        raise
 
 
 TOOLS.append(
@@ -156,8 +154,9 @@ def fetch_datagov_dataset(params: DataGovGetDatasetParams) -> dict:
     dataset_id = params.dataset_id.strip()
     query_params = {"q": dataset_id, "per_page": 25}
 
-    response = httpx.get(SEARCH_URL, params=query_params, timeout=10.0)
-    response.raise_for_status()
+    response = http_get(
+        SEARCH_URL, params=query_params, timeout=10.0, provider=PROVIDER_ID
+    )
     data = response.json()
 
     target = _normalize_dataset_key(dataset_id)
@@ -195,11 +194,9 @@ async def handle_datagov_get_dataset(
     try:
         result = fetch_datagov_dataset(params)
         return [types.TextContent(type="text", text=to_json_text(result))]
-    except ProviderError:
-        raise
-    except httpx.HTTPError as e:
+    except ProviderError as e:
         log.error(f"Error fetching Data.gov dataset: {e}")
-        raise translate_http_error(PROVIDER_ID, e) from e
+        raise
 
 
 TOOLS.append(
