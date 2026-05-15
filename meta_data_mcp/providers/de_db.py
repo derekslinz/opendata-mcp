@@ -18,6 +18,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
@@ -55,16 +56,60 @@ def fetch_db_stations(params: DBStationParams) -> list:
     return response.json()
 
 
+def _db_stations_to_shape_payload(data: Any) -> dict:
+    """Adapt the public-transport-rest DB station search response to the
+    geofeatures payload.
+
+    Station records carry coordinates either at the top level
+    (``{latitude, longitude, ...}``) or under a nested ``location``
+    block (``{location: {latitude, longitude}}``). Both shapes are
+    handled. Records lacking usable coordinates are dropped.
+    """
+    features: list[dict] = []
+    if not isinstance(data, list):
+        return {"features": features}
+    for station in data:
+        if not isinstance(station, dict):
+            continue
+        lat = station.get("latitude")
+        lon = station.get("longitude")
+        if (lat is None or lon is None) and isinstance(station.get("location"), dict):
+            lat = station["location"].get("latitude")
+            lon = station["location"].get("longitude")
+        try:
+            lat_f = float(lat) if lat is not None else None
+            lon_f = float(lon) if lon is not None else None
+        except (TypeError, ValueError):
+            continue
+        if lat_f is None or lon_f is None:
+            continue
+        if not (-90.0 <= lat_f <= 90.0) or not (-180.0 <= lon_f <= 180.0):
+            continue
+        attrs = {
+            k: v
+            for k, v in station.items()
+            if k not in ("latitude", "longitude", "location")
+        }
+        features.append({"lat": lat_f, "lon": lon_f, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_list_stations(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the db-list-stations tool call."""
+    """Handle the db-list-stations tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     try:
         if not arguments or "search" not in arguments:
             raise ValueError("search term is required")
         params = DBStationParams(**arguments)
         data = fetch_db_stations(params)
-        return [types.TextContent(type="text", text=to_json_text(data))]
+        payload = _db_stations_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_json_text(payload))]
     except Exception as e:
         log.error(f"Error listing DB stations: {e}")
         raise
@@ -75,6 +120,10 @@ TOOLS.append(
         name="db-list-stations",
         description="Search for stations in the Deutsche Bahn rail network (live data).",
         inputSchema=DBStationParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["db-list-stations"] = handle_list_stations

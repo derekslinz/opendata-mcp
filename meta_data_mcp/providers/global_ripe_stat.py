@@ -32,6 +32,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 log = logging.getLogger(__name__)
@@ -508,16 +509,56 @@ def fetch_ripestat_geoloc(params: RIPEStatGeolocParams) -> dict:
     return response.json()
 
 
+def _ripestat_geoloc_to_shape_payload(data: Any) -> dict:
+    """Adapt the RIPEstat ``/data/geoloc`` response to the geofeatures
+    payload contract.
+
+    The response carries ``data.locations: [{latitude, longitude, ...}]``
+    with one entry per geolocation record found for the resource (an IP
+    or prefix may map to multiple cities). Entries lacking usable
+    coordinates are dropped silently.
+    """
+    features: list[dict] = []
+    if not isinstance(data, dict):
+        return {"features": features}
+    locations = data.get("data", {}).get("locations")
+    if not isinstance(locations, list):
+        return {"features": features}
+    for loc in locations:
+        if not isinstance(loc, dict):
+            continue
+        lat_raw = loc.get("latitude")
+        lon_raw = loc.get("longitude")
+        try:
+            lat = float(lat_raw) if lat_raw is not None else None
+            lon = float(lon_raw) if lon_raw is not None else None
+        except (TypeError, ValueError):
+            continue
+        if lat is None or lon is None:
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        attrs = {k: v for k, v in loc.items() if k not in ("latitude", "longitude")}
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_ripestat_geoloc(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the ripestat-geoloc tool call."""
+    """Handle the ripestat-geoloc tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     try:
         if not arguments or "resource" not in arguments:
             raise ValueError("resource is required")
         params = RIPEStatGeolocParams(**arguments)
         data = fetch_ripestat_geoloc(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _ripestat_geoloc_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching RIPEstat geoloc: {e}")
         raise
@@ -528,6 +569,10 @@ TOOLS.append(
         name="ripestat-geoloc",
         description="Get the geolocation (country, coordinates) of an IP address or prefix using RIPE NCC data.",
         inputSchema=RIPEStatGeolocParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["ripestat-geoloc"] = handle_ripestat_geoloc

@@ -1,14 +1,19 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.global_opensky import (
+    TOOLS,
+    _opensky_states_to_shape_payload,
     handle_get_states_all,
     handle_get_states_by_aircraft,
     handle_get_flights_aircraft,
     handle_get_flights_arrival,
     handle_get_flights_departure,
 )
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 
 
 @pytest.fixture
@@ -18,10 +23,34 @@ def anyio_backend():
 
 @pytest.mark.anyio
 async def test_opensky_states_all_success():
+    """Now returns the geofeatures shape payload — coords lift to top-level
+    lat/lon and named fields go into attrs."""
     with patch("httpx.get") as mock_get:
         mock_get.return_value.json.return_value = {
             "time": 1700000000,
-            "states": [["abc123", "AAL123"]],
+            "states": [
+                # Indexed: icao24, callsign, country, time_pos, last_contact,
+                #         lon, lat, baro_alt, on_ground, velocity, ...
+                [
+                    "abc123",
+                    "AAL123  ",
+                    "United States",
+                    1700000000,
+                    1700000000,
+                    -74.0,
+                    40.5,
+                    11000.0,
+                    False,
+                    230.5,
+                    270.0,
+                    None,
+                    None,
+                    11000.0,
+                    "1200",
+                    False,
+                    0,
+                ]
+            ],
         }
         mock_get.return_value.raise_for_status = Mock()
 
@@ -33,12 +62,13 @@ async def test_opensky_states_all_success():
 
 @pytest.mark.anyio
 async def test_opensky_states_all_no_bbox():
+    """Empty states still produces a valid geofeatures envelope."""
     with patch("httpx.get") as mock_get:
         mock_get.return_value.json.return_value = {"time": 1, "states": []}
         mock_get.return_value.raise_for_status = Mock()
 
         result = await handle_get_states_all({})
-        assert "states" in result[0].text
+        assert "features" in result[0].text
 
 
 @pytest.mark.anyio
@@ -114,3 +144,105 @@ async def test_opensky_http_error_propagates():
         mock_get.side_effect = httpx.HTTPError("Network down")
         with pytest.raises(httpx.HTTPError):
             await handle_get_states_all({})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for opensky-get-states-all.
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_maps_state_vectors_to_features():
+    raw = {
+        "time": 1700000000,
+        "states": [
+            [
+                "abc123",
+                "AAL123  ",
+                "United States",
+                1700000000,
+                1700000000,
+                -74.0,
+                40.5,
+                11000.0,
+                False,
+                230.5,
+                270.0,
+            ]
+        ],
+    }
+    payload = _opensky_states_to_shape_payload(raw)
+    assert len(payload["features"]) == 1
+    feature = payload["features"][0]
+    assert feature["lat"] == 40.5
+    assert feature["lon"] == -74.0
+    # Callsign is trimmed (OpenSky right-pads to 8 chars)
+    assert feature["attrs"]["callsign"] == "AAL123"
+    assert feature["attrs"]["icao24"] == "abc123"
+    assert feature["attrs"]["origin_country"] == "United States"
+    assert feature["attrs"]["baro_altitude"] == 11000.0
+    assert feature["attrs"]["on_ground"] is False
+    assert feature["attrs"]["velocity"] == 230.5
+    assert feature["attrs"]["true_track"] == 270.0
+
+
+def test_adapter_handles_empty_states():
+    payload = _opensky_states_to_shape_payload({"time": 1, "states": []})
+    assert payload == {"features": []}
+
+
+def test_adapter_handles_non_dict_response():
+    assert _opensky_states_to_shape_payload("error") == {"features": []}
+    assert _opensky_states_to_shape_payload({"states": "bad"}) == {"features": []}
+
+
+def test_adapter_skips_invalid_state_vectors():
+    raw = {
+        "states": [
+            ["short"],  # too few elements
+            None,  # not a list
+            ["a", "b", "c", 1, 2, None, 40.0, 100.0],  # missing lon
+            ["a", "b", "c", 1, 2, "bad", 40.0, 100.0],  # bad lon
+            ["a", "b", "c", 1, 2, -74.0, 200.0, 100.0],  # lat out of range
+            ["ok123", "X       ", "X", 1, 2, -74.0, 40.5, 100.0],  # valid
+        ]
+    }
+    payload = _opensky_states_to_shape_payload(raw)
+    assert len(payload["features"]) == 1
+    assert payload["features"][0]["attrs"]["icao24"] == "ok123"
+
+
+def test_states_all_tool_binds_to_geofeatures_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "opensky-get-states-all")
+    assert tool.meta == {"ui": {"resourceUri": GEOFEATURES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == GEOFEATURES_URI
+
+
+@pytest.mark.anyio
+async def test_opensky_states_all_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "time": 1700000000,
+            "states": [
+                [
+                    "abc123",
+                    "AAL123  ",
+                    "United States",
+                    1700000000,
+                    1700000000,
+                    -74.0,
+                    40.5,
+                    11000.0,
+                    False,
+                    230.5,
+                    270.0,
+                ]
+            ],
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_get_states_all({})
+        body = json.loads(result[0].text)
+        assert body["features"][0]["lat"] == 40.5
+        assert body["features"][0]["lon"] == -74.0
+        assert body["features"][0]["attrs"]["icao24"] == "abc123"

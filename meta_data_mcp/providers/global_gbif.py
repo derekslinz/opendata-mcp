@@ -28,6 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -83,14 +84,58 @@ def fetch_gbif_search_occurrences(params: GBIFSearchOccurrencesParams) -> dict:
     return response.json()
 
 
+def _gbif_occurrences_to_shape_payload(data: Any) -> dict:
+    """Adapt the GBIF ``/occurrence/search`` response to the geofeatures
+    payload contract.
+
+    Each occurrence carries ``decimalLatitude`` / ``decimalLongitude``
+    when location data is available. Records without usable coordinates
+    are dropped silently — Darwin Core records are often coordinate-free
+    by design (e.g. herbarium specimens with locality strings only).
+    """
+    features: list[dict] = []
+    if not isinstance(data, dict):
+        return {"features": features}
+    results = data.get("results")
+    if not isinstance(results, list):
+        return {"features": features}
+    for occ in results:
+        if not isinstance(occ, dict):
+            continue
+        lat_raw = occ.get("decimalLatitude")
+        lon_raw = occ.get("decimalLongitude")
+        try:
+            lat = float(lat_raw) if lat_raw is not None else None
+            lon = float(lon_raw) if lon_raw is not None else None
+        except (TypeError, ValueError):
+            continue
+        if lat is None or lon is None:
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        attrs = {
+            k: v
+            for k, v in occ.items()
+            if k not in ("decimalLatitude", "decimalLongitude")
+        }
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_gbif_search_occurrences(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the gbif-search-occurrences tool call."""
+    """Handle the gbif-search-occurrences tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     try:
         params = GBIFSearchOccurrencesParams(**(arguments or {}))
         data = fetch_gbif_search_occurrences(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _gbif_occurrences_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error searching GBIF occurrences: {e}")
         raise
@@ -101,6 +146,10 @@ TOOLS.append(
         name="gbif-search-occurrences",
         description="Search GBIF occurrence records by scientific name, country, year, and coordinate flag.",
         inputSchema=GBIFSearchOccurrencesParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["gbif-search-occurrences"] = handle_gbif_search_occurrences

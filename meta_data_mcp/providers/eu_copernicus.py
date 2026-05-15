@@ -20,6 +20,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 from meta_data_mcp.utils import http_get, http_post, to_json_text
 
 # Initialize logging
@@ -143,28 +144,70 @@ def search_copernicus_products(params: SearchProductsParams) -> dict:
     return response.json()
 
 
+def _copernicus_search_results_to_shape_payload(data: Any) -> dict:
+    """Adapt the Copernicus STAC search response to the geofeatures
+    payload contract.
+
+    STAC features carry a ``bbox`` ``[min_lon, min_lat, max_lon, max_lat]``
+    that we collapse to a centroid point. The bundle is built for
+    marker clustering, so a single point per product is more useful
+    than the full footprint polygon.
+
+    Features without usable bbox values are dropped silently.
+    """
+    features: list[dict] = []
+    if not isinstance(data, dict):
+        return {"features": features}
+    stac_features = data.get("features")
+    if not isinstance(stac_features, list):
+        return {"features": features}
+    for feat in stac_features:
+        if not isinstance(feat, dict):
+            continue
+        bbox = feat.get("bbox")
+        if not isinstance(bbox, list) or len(bbox) < 4:
+            continue
+        try:
+            min_lon = float(bbox[0])
+            min_lat = float(bbox[1])
+            max_lon = float(bbox[2])
+            max_lat = float(bbox[3])
+        except (TypeError, ValueError):
+            continue
+        lat = (min_lat + max_lat) / 2.0
+        lon = (min_lon + max_lon) / 2.0
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        props = (
+            feat.get("properties", {})
+            if isinstance(feat.get("properties"), dict)
+            else {}
+        )
+        attrs: dict[str, Any] = {
+            "id": feat.get("id"),
+            "bbox": bbox,
+            "datetime": props.get("datetime"),
+            "cloud_cover": props.get("eo:cloud_cover"),
+        }
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_search_products(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the copernicus-search-products tool call."""
+    """Handle the copernicus-search-products tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format. STAC features are collapsed to bbox centroids so
+    each satellite product appears as a single map marker.
+    """
     try:
         params = SearchProductsParams(**(arguments or {}))
         data = search_copernicus_products(params)
-        # Summarize results to keep it concise for LLM
-        features = data.get("features", [])
-        summary = []
-        for feat in features:
-            props = feat.get("properties", {})
-            summary.append(
-                {
-                    "id": feat.get("id"),
-                    "datetime": props.get("datetime"),
-                    "cloud_cover": props.get("eo:cloud_cover"),
-                    "bbox": feat.get("bbox"),
-                }
-            )
+        payload = _copernicus_search_results_to_shape_payload(data)
         return [
-            types.TextContent(type="text", text=to_json_text(summary, max_chars=10000))
+            types.TextContent(type="text", text=to_json_text(payload, max_chars=10000))
         ]
     except Exception as e:
         log.error(f"Error searching Copernicus products: {e}")
@@ -176,6 +219,10 @@ TOOLS.append(
         name="copernicus-search-products",
         description="Search for satellite imagery products based on spatial and temporal criteria.",
         inputSchema=SearchProductsParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["copernicus-search-products"] = handle_search_products

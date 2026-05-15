@@ -33,6 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -98,14 +99,78 @@ def fetch_states_all(params: OpenSkyStatesAllParams) -> dict:
     return response.json()
 
 
+def _opensky_states_to_shape_payload(data: Any) -> dict:
+    """Adapt the OpenSky ``/states/all`` indexed-array response to the
+    geofeatures payload contract.
+
+    Each state vector is a positional array (per OpenSky docs):
+    ``[icao24, callsign, origin_country, time_position, last_contact,
+       longitude, latitude, baro_altitude, on_ground, velocity,
+       true_track, vertical_rate, sensors, geo_altitude, squawk, spi,
+       position_source, ...]``
+
+    Only state vectors with usable longitude+latitude (indices 5 and 6)
+    are kept. Named fields land in ``attrs`` for the bundle to render
+    in marker popups.
+    """
+    features: list[dict] = []
+    if not isinstance(data, dict):
+        return {"features": features}
+    states = data.get("states")
+    if not isinstance(states, list):
+        return {"features": features}
+    for state in states:
+        if not isinstance(state, list) or len(state) < 7:
+            continue
+        lon_raw = state[5]
+        lat_raw = state[6]
+        try:
+            lon = float(lon_raw) if lon_raw is not None else None
+            lat = float(lat_raw) if lat_raw is not None else None
+        except (TypeError, ValueError):
+            continue
+        if lon is None or lat is None:
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        # Promote a small set of well-known fields by index; the bundle
+        # only needs enough for marker tooltips, not the full vector.
+        attrs: dict[str, Any] = {}
+        if len(state) > 0:
+            attrs["icao24"] = state[0]
+        if len(state) > 1:
+            callsign = state[1]
+            attrs["callsign"] = (
+                callsign.strip() if isinstance(callsign, str) else callsign
+            )
+        if len(state) > 2:
+            attrs["origin_country"] = state[2]
+        if len(state) > 7:
+            attrs["baro_altitude"] = state[7]
+        if len(state) > 8:
+            attrs["on_ground"] = state[8]
+        if len(state) > 9:
+            attrs["velocity"] = state[9]
+        if len(state) > 10:
+            attrs["true_track"] = state[10]
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_get_states_all(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the opensky-get-states-all tool call."""
+    """Handle the opensky-get-states-all tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render live aircraft
+    positions inline via the bound shape primitive.
+    """
     try:
         params = OpenSkyStatesAllParams(**(arguments or {}))
         data = fetch_states_all(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _opensky_states_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching OpenSky all states: {e}")
         raise
@@ -116,6 +181,10 @@ TOOLS.append(
         name="opensky-get-states-all",
         description="Fetch live ADS-B state vectors for all aircraft (optionally within a bounding box).",
         inputSchema=OpenSkyStatesAllParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["opensky-get-states-all"] = handle_get_states_all
