@@ -50,6 +50,14 @@ They are dependencies for v1.3's reliability story and are partially active toda
   - Added `provider: str | None = None` kwarg to `http_get`. When set, the kernel translates `httpx.HTTPStatusError` / `RequestError` into the appropriate `ProviderError` subclass and calls `health.record_success` / `health.record_failure` automatically. When unset, legacy raw-httpx behavior is preserved.
   - Migrated `us_data_gov.py` (the existing error-aware provider) onto `http_get(..., provider=PROVIDER_ID)`, removing its now-redundant handler-level `translate_http_error` calls.
   - Activates the dormant `HealthScorer` feed end-to-end; with `health` weight still `0.0`, routing behavior is unchanged until the sweep below progresses.
+- ✅ **Kernel addition: `http_post`** (`meta_data_mcp/utils.py`)
+  - Mirrors `http_get`'s defaults (User-Agent, Accept, retry on 429/5xx with `Retry-After`, follow_redirects, `provider=` translation + health feed) for POST requests with a JSON body. Does NOT cache (POST is non-idempotent).
+  - Unlocks providers whose APIs require POST queries (e.g. OSV.dev's `/v1/query`).
+- ✅ **Security domain expansion: 3 new providers** (registry +3 → 69 total)
+  - `global_epss` — FIRST.org Exploit Prediction Scoring System; daily 30-day exploitation probability and percentile rank per CVE. No auth.
+  - `us_cisa_kev` — CISA Known Exploited Vulnerabilities catalog; authoritative US-CISA list of actively-exploited vulns under BOD 22-01. No auth.
+  - `global_osv_dev` — Google's Open Source Vulnerabilities database; aggregated advisories across GHSA, PYSEC, RustSec, Go, npm, Maven, etc. No auth. First provider to use the new `http_post` helper.
+  - All three pass `provider=` to `http_get` / `http_post`, so they feed the health registry and receive translated `ProviderError` exceptions out of the box.
 
 ## v1.2: Hierarchical Discovery + Health Activation (Planned, in design)
 
@@ -350,11 +358,11 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 |--------|------|------|------|
 | Query latency (p99) | <100ms | <150ms | <500ms |
 | Cache hit rate | >90% | >85% | >80% |
-| Provider coverage | 66 | 66 | Dynamic |
-| `ProviderConfig` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
-| `errors.py` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
-| `fields.py` adoption | 4 / 66 | 66 / 66 | 66 / 66 |
-| `http_get(provider=)` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
+| Provider coverage | 69 | 69+ | Dynamic |
+| `ProviderConfig` adoption | 1 / 69 | 69 / 69 | 69 / 69 |
+| `errors.py` adoption | 1 / 69 | 69 / 69 | 69 / 69 |
+| `fields.py` adoption | 4 / 69 | 69 / 69 | 69 / 69 |
+| `http_get(provider=)` adoption | 4 / 69 | 69 / 69 | 69 / 69 |
 | `HealthScorer` weight | 0.0 (feed live, weight gated) | >0 | >0 |
 | User satisfaction | TBD | >4/5 | >4.5/5 |
 

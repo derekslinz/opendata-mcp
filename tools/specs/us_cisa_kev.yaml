@@ -1,0 +1,34 @@
+id: us_cisa_kev
+server_name: us-cisa-kev
+title: CISA Known Exploited Vulnerabilities
+base_url: https://www.cisa.gov/sites/default/files/feeds
+description: "US-CISA Known Exploited Vulnerabilities catalog — authoritative list of vulnerabilities observed exploited in the wild, with remediation due-dates for US federal agencies under BOD 22-01."
+homepage: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
+domains:
+- security
+- government
+regions:
+- us
+- global
+keywords:
+- cisa
+- kev
+- known-exploited
+- vulnerability
+- exploit
+- cve
+- ransomware
+- bod-22-01
+license_note: "CISA KEV is in the public domain (US federal work)."
+notes: |
+  The upstream catalog is a single JSON document at
+  https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+  refreshed several times per week. The provider caches it for one hour
+  and filters client-side. Generator can't fully express the client-side
+  filtering tools, so the implementation is hand-written; this spec
+  remains as documentation.
+tools:
+- name: cisa-kev-list
+  description: List entries from the catalog, optionally filtered by vendor, product, ransomware-known-use, or date_added range.
+- name: cisa-kev-get
+  description: Look up a single CVE in the catalog by id (case-insensitive).

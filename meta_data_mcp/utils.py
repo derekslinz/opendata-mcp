@@ -301,6 +301,115 @@ def http_get(
     return response
 
 
+def http_post(
+    url: str,
+    json: Any | None = None,
+    *,
+    timeout: float = 10.0,
+    headers: dict[str, str] | None = None,
+    provider: str | None = None,
+) -> httpx.Response:
+    """Perform a POST request with the same kernel guarantees as ``http_get``.
+
+    Mirrors ``http_get`` for the subset of behaviors that make sense for POST:
+    the default User-Agent, the ``Accept: application/json`` default, the
+    follow_redirects / raise_for_status path, the 429/5xx retry loop with
+    ``Retry-After`` parsing, and the ``provider=`` opt-in for ProviderError
+    translation plus ``health.record_*`` feedback.
+
+    Cache behavior is intentionally NOT implemented — POST is non-idempotent
+    in the general case, so caching responses would be incorrect. Callers
+    that need caching on idempotent POST queries should layer their own
+    semantic cache on top.
+
+    Args:
+        url: The endpoint URL.
+        json: Optional JSON-serializable body. ``None`` sends no body.
+        timeout: Request timeout in seconds (default 10.0).
+        headers: Optional header overrides merged on top of defaults.
+        provider: Stable provider id; enables health feedback and
+            ProviderError translation when set.
+
+    Returns:
+        The httpx.Response (already status-checked).
+    """
+    merged_headers = {
+        "User-Agent": _default_user_agent(),
+        "Accept": "application/json",
+    }
+    if headers:
+        merged_headers.update(headers)
+
+    _DEFAULT_HTTP_RETRIES = 2
+    try:
+        _configured = int(
+            os.getenv("OPENDATA_MCP_HTTP_RETRIES", str(_DEFAULT_HTTP_RETRIES))
+        )
+        max_attempts = max(0, _configured) + 1
+    except (ValueError, TypeError):
+        max_attempts = _DEFAULT_HTTP_RETRIES + 1
+
+    response: httpx.Response | None = None
+    for attempt in range(max_attempts):
+        try:
+            response = httpx.post(
+                url,
+                json=json,
+                timeout=timeout,
+                headers=merged_headers,
+                follow_redirects=True,
+            )
+        except httpx.RequestError as e:
+            if provider is not None:
+                from meta_data_mcp import health
+                from meta_data_mcp.errors import translate_http_error
+
+                health.record_failure(provider, status=None)
+                raise translate_http_error(provider, e) from e
+            raise
+        status = getattr(response, "status_code", None)
+        is_retryable = isinstance(status, int) and (
+            status == 429 or 500 <= status < 600
+        )
+        if not is_retryable or attempt == max_attempts - 1:
+            break
+        retry_after = None
+        try:
+            retry_after = response.headers.get("Retry-After")
+        except AttributeError:
+            retry_after = None
+        sleep_for = _retry_sleep_seconds(attempt, retry_after)
+        log.debug(
+            "Retrying POST %s after %.2fs (attempt %d/%d, status %d)",
+            url,
+            sleep_for,
+            attempt + 1,
+            max_attempts,
+            status,
+        )
+        time.sleep(sleep_for)
+
+    assert response is not None
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        if provider is not None:
+            from meta_data_mcp import health
+            from meta_data_mcp.errors import translate_http_error
+
+            status_code = getattr(e.response, "status_code", None)
+            health.record_failure(provider, status=status_code)
+            raise translate_http_error(provider, e) from e
+        raise
+
+    if provider is not None:
+        from meta_data_mcp import health
+
+        health.record_success(provider)
+
+    return response
+
+
 def serialize_for_llm(data: Any) -> str:
     """Serialize ``data`` to a JSON string truncated to ``MAX_RESPONSE_CHARS``.
 

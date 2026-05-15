@@ -1,0 +1,31 @@
+id: global_osv_dev
+server_name: global-osv-dev
+title: OSV.dev
+base_url: https://api.osv.dev/v1
+description: "Open Source Vulnerabilities — Google-aggregated advisories across GHSA, PYSEC, RustSec, Go, npm, Maven, NuGet, Debian, Alpine, and more. Query by id or by package+ecosystem (+optional version)."
+homepage: https://osv.dev
+domains:
+- security
+regions:
+- global
+keywords:
+- osv
+- vulnerability
+- advisory
+- ghsa
+- pysec
+- rustsec
+- supply-chain
+- open-source
+- package
+license_note: "Vulnerability data is published under Apache 2.0."
+notes: |
+  OSV.dev mixes path-parameter GETs (/v1/vulns/{id}) with JSON POST
+  queries (/v1/query). The generator only supports GET with query params,
+  so the provider is hand-written and uses the new http_post kernel
+  helper for the POST endpoint. This spec is preserved for documentation.
+tools:
+- name: osv-get-vulnerability
+  description: Fetch a single vulnerability record by id (CVE, GHSA, PYSEC, GO, RUSTSEC, OSV).
+- name: osv-query-package
+  description: Query OSV.dev for all vulnerabilities affecting a package in a given ecosystem (optionally pinned to a version).
