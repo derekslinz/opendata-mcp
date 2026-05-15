@@ -1,8 +1,7 @@
 """Shared Pydantic parameter types for provider tool models.
 
 These aliases enforce project-wide validation policy so providers don't
-need to re-declare common constraints inline. See
-Plans/linear-swimming-pond.md (Track A) for architectural context.
+need to re-declare common constraints inline.
 """
 
 from typing import Annotated

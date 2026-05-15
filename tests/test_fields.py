@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from meta_data_mcp.fields import NonEmptyStr, PageInt, PageSize, Slug
 
@@ -17,11 +17,19 @@ class _SlugModel(BaseModel):
 
 
 class _PageIntModel(BaseModel):
-    value: PageInt = 1
+    value: PageInt
+
+
+class _PageIntModelWithFieldMetadata(BaseModel):
+    value: PageInt = Field(description="Results page.")
 
 
 class _PageSizeModel(BaseModel):
-    value: PageSize = 20
+    value: PageSize
+
+
+class _PageSizeModelWithFieldMetadata(BaseModel):
+    value: PageSize = Field(description="Results page size.")
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +82,10 @@ def test_page_int_default_is_one() -> None:
     assert _PageIntModel().value == 1
 
 
+def test_page_int_default_survives_field_merge() -> None:
+    assert _PageIntModelWithFieldMetadata().value == 1
+
+
 # ---------------------------------------------------------------------------
 # PageSize
 # ---------------------------------------------------------------------------
@@ -92,3 +104,7 @@ def test_page_size_rejects_out_of_range(value: int) -> None:
 
 def test_page_size_default_is_twenty() -> None:
     assert _PageSizeModel().value == 20
+
+
+def test_page_size_default_survives_field_merge() -> None:
+    assert _PageSizeModelWithFieldMetadata().value == 20

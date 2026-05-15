@@ -3,6 +3,10 @@ from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.us_courtlistener import (
+    CourtListenerListCourtsParams,
+    CourtListenerListDocketsParams,
+    CourtListenerListJudgesParams,
+    CourtListenerSearchParams,
     handle_courtlistener_search,
     handle_courtlistener_list_courts,
     handle_courtlistener_get_opinion,
@@ -154,3 +158,18 @@ async def test_courtlistener_list_dockets_success():
             {"court": "scotus", "docket_number": "21-1234"}
         )
         assert "21-1234" in result[0].text
+
+
+@pytest.mark.parametrize(
+    "model_cls",
+    [
+        CourtListenerSearchParams,
+        CourtListenerListCourtsParams,
+        CourtListenerListJudgesParams,
+        CourtListenerListDocketsParams,
+    ],
+)
+def test_courtlistener_page_schema_keeps_default_and_optional(model_cls):
+    schema = model_cls.model_json_schema()
+    assert schema["properties"]["page"]["default"] == 1
+    assert "required" not in schema or "page" not in schema["required"]
