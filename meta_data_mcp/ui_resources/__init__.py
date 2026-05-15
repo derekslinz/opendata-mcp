@@ -21,6 +21,7 @@ from pydantic import AnyUrl
 
 from .shape_geofeatures_v1 import register as _register_geofeatures
 from .shape_records_v1 import register as _register_records
+from .shape_timeseries_v1 import register as _register_timeseries
 
 __all__ = ["register_shapes"]
 
