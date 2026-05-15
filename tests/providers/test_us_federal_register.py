@@ -156,10 +156,10 @@ async def test_fedreg_suggested_searches_success():
 
 
 @pytest.mark.parametrize(
-    "model_cls",
+    "param_model_class",
     [FedRegSearchDocumentsParams, FedRegListExecutiveOrdersParams],
 )
-def test_fedreg_page_schema_keeps_default_and_optional(model_cls):
-    schema = model_cls.model_json_schema()
+def test_fedreg_page_schema_keeps_default_and_optional(param_model_class):
+    schema = param_model_class.model_json_schema()
     assert schema["properties"]["page"]["default"] == 1
     assert "required" not in schema or "page" not in schema["required"]
