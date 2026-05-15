@@ -230,7 +230,7 @@ def test_http_get_retries_on_429_with_http_date_retry_after(monkeypatch):
     assert result is ok
     assert mock_get.call_count == 2
     assert len(sleeps) == 1
-    assert 0.0 <= sleeps[0] <= 30.0
+    assert 4.0 <= sleeps[0] <= 6.0
 
 
 def test_http_get_retry_after_capped_at_30s(monkeypatch):
