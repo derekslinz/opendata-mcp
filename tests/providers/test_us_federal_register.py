@@ -3,6 +3,8 @@ from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.us_federal_register import (
+    FedRegListExecutiveOrdersParams,
+    FedRegSearchDocumentsParams,
     handle_fedreg_search_documents,
     handle_fedreg_get_document,
     handle_fedreg_list_agencies,
@@ -151,3 +153,13 @@ async def test_fedreg_suggested_searches_success():
 
         result = await handle_fedreg_suggested_searches({"sections": "environment"})
         assert "Climate change" in result[0].text
+
+
+@pytest.mark.parametrize(
+    "param_model_class",
+    [FedRegSearchDocumentsParams, FedRegListExecutiveOrdersParams],
+)
+def test_fedreg_page_schema_keeps_default_and_optional(param_model_class):
+    schema = param_model_class.model_json_schema()
+    assert schema["properties"]["page"]["default"] == 1
+    assert "required" not in schema or "page" not in schema["required"]

@@ -28,6 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.fields import NonEmptyStr, PageInt
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -55,7 +56,7 @@ class FedRegSearchDocumentsParams(BaseModel):
         None, description="Free-text search term (matched against documents)."
     )
     per_page: int = Field(default=20, description="Results per page (max 1000).")
-    page: int = Field(default=1, description="Results page (1-indexed).")
+    page: PageInt = Field(description="Results page (1-indexed).")
     order: Optional[str] = Field(
         None,
         description=(
@@ -110,7 +111,7 @@ TOOLS_HANDLERS["fedreg-search-documents"] = handle_fedreg_search_documents
 class FedRegGetDocumentParams(BaseModel):
     """Parameters for fetching a single Federal Register document."""
 
-    document_number: str = Field(
+    document_number: NonEmptyStr = Field(
         ...,
         description="Federal Register document number (e.g. '2024-12345').",
     )
@@ -193,7 +194,7 @@ TOOLS_HANDLERS["fedreg-list-agencies"] = handle_fedreg_list_agencies
 class FedRegGetAgencyParams(BaseModel):
     """Parameters for fetching a single Federal Register agency."""
 
-    slug: str = Field(
+    slug: NonEmptyStr = Field(
         ...,
         description="Agency slug (e.g. 'environmental-protection-agency').",
     )
@@ -298,7 +299,7 @@ class FedRegListExecutiveOrdersParams(BaseModel):
         ),
     )
     per_page: int = Field(default=20, description="Results per page (max 1000).")
-    page: int = Field(default=1, description="Results page (1-indexed).")
+    page: PageInt = Field(description="Results page (1-indexed).")
 
 
 def fetch_fedreg_list_executive_orders(

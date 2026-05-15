@@ -1,5 +1,6 @@
 import pytest
 
+from meta_data_mcp.registry import DYNAMIC_REGISTRY, ProviderEntry, register_plugin
 from meta_data_mcp.routing import RoutingEngine
 
 
@@ -38,3 +39,40 @@ async def test_route_filters_are_case_insensitive():
     lower = await engine.route(region="uk", limit=10)
     upper = await engine.route(region="UK", limit=10)
     assert [item.entry.id for item in lower] == [item.entry.id for item in upper]
+
+
+@pytest.mark.anyio
+async def test_route_sees_dynamically_registered_plugins():
+    """A plugin hot-loaded via register_plugin() must appear in route() results.
+
+    Regression guard: routing.py used to iterate the static REGISTRY tuple
+    directly, so plugins added to DYNAMIC_REGISTRY (the in-memory list that
+    `opendata-create-plugin` writes to) were invisible to the routing engine.
+    Now it iterates `iter_registry()` which yields both lists.
+    """
+    sentinel_id = "_test_dynamic_route_sentinel"
+    DYNAMIC_REGISTRY[:] = [
+        e for e in DYNAMIC_REGISTRY if e.id != sentinel_id
+    ]  # clean any prior run
+    try:
+        register_plugin(
+            ProviderEntry(
+                id=sentinel_id,
+                server_name="_test-dynamic-route-sentinel",
+                title="Dynamic Routing Sentinel",
+                description="A made-up provider used to exercise dynamic-registry routing.",
+                domains=("security",),
+                regions=("global",),
+                keywords=(
+                    "dynamic-routing-sentinel-keyword",  # unique token, low collision risk
+                ),
+                homepage="https://example.invalid/",
+            )
+        )
+        engine = RoutingEngine()
+        results = await engine.route(query="dynamic-routing-sentinel-keyword", limit=5)
+        assert any(r.entry.id == sentinel_id for r in results), (
+            f"dynamic plugin not visible in route() output; got {[r.entry.id for r in results]}"
+        )
+    finally:
+        DYNAMIC_REGISTRY[:] = [e for e in DYNAMIC_REGISTRY if e.id != sentinel_id]

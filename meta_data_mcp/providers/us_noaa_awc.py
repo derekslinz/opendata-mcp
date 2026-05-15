@@ -15,6 +15,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.fields import NonEmptyStr
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -37,7 +38,7 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 class AWCMetarParams(BaseModel):
     """Parameters for fetching METAR data."""
 
-    ids: str = Field(..., description="Station IDs (e.g. 'KJFK,EGLL')")
+    ids: NonEmptyStr = Field(..., description="Station IDs (e.g. 'KJFK,EGLL')")
 
 
 def fetch_awc_metar(params: AWCMetarParams) -> Any:
@@ -77,7 +78,7 @@ TOOLS_HANDLERS["awc-metar"] = handle_awc_metar
 class AWCTafParams(BaseModel):
     """Parameters for fetching TAF data."""
 
-    ids: str = Field(..., description="Station IDs (e.g. 'KJFK')")
+    ids: NonEmptyStr = Field(..., description="Station IDs (e.g. 'KJFK')")
 
 
 def fetch_awc_taf(params: AWCTafParams) -> Any:
@@ -117,7 +118,7 @@ TOOLS_HANDLERS["awc-taf"] = handle_awc_taf
 class AWCStationParams(BaseModel):
     """Parameters for fetching station data."""
 
-    ids: str = Field(..., description="Station IDs (e.g. 'KJFK')")
+    ids: NonEmptyStr = Field(..., description="Station IDs (e.g. 'KJFK')")
 
 
 def fetch_awc_station(params: AWCStationParams) -> Any:

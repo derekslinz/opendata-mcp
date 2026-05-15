@@ -36,6 +36,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.fields import NonEmptyStr
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -58,7 +59,12 @@ def _run_overpass_query(query: str) -> Any:
     (Overpass accepts both GET and POST). Returns the parsed JSON when the
     response content-type is JSON; otherwise returns the raw text.
     """
-    response = http_get(f"{BASE_URL}/interpreter", params={"data": query}, timeout=60.0)
+    response = http_get(
+        f"{BASE_URL}/interpreter",
+        params={"data": query},
+        timeout=60.0,
+        headers={"Accept": "*/*"},
+    )
     content_type = (
         response.headers.get("content-type", "") if hasattr(response, "headers") else ""
     )
@@ -79,7 +85,7 @@ def _run_overpass_query(query: str) -> Any:
 class OverpassQueryParams(BaseModel):
     """Parameters for executing a raw OverpassQL query."""
 
-    query: str = Field(
+    query: NonEmptyStr = Field(
         ...,
         description=(
             "Raw OverpassQL query string. Include '[out:json];' for JSON "
@@ -139,7 +145,7 @@ def fetch_status(_params: OverpassStatusParams) -> str:
     response = http_get(
         f"{BASE_URL}/status",
         timeout=30.0,
-        headers={"Accept": "text/plain"},
+        headers={"Accept": "*/*"},
     )
     return response.text
 
@@ -175,7 +181,9 @@ TOOLS_HANDLERS["overpass-status"] = handle_status
 class OverpassAroundAmenityParams(BaseModel):
     """Parameters for an 'amenity around lat/lon' Overpass helper."""
 
-    amenity: str = Field(..., description="OSM amenity value, e.g. 'cafe', 'hospital'")
+    amenity: NonEmptyStr = Field(
+        ..., description="OSM amenity value, e.g. 'cafe', 'hospital'"
+    )
     lat: float = Field(..., ge=-90.0, le=90.0, description="Center latitude")
     lon: float = Field(..., ge=-180.0, le=180.0, description="Center longitude")
     radius: int = Field(default=500, ge=1, description="Search radius in meters")
@@ -233,8 +241,10 @@ TOOLS_HANDLERS["overpass-around-amenity"] = handle_around_amenity
 class OverpassBboxFeatureParams(BaseModel):
     """Parameters for a key/value tag query inside a bounding box."""
 
-    key: str = Field(..., description="OSM tag key (e.g. 'highway', 'amenity')")
-    value: str = Field(..., description="OSM tag value (e.g. 'primary', 'restaurant')")
+    key: NonEmptyStr = Field(..., description="OSM tag key (e.g. 'highway', 'amenity')")
+    value: NonEmptyStr = Field(
+        ..., description="OSM tag value (e.g. 'primary', 'restaurant')"
+    )
     s: float = Field(..., ge=-90.0, le=90.0, description="South latitude")
     w: float = Field(..., ge=-180.0, le=180.0, description="West longitude")
     n: float = Field(..., ge=-90.0, le=90.0, description="North latitude")

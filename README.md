@@ -1,8 +1,8 @@
 # meta-data-mcp
 
-> A single MCP server that transparently routes user requests to ~60 open-data sources.
+> A single MCP server that transparently routes user requests to 66 open-data sources.
 
-`meta-data-mcp` is one MCP server — not many. Under the hood it bundles ~60 *plugins*, each wrapping a different open-data API. The plugins are an implementation detail; from your LLM's perspective there is one server, one set of tools, and one place to ask "where can I find data about X?"
+`meta-data-mcp` is one MCP server — not many. Under the hood it bundles 66 *plugins*, each wrapping a different open-data API. The plugins are an implementation detail; from your LLM's perspective there is one server, one set of tools, and one place to ask "where can I find data about X?"
 
 You install one server. You get all the data, discoverable through built-in routing tools.
 
@@ -17,29 +17,62 @@ This project was forked from [opendata-mcp](https://github.com/OpenDataMCP/OpenD
 
 ## Installation
 
-You'll need [Claude Desktop](https://claude.ai/download) and `uv` (a Python package manager).
+You'll need `uv` (a Python package manager).
 
 ```bash
-# macOS — install uv via Homebrew so Claude Desktop can find it
+# macOS — install uv via Homebrew so MCP clients can find it
 brew install uv
+
+# Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Windows (PowerShell)
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Then register the server with Claude Desktop:
+Then register the server with every MCP client installed on your machine:
 
 ```bash
 uv run meta-data-mcp setup
 ```
 
-That single command:
+The command auto-detects which MCP clients you have installed and adds **one** `meta-data-mcp` entry under `mcpServers` in each. Supported clients:
 
-- Adds **one** entry to `claude_desktop_config.json` — the key is `meta-data-mcp`.
-- Removes any legacy entries left over from earlier multi-server setups (`opendata-mcp-meta`, `opendata-mcp-all`, and any individual `opendata-mcp-*` provider entries).
-- Backs up your existing config to `claude_desktop_config.json.bak` before writing.
+| Client | Config file |
+|---|---|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) / `%APPDATA%/Claude/claude_desktop_config.json` (Windows) |
+| Claude Code | `~/.claude.json` |
+| Cursor | `~/.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Gemini CLI | `~/.gemini/settings.json` |
+| LM Studio | `~/.cache/lm-studio/mcp.json` |
 
-Restart Claude Desktop and you'll see one new server with discovery tools + every plugin's tools available under it.
+Each existing config is backed up to `<file>.bak` before writing. Restart the affected client(s) and you'll see one new server with discovery tools + every plugin's tools available under it.
+
+Inspect what's detected / configured on your machine:
+
+```bash
+uv run meta-data-mcp clients
+```
+
+Target a single client (or write to every supported client regardless of detection):
+
+```bash
+uv run meta-data-mcp setup --client claude-code
+uv run meta-data-mcp setup --client all
+```
+
+If you want to see the JSON snippet without touching any config file (e.g. to paste into a client we don't support yet):
+
+```bash
+uv run meta-data-mcp setup --print-json
+```
+
+When `META_DATA_MCP_AUTH_TOKEN` is set, `--print-json` also surfaces the SSE-client snippet (with the real token) to stderr so you can wire a remote client.
+
+### Hosting `meta-data-mcp` as a remote SSE server
+
+For deploying behind your own domain with bearer-token authentication, see [`docs/hosting.md`](docs/hosting.md). It covers `systemd`, Caddy/nginx TLS termination, token rotation, and the threat model.
 
 ## CLI
 
@@ -58,29 +91,49 @@ There is one server, so the CLI takes no "provider" argument. Every command oper
 
 The `list` command exists for transparency about what's bundled — **plugins are not separately installable, runnable, or addressable**. They are loaded automatically when the server starts.
 
-## Migrating from earlier multi-server setups
 
-If you used an older version of this project that installed one MCP server per provider (or the two-server `opendata-mcp-meta` + `opendata-mcp-all` pattern), `setup` cleans those up automatically the next time you run it. To preview what will be removed without changing anything:
+## Server tools (what the LLM calls)
 
-```bash
-uv run meta-data-mcp cleanup            # preview
-uv run meta-data-mcp cleanup --apply    # apply
-```
+Once `meta-data-mcp` is running, the LLM has access to two layers of tools — and you don't need to mention either to the user:
 
-## Discovery tools (exposed to the LLM)
+1. **Meta tools** — the eight server-level tools below. They make routing transparent: the LLM uses them to find (or create) the right plugin without you telling it which tool to call.
+2. **Plugin tools** — ~330 tools coming from the 66 bundled plugins. They are merged into the same namespace at startup. The LLM picks one after consulting the meta tools.
 
-These are the tools that make the routing transparent — the LLM uses them to find the right plugin without you having to tell it which tool to call:
+### Meta tools
 
 | Tool | Purpose |
 |---|---|
-| `opendata-find-providers` | Free-text search over the registry. Returns ranked plugin matches. |
-| `opendata-explain-choice` | Show the scoring breakdown for a search (useful for debugging). |
+| `opendata-find-providers` | Free-text search over the plugin registry. Returns ranked matches. When nothing matches the response carries a `no_match: true` flag and a `next_step` hint pointing at `opendata-draft-spec` + `opendata-create-plugin`. |
+| `opendata-explain-choice` | Show the scoring breakdown for a search (useful for debugging routing decisions). |
 | `opendata-list-domains` | Enumerate the controlled domain vocabulary (`health`, `legal`, `finance`, `earth-science`, …). |
 | `opendata-list-regions` | Enumerate the controlled region vocabulary (`us`, `eu`, `uk`, `global`, …). |
-| `opendata-describe-provider` | Full metadata for one plugin by id. |
+| `opendata-describe-provider` | Full metadata for one plugin by id — title, description, domains, regions, keywords, homepage, required env vars. |
 | `opendata-list-providers` | Paginated dump of the whole registry. |
+| `opendata-draft-spec` | **Build a validated plugin YAML spec from structured inputs.** Takes id, base_url, tool definitions (name, endpoint, params), and registry metadata. Validates id/tool-name casing, path-placeholder/param consistency, and parameter types, then emits a YAML string ready to feed into `opendata-create-plugin`. Use this so the LLM never has to hand-author YAML. |
+| `opendata-create-plugin` | **Autonomously create a new plugin.** Takes a YAML spec (typically produced by `opendata-draft-spec`), runs the generator, imports the new module, registers it in the live registry, and hot-loads its tools onto the running server. Use this when `opendata-find-providers` returns no match. |
 
-## Bundled plugins (~60)
+### The autonomous discovery flow
+
+The reason this server is called "meta" is that it routes data requests on the user's behalf — including by *creating* the route when one doesn't exist yet. The full flow:
+
+1. **User asks for data**, e.g. "show me the most recent published CVEs."
+2. **LLM calls `opendata-find-providers`** with the query (`cve`, `vulnerability`, …).
+3. **If the registry has a match**: the LLM picks the matching plugin's tool and answers — done.
+4. **If the registry has no match**: the response includes `no_match: true` and a `next_step` field that explains the autonomous creation path. The LLM:
+   1. Tells the user it's about to add coverage for this data source.
+   2. Web-searches for an open API that exposes the requested data (e.g. the NVD or CIRCL CVE API).
+   3. Calls `opendata-draft-spec` with the API's id, base URL, and structured tool definitions. The server validates the inputs (id casing, path-placeholder consistency, parameter types) and returns a YAML string.
+   4. Passes that YAML to `opendata-create-plugin`. The server materializes the plugin module + tests, imports the module, registers a `ProviderEntry` in the in-memory dynamic registry, and merges the new tools into the running server's tool list.
+   5. Calls the newly-available tool to answer the user's original question.
+5. **User gets their answer** — and the plugin remains available for the rest of the session.
+
+The materialized plugin lives on disk (`meta_data_mcp/providers/{id}.py` + `tests/providers/test_{id}.py`); contributors can clean it up, add it to `meta_data_mcp/registry.py` as a static entry, and open a PR so it becomes part of every shipped install.
+
+### Plugin tools
+
+Every bundled plugin contributes its own tools under the one server. Their names are unique kebab-case identifiers, often using a provider-specific prefix (e.g. `usgs-eq-feed-significant-week`, `frankfurter-latest`, `wikipedia-fetch-summary`). The LLM discovers them through `opendata-find-providers` and `opendata-describe-provider`; you don't need to memorize them.
+
+## Bundled plugins (66)
 
 This is what's inside the one server. You don't install these individually — they all come along.
 
@@ -94,7 +147,10 @@ This is what's inside the one server. You don't install these individually — t
 | `nl_tweedekamer` | Tweede Kamer | Dutch Parliament open data |
 | `sg_data_gov` | Singapore Open Data | data.gov.sg datasets and collections |
 | `uk_gov` | data.gov.uk | UK government CKAN catalog |
+| `us_cary` | Town of Cary Open Data | Town of Cary, NC open data via Socrata — public safety, transportation, utilities, parks |
 | `us_data_gov` | Data.gov | US federal government open datasets |
+| `us_fayetteville` | City of Fayetteville Open Data | City of Fayetteville, NC open data via Socrata — public safety, infrastructure, community services |
+| `us_raleigh` | City of Raleigh Open Data | City of Raleigh open data via Socrata — public safety, infrastructure, parks, planning |
 
 ### Statistics / Economics
 
@@ -129,6 +185,7 @@ This is what's inside the one server. You don't install these individually — t
 | `us_cdc_socrata` | US CDC | CDC open data via Socrata |
 | `us_clinicaltrials` | ClinicalTrials.gov | NIH/NLM clinical trials registry v2 |
 | `us_fda_openfda` | openFDA | FDA adverse events, recalls, labels |
+| `us_healthdata_gov` | HealthData.gov | HHS open health data via Socrata — outcomes, insurance, demographics, public health |
 
 ### Earth Science / Weather / Environment
 
@@ -136,6 +193,7 @@ This is what's inside the one server. You don't install these individually — t
 |---|---|---|
 | `eu_copernicus` | Copernicus (EU) | European Earth observation and climate datasets |
 | `global_open_meteo` | Open-Meteo | Weather forecast + historical + air quality |
+| `us_ncdeq_gis` | NC DEQ Environmental GIS | NC Dept. of Environmental Quality ArcGIS Hub — permits, air/water quality, hazardous waste |
 | `us_noaa_ncei` | NOAA NCEI | Climate data access services (key-less) |
 | `us_noaa_tides` | NOAA Tides & Currents | Water levels, tides, currents |
 | `us_usgs_earthquake` | USGS Earthquakes | Real-time and historical seismic events |
@@ -158,7 +216,9 @@ This is what's inside the one server. You don't install these individually — t
 | `global_overpass` | OSM Overpass | Query OpenStreetMap with Overpass QL |
 | `global_wikidata` | Wikidata | Structured knowledge graph + SPARQL |
 | `global_wikipedia` | Wikipedia | Article summaries, related, page views |
+| `us_arcgis_item` | ArcGIS REST API | Fetch public ArcGIS item metadata by ID — layers, maps, services, files |
 | `us_census_geocoder` | US Census Geocoder | Address ⇄ coordinates ⇄ geographies |
+| `us_nc_onemap` | NC OneMap | NC's authoritative GIS clearinghouse via ArcGIS REST — statewide geographic layers |
 
 ### Transit / Aviation
 
@@ -222,58 +282,21 @@ uv run meta-data-mcp run --transport stdio                # stdio
 uv run meta-data-mcp run --host 0.0.0.0 --port 3001       # SSE bound to all interfaces
 ```
 
-## Contributing a new plugin
-
-A "plugin" here is a Python module under `meta_data_mcp/providers/` plus an entry in `meta_data_mcp/registry.py`. The unified server picks it up automatically at startup. Plugins are *not* MCP servers — they expose a `TOOLS` list and a `TOOLS_HANDLERS` dict that the meta server merges into its own tool namespace.
-
-### Setup
-
-```bash
-git clone https://github.com/derekslinz/meta-data-mcp.git
-cd meta-data-mcp
-uv venv && source .venv/bin/activate
-uv sync
-pre-commit install
-```
-
-### Quick path: use the provider generator
-
-For most REST/JSON APIs you can scaffold a plugin in minutes instead of writing it from scratch.
-
-1. Copy `tools/specs/example_weather_alert.yaml` and edit it to describe your API.
-2. Dry-run to preview the generated files:
-   ```bash
-   uv run python tools/generate_provider.py tools/specs/{your_spec}.yaml --dry-run
-   ```
-3. Write the files:
-   ```bash
-   uv run python tools/generate_provider.py tools/specs/{your_spec}.yaml
-   ```
-4. Add a `ProviderEntry` to `meta_data_mcp/registry.py` so the discovery layer can find your plugin.
-5. Run `uv run pytest`. The generated tests should pass on the first try if the spec matches the live API.
-
-See **[tools/specs/README.md](tools/specs/README.md)** for the full YAML field reference and the cases the generator doesn't handle (auth headers, POST, multi-step logic) — those still need the manual path below.
-
-### Manual path: write a plugin from scratch
-
-1. **Create a new plugin module** under `meta_data_mcp/providers/`, using `{country_code}_{org}.py` naming (e.g. `ch_sbb.py`). Start from `meta_data_mcp/providers/__template__.py`.
-2. **Use `http_get` from `meta_data_mcp.utils`** for all outbound HTTP. It sets the required User-Agent and handles the TTL cache.
-3. **Declare your tools** by populating module-level `TOOLS: list[types.Tool]` and `TOOLS_HANDLERS: dict[str, Callable]`. Use Pydantic for parameter schemas and clear, action-oriented `description=` strings — the LLM relies on those.
-4. **Add a `ProviderEntry`** to `meta_data_mcp/registry.py` with accurate `domains`, `regions`, and `keywords` so the routing layer can find your plugin.
-5. **Add tests** in `tests/providers/test_{your_plugin}.py`. Mock HTTP at the `http_get` boundary; add a live test under `tests/live/` if the API is keyless and stable.
-6. **Run `uv run pytest`** to verify.
 
 ## Roadmap
 
-- Autonomous plugin generation: when `opendata-find-providers` doesn't match the user's query, automatically search the web for an appropriate open API, scaffold a new plugin via `generate_provider.py`, register it, and answer the original query — all in one round-trip.
+- **v1.2 — Hierarchical discovery:** `opendata-list-subcategories` and `opendata-browse-providers` tools so users can browse domain → subcategory → provider when they don't know what they need.
+- **v1.3 — Agent-driven generation:** Hook the routing engine's no-match path into an agent that finds an open API, generates a provider module, and registers it automatically — closing coverage gaps without user intervention.
 - Public hosted deployment with SSE so non-Claude clients can use the server remotely.
 - Multi-language SDK clients for the discovery tools so non-MCP integrations get the same routing benefits.
+
 
 ## Credits
 
 - Originally conceived by [grll](https://github.com/grll) as `opendata-mcp`.
 - Forked and reshaped around the single-server "meta-mcp" model.
 - Built on [Anthropic's open-source MCP spec](https://spec.modelcontextprotocol.io/).
+
 
 ## License
 

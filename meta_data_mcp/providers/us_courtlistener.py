@@ -35,6 +35,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.fields import PageInt
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -80,7 +81,7 @@ class CourtListenerSearchParams(BaseModel):
         None,
         description="Sort expression, e.g. 'dateFiled desc', 'score desc'.",
     )
-    page: int = Field(default=1, description="Results page (1-indexed).")
+    page: PageInt = Field(description="Results page (1-indexed).")
 
 
 def fetch_courtlistener_search(params: CourtListenerSearchParams) -> dict:
@@ -133,7 +134,7 @@ TOOLS_HANDLERS["courtlistener-search"] = handle_courtlistener_search
 class CourtListenerListCourtsParams(BaseModel):
     """Parameters for listing CourtListener courts."""
 
-    page: int = Field(default=1, description="Results page (1-indexed).")
+    page: PageInt = Field(description="Results page (1-indexed).")
 
 
 def fetch_courtlistener_list_courts(params: CourtListenerListCourtsParams) -> dict:
@@ -271,7 +272,7 @@ class CourtListenerListJudgesParams(BaseModel):
 
     name_first: Optional[str] = Field(None, description="Judge's first name filter.")
     name_last: Optional[str] = Field(None, description="Judge's last name filter.")
-    page: int = Field(default=1, description="Results page (1-indexed).")
+    page: PageInt = Field(description="Results page (1-indexed).")
 
 
 def fetch_courtlistener_list_judges(params: CourtListenerListJudgesParams) -> dict:
@@ -368,7 +369,7 @@ class CourtListenerListDocketsParams(BaseModel):
     docket_number: Optional[str] = Field(
         None, description="Docket number filter (exact match)."
     )
-    page: int = Field(default=1, description="Results page (1-indexed).")
+    page: PageInt = Field(description="Results page (1-indexed).")
 
 
 def fetch_courtlistener_list_dockets(params: CourtListenerListDocketsParams) -> dict:

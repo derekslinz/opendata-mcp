@@ -13,17 +13,46 @@ Meta-data-mcp is evolving from a simple provider registry into an intelligent di
 - ✅ CLI integration
 
 ### v1.1 (Current - Merged)
-- ✅ Sophisticated multi-criteria routing (RoutingEngine)
-- ✅ 4 scoring strategies (Token, Fuzzy, Metadata, Semantic)
-- ✅ LRU caching with TTL
-- ✅ Explanation tool (show ranking breakdown)
+- ✅ Sophisticated multi-criteria routing (`RoutingEngine` in `meta_data_mcp/routing.py`)
+- ✅ 4 scoring strategies: `TokenScorer`, `FuzzyScorer`, `MetadataScorer`, `SimpleSemanticScorer`
+- ✅ LRU caching with TTL (`OrderedDict` in `RoutingEngine`, default `cache_size=1000`, `cache_ttl_seconds=3600`)
+- ✅ Explanation tool: `opendata-explain-choice` (`providers/meta_data_mcp.py:789`)
+- ✅ Discovery tools: `opendata-find-providers`, `opendata-list-domains`, `opendata-list-regions`, `opendata-describe-provider`
+- ✅ CLI: `run`, `setup`, `remove`, `cleanup`, `inspect`, `list`, `info`, `version` (`meta_data_mcp/cli.py`)
 - ✅ Backward compatibility maintained
-- ✅ Provider rename: opendata_mcp_meta → meta_data_mcp
+- ✅ Provider rename: `opendata_mcp_meta` → `meta_data_mcp`
 
-## v1.2: Hierarchical Discovery (Planned)
+### v1.1.x — Infrastructure landed since v1.1 (Merged, not previously tracked here)
 
-### Goal
-Enable structured browsing of providers by domain → subcategory → provider for users who don't know what they need.
+These shipped via PRs #40–#42 and are not yet reflected in any version label.
+They are dependencies for v1.3's reliability story and are partially active today.
+
+- ✅ **HTTP retry + auth-aware response cache** (`meta_data_mcp/utils.py`, PR #40)
+  - Exponential backoff with `Retry-After` header parsing (RFC 7231 HTTP-date + delta-seconds)
+  - Case-insensitive auth header detection; TTL response cache keyed by a `has_auth` boolean so anonymous and authenticated responses don't collide (note: not partitioned per-token — different tokens still share an entry)
+- ✅ **`ProviderConfig` dataclass scaffold** (`meta_data_mcp/provider_config.py`, PR #41)
+  - Consolidates `base_url`, `auth_env_var`, `contact_required`, `default_accept`, `rate_limit_per_minute`
+  - **Adoption: 1 / 66 providers** (`au_data_gov`). Migrating the rest is tracked under v1.2 below.
+- ✅ **Provider health registry + `HealthScorer`** (`meta_data_mcp/health.py`, `routing.py:179`, PR #42)
+  - Thread-safe failure/success tracking with time-decay back to 1.0
+  - Wired into `RoutingEngine.scorers` but **default weight = 0.0** (dormant)
+  - Activation blocked on: an HTTP error-translation hook (provisionally named `translate_http_error`, not yet implemented in `utils.py`) that classifies responses and calls `record_failure` / `record_success`. Tracked under v1.2 below.
+
+## v1.2: Hierarchical Discovery + Health Activation (Planned, in design)
+
+**Status as of 2026-05-15: 0% implemented.** Original ship-date estimate (2026-06-03)
+is no longer realistic — design has not produced code. Re-baseline below.
+
+### Goals
+1. Enable structured browsing of providers by domain → subcategory → provider for users who don't know what they need.
+2. Finish the v1.1.x infrastructure rollout so the v1.3 reliability story can land cleanly.
+
+### Carry-over work from v1.1.x
+
+- [ ] Add an HTTP error-translation hook in `utils.py` (provisionally `translate_http_error`) that inspects responses/exceptions in `http_get`'s error path and calls `record_failure` / `record_success`, so `HealthScorer` produces non-trivial signal
+- [ ] Raise the default `health` weight in `RoutingEngine.weights` once feed exists (currently 0.0)
+- [ ] Migrate the remaining 65 providers to `ProviderConfig`
+- [ ] Have `http_get` consume `ProviderConfig` directly instead of accepting `base_url`/auth per-call (noted as "future work" in `provider_config.py:6`)
 
 ### Scope
 
@@ -153,15 +182,18 @@ LLM installs and queries it
 - Integration tests for browse workflows
 - Verify backward compatibility with v1.1 tools
 
-### Timeline
-- Design: 1 week
+### Timeline (re-baselined 2026-05-15)
+- Carry-over infra (health feed + ProviderConfig migration): 1 week
+- Hierarchical discovery design: 1 week
 - Implementation: 2 weeks
 - Testing & docs: 1 week
-- **Estimated ship date**: 2026-06-03
+- **Estimated ship date**: 2026-06-26
 
 ---
 
-## v1.3: Agent-Driven Provider Generation (Planned)
+## v1.3: Agent-Driven Provider Generation (Planned, in design)
+
+**Status as of 2026-05-15: 0% implemented.**
 
 ### Goal
 Automatically create new providers when users ask for data that doesn't exist, closing gaps in coverage transparently.
@@ -260,11 +292,11 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 - Integration tests for no-match hook
 - Load testing (prevent DOS via generation requests)
 
-### Timeline
+### Timeline (re-baselined 2026-05-15)
 - Design & validation: 2 weeks
 - Implementation: 4 weeks
 - Testing & stabilization: 2 weeks
-- **Estimated ship date**: 2026-07-15
+- **Estimated ship date**: 2026-08-21 (depends on v1.2 ship)
 
 ---
 
@@ -303,7 +335,9 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 |--------|------|------|------|
 | Query latency (p99) | <100ms | <150ms | <500ms |
 | Cache hit rate | >90% | >85% | >80% |
-| Provider coverage | 50 | 50 | Dynamic |
+| Provider coverage | 66 | 66 | Dynamic |
+| `ProviderConfig` adoption | 1 / 66 | 66 / 66 | 66 / 66 |
+| `HealthScorer` weight | 0.0 (dormant) | >0 | >0 |
 | User satisfaction | TBD | >4/5 | >4.5/5 |
 
 ---
@@ -327,6 +361,9 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 
 ---
 
-**Last Updated**: 2026-05-13  
-**Maintained By**: opendata-mcp team  
-**Status**: v1.1 merged, v1.2 in design phase
+**Last Updated**: 2026-05-15  
+**Maintained By**: meta-data-mcp team  
+**Status**: v1.1 merged + v1.1.x infra (PRs #40–#42) merged; v1.2 in design phase, 0% implemented
+
+> Note: `docs/development-roadmap.md` is the legacy OpenDataMCP-era roadmap and is
+> superseded by this file. It should be removed in a follow-up cleanup.

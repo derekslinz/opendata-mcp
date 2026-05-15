@@ -1,9 +1,12 @@
 import hashlib
+import hmac
 import json
 import logging
 import os
 import threading
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Sequence
 
 import httpx
@@ -74,12 +77,74 @@ class _TTLCache:
 _response_cache = _TTLCache(maxsize=_CACHE_MAX_SIZE, ttl=max(_CACHE_DEFAULT_TTL, 1.0))
 
 
-def _cache_key(url: str, params: dict | None, accept: str) -> str:
+def _cache_key(
+    url: str, params: dict | None, accept: str, has_auth: bool = False
+) -> str:
+    """Hash a stable cache key. ``has_auth`` partitions authenticated and
+    anonymous responses so they never share a cache entry — see the
+    auth-aware cache key rationale in ``http_get``."""
     payload = json.dumps(
-        {"url": url, "params": sorted((params or {}).items()), "accept": accept},
+        {
+            "url": url,
+            "params": sorted((params or {}).items()),
+            "accept": accept,
+            "has_auth": bool(has_auth),
+        },
         sort_keys=True,
     )
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# HTTP retry helpers (429 / 5xx with Retry-After support)
+# ---------------------------------------------------------------------------
+
+_RETRY_AFTER_CAP_SECONDS: float = 30.0
+_RETRY_BACKOFF_BASE: float = 0.5
+_RETRY_BACKOFF_CAP_SECONDS: float = 8.0
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a ``Retry-After`` header value into seconds.
+
+    Supports both formats from RFC 7231 section 7.1.3:
+    - delta-seconds (e.g. ``"120"``)
+    - HTTP-date (e.g. ``"Fri, 31 Dec 1999 23:59:59 GMT"``)
+
+    Returns ``None`` if the value is missing or unparseable. Caller is
+    responsible for capping the result.
+    """
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        dt = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    delta = (dt - datetime.now(timezone.utc)).total_seconds()
+    return max(0.0, delta)
+
+
+def _retry_sleep_seconds(attempt: int, retry_after: str | None) -> float:
+    """Compute the seconds to sleep before the next retry.
+
+    ``Retry-After`` is honored when present (capped at 30s); otherwise an
+    exponential backoff ``0.5 * 2**attempt`` is used (capped at 8s).
+    """
+    parsed = _parse_retry_after(retry_after)
+    if parsed is not None:
+        return min(parsed, _RETRY_AFTER_CAP_SECONDS)
+    return min(_RETRY_BACKOFF_BASE * (2**attempt), _RETRY_BACKOFF_CAP_SECONDS)
 
 
 def _default_user_agent() -> str:
@@ -89,8 +154,11 @@ def _default_user_agent() -> str:
     require an identifiable User-Agent including a contact address. Callers
     may override `OPENDATA_MCP_CONTACT` via environment variable.
     """
-    contact = os.getenv("OPENDATA_MCP_CONTACT", "opendata-mcp@example.org")
-    return f"meta-data-mcp/{__version__} (+https://github.com/derekslinz/meta-data-mcp; {contact})"
+    contact = os.getenv("OPENDATA_MCP_CONTACT")
+    base = f"meta-data-mcp/{__version__} (+https://github.com/derekslinz/meta-data-mcp"
+    if contact:
+        return f"{base}; {contact})"
+    return f"{base})"
 
 
 def http_get(
@@ -110,7 +178,13 @@ def http_get(
     - Optional response caching: pass ``cache_ttl=<seconds>`` to cache the
       response body. The global ``OPENDATA_MCP_CACHE_TTL`` env var sets the
       default TTL (default 0 = disabled). Only successful (2xx) responses
-      are cached; auth headers are excluded from cache keys.
+      are cached. Cache keys are partitioned by presence of ``Authorization``
+      / ``Cookie`` headers so authenticated and anonymous responses never
+      share an entry.
+    - Retries on ``429`` and ``5xx`` responses (configurable via
+      ``OPENDATA_MCP_HTTP_RETRIES`` env var, default 2 retries = 3 attempts).
+      Honors ``Retry-After`` when present (capped at 30s); otherwise uses
+      capped exponential backoff. Only successful responses are cached.
 
     Args:
         url: The endpoint URL.
@@ -132,20 +206,64 @@ def http_get(
     if headers:
         merged_headers.update(headers)
 
+    has_auth = any(k.lower() in {"authorization", "cookie"} for k in merged_headers)
+
     effective_ttl = _CACHE_DEFAULT_TTL if cache_ttl is None else cache_ttl
 
+    cache_key: str | None = None
     if effective_ttl > 0:
-        key = _cache_key(url, params, merged_headers.get("Accept", ""))
-        cached = _response_cache.get(key)
+        cache_key = _cache_key(
+            url, params, merged_headers.get("Accept", ""), has_auth=has_auth
+        )
+        cached = _response_cache.get(cache_key)
         if cached is not None:
             log.debug("Cache hit for %s", url)
             return cached
 
-    response = httpx.get(url, params=params, timeout=timeout, headers=merged_headers)
+    _DEFAULT_HTTP_RETRIES = 2
+    try:
+        _configured = int(
+            os.getenv("OPENDATA_MCP_HTTP_RETRIES", str(_DEFAULT_HTTP_RETRIES))
+        )
+        max_attempts = max(0, _configured) + 1
+    except (ValueError, TypeError):
+        max_attempts = _DEFAULT_HTTP_RETRIES + 1
+    response: httpx.Response | None = None
+    for attempt in range(max_attempts):
+        response = httpx.get(
+            url,
+            params=params,
+            timeout=timeout,
+            headers=merged_headers,
+            follow_redirects=True,
+        )
+        status = getattr(response, "status_code", None)
+        is_retryable = isinstance(status, int) and (
+            status == 429 or 500 <= status < 600
+        )
+        if not is_retryable or attempt == max_attempts - 1:
+            break
+        retry_after = None
+        try:
+            retry_after = response.headers.get("Retry-After")
+        except AttributeError:
+            retry_after = None
+        sleep_for = _retry_sleep_seconds(attempt, retry_after)
+        log.debug(
+            "Retrying %s after %.2fs (attempt %d/%d, status %d)",
+            url,
+            sleep_for,
+            attempt + 1,
+            max_attempts,
+            status,
+        )
+        time.sleep(sleep_for)
+
+    assert response is not None  # loop runs at least once
     response.raise_for_status()
 
-    if effective_ttl > 0:
-        _response_cache.set(key, response, ttl=effective_ttl)  # type: ignore[possibly-undefined]
+    if effective_ttl > 0 and cache_key is not None:
+        _response_cache.set(cache_key, response, ttl=effective_ttl)
 
     return response
 
@@ -333,11 +451,69 @@ def create_mcp_server(
     return server
 
 
+class BearerAuthMiddleware:
+    """Require ``Authorization: Bearer <token>`` on protected ASGI paths.
+
+    Pure ASGI middleware (not BaseHTTPMiddleware) so it does not buffer
+    streaming SSE responses. The health check at ``/`` is left open so
+    uptime probes work without credentials.
+    """
+
+    def __init__(
+        self,
+        app: Any,
+        token: str,
+        protected_prefixes: Sequence[str] = ("/sse", "/messages"),
+    ) -> None:
+        self.app = app
+        self.token = token
+        self.protected_prefixes = tuple(protected_prefixes)
+
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope.get("type") != "http" or not any(
+            scope.get("path", "").startswith(p) for p in self.protected_prefixes
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        auth_header = ""
+        for name, value in scope.get("headers", []):
+            if name == b"authorization":
+                auth_header = value.decode("latin-1")
+                break
+
+        scheme = ""
+        presented = ""
+        parts = auth_header.split(" ", 1)
+        if len(parts) == 2:
+            scheme, presented = parts
+        if (
+            scheme.casefold() != "bearer"
+            or not presented
+            or not hmac.compare_digest(presented, self.token)
+        ):
+            from starlette.responses import JSONResponse
+
+            response = JSONResponse(
+                {"error": "unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": 'Bearer realm="meta-data-mcp"'},
+            )
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
 async def run_server(
     server: Server, transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"
 ):
     """
     Run the MCP server with the specified transport.
+
+    SSE auth: if ``META_DATA_MCP_AUTH_TOKEN`` is set, requests to ``/sse``
+    and ``/messages`` must include ``Authorization: Bearer <token>``. When
+    unset, SSE is served unauthenticated (logs a startup warning).
     """
     if transport == "stdio":
         from mcp.server.stdio import stdio_server
@@ -392,6 +568,22 @@ async def run_server(
             ],
         )
 
+        auth_token = os.getenv("META_DATA_MCP_AUTH_TOKEN")
+        if auth_token:
+            app.add_middleware(BearerAuthMiddleware, token=auth_token)
+            log.info(
+                "SSE bearer auth enabled (META_DATA_MCP_AUTH_TOKEN set; "
+                "protecting /sse and /messages)"
+            )
+        else:
+            log.warning(
+                "SSE bearer auth DISABLED — set META_DATA_MCP_AUTH_TOKEN to "
+                "require Authorization: Bearer <token> on /sse and /messages"
+            )
+
+        # CORSMiddleware must be added last so it is outermost; this ensures
+        # that OPTIONS preflight requests receive CORS headers before reaching
+        # BearerAuthMiddleware (which would otherwise reject them with 401).
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
