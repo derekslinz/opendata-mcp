@@ -14,7 +14,7 @@ shape primitive against the server's ``RESOURCES`` / ``RESOURCES_HANDLERS``.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 from mcp import types
 from pydantic import AnyUrl
@@ -27,7 +27,7 @@ __all__ = ["register_shapes"]
 def register_shapes(
     resources: list[types.Resource],
     resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]],
-) -> dict[str, Any]:
+) -> dict[str, str]:
     """Register all v2 shape primitives on the given server state.
 
     Called once from the discovery provider (``providers/meta_data_mcp.py``)

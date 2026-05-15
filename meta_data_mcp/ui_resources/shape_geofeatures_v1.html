@@ -127,7 +127,11 @@
     // Best-guess: { type: "tool_result", payload: <our payload> }.
     // Document this assumption inline so Phase 4 adopters can adjust.
     window.addEventListener("message", function (ev) {
-      var payload = extractFromMessage(ev && ev.data);
+      // Only accept payloads from the embedding host (parent window).
+      // Other frames that can reach this iframe MUST NOT be able to
+      // trigger re-renders or feed arbitrary feature data.
+      if (ev.source !== window.parent) return;
+      var payload = extractFromMessage(ev.data);
       if (payload) render(payload);
     });
 
@@ -157,10 +161,20 @@
       var qs = new URLSearchParams(window.location.search);
       var raw = qs.get("data");
       if (!raw) return null;
-      // Base64-encoded JSON. Tolerate URL-safe variants.
-      var b64 = raw.replace(/-/g, "+").replace(/_/g, "/");
-      var json = atob(b64);
-      return JSON.parse(decodeURIComponent(escape(json)));
+      // URLSearchParams decodes '+' to ' ' (form-encoding semantics),
+      // corrupting standard base64. Normalize ' ' → '+' and accept
+      // url-safe variants ('-' / '_') before atob.
+      var b64 = raw.replace(/ /g, "+").replace(/-/g, "+").replace(/_/g, "/");
+      var pad = b64.length % 4;
+      if (pad) b64 += new Array(5 - pad).join("=");
+      // atob returns a binary string; round through Uint8Array +
+      // TextDecoder for UTF-8 safety. The legacy decodeURIComponent(
+      // escape(...)) pattern is deprecated and breaks on non-Latin
+      // text / emoji in feature properties.
+      var binary = atob(b64);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return JSON.parse(new TextDecoder("utf-8").decode(bytes));
     } catch (e) {
       toast("Bad ?data= payload: " + e.message);
       return null;

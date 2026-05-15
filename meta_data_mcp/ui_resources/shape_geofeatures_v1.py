@@ -3,7 +3,7 @@
 The HTML bundle (``shape_geofeatures_v1.html``) ships alongside this module
 and is loaded once at import time via :mod:`importlib.resources`. The
 :func:`register` entry point appends a ``ui://`` resource to the server's
-catalog and wires a handler that returns the bundle bytes verbatim.
+catalog and wires a handler that returns the bundle HTML text verbatim.
 
 Phase 4 of the v2.0 plan binds providers to this primitive by setting
 ``Tool._meta = {"ui": {"resourceUri": URI}}``. The contract that

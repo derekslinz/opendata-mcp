@@ -19,7 +19,6 @@ rely on:
 from __future__ import annotations
 
 from importlib.resources import files
-from pathlib import Path
 
 from pydantic import AnyUrl
 
@@ -115,7 +114,10 @@ def test_bundle_size_under_100kb():
 
 def _load_bundle() -> str:
     """Read the bundle the same way the registration module does, via
-    importlib.resources, so packaging issues surface here too."""
-    path = files("meta_data_mcp.ui_resources") / "shape_geofeatures_v1.html"
-    # files() returns a Traversable; read as text.
-    return Path(str(path)).read_text(encoding="utf-8")
+    importlib.resources, so packaging issues surface here too. Use the
+    Traversable's ``read_text`` directly (not ``Path(str(...))``) so the
+    test exercises zipimport / wheel installs, not just filesystem-
+    resident source checkouts."""
+    return (
+        files("meta_data_mcp.ui_resources") / "shape_geofeatures_v1.html"
+    ).read_text(encoding="utf-8")
