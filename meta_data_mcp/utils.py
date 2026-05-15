@@ -206,7 +206,7 @@ def http_get(
     if headers:
         merged_headers.update(headers)
 
-    has_auth = "Authorization" in merged_headers or "Cookie" in merged_headers
+    has_auth = any(k.lower() in {"authorization", "cookie"} for k in merged_headers)
 
     effective_ttl = _CACHE_DEFAULT_TTL if cache_ttl is None else cache_ttl
 
@@ -220,7 +220,14 @@ def http_get(
             log.debug("Cache hit for %s", url)
             return cached
 
-    max_attempts = int(os.getenv("OPENDATA_MCP_HTTP_RETRIES", "2")) + 1
+    _DEFAULT_HTTP_RETRIES = 2
+    try:
+        _configured = int(
+            os.getenv("OPENDATA_MCP_HTTP_RETRIES", str(_DEFAULT_HTTP_RETRIES))
+        )
+        max_attempts = max(0, _configured) + 1
+    except (ValueError, TypeError):
+        max_attempts = _DEFAULT_HTTP_RETRIES + 1
     response: httpx.Response | None = None
     for attempt in range(max_attempts):
         response = httpx.get(
