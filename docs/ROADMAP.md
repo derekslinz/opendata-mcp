@@ -311,7 +311,7 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 ## How to Contribute
 
 ### Filing Issues
-- Feature requests: Use template `[ROADMAP]` prefix
+- **Feature requests**: Use template `[ROADMAP]` prefix
 - **Bugs**: Include version (v0.99.3, v1.2, etc.)
 - **Enhancement**: Link to relevant roadmap section
 
