@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>meta-data-mcp · shape/geofeatures/v1</title>
+<!--
+  meta-data-mcp v2.0 — Phase 2b shape primitive: GeoFeatures.
+
+  This bundle is served as the MCP resource ui://meta-data-mcp/shape/geofeatures/v1
+  and bound to ~13 providers in Phase 4 via Tool _meta.ui.resourceUri.
+
+  External origins (Phase 4 adopters must whitelist these in _meta.ui.csp):
+    - https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
+    - https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
+    - https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css
+    - https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css
+    - https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js
+    - https://*.tile.openstreetmap.org/  (Leaflet's default basemap tiles)
+
+  Payload contract (pushed in by the host):
+    {
+      "features": <GeoJSON FeatureCollection>
+                | [{"lat": <number>, "lon": <number>, "attrs": {...}}, ...],
+      "layers":  [<optional layer-config object>, ...],  // reserved; not yet used
+      "facets":  [<facet-config object>, ...]            // reserved; not yet used
+    }
+
+  Render priority for the payload:
+    1. window.message events of shape {type, payload}  (MCP Apps spec, best-guess)
+    2. ?data=<base64-encoded-JSON> URL parameter
+    3. window.__app_data__ global set before script load
+  The first source that produces a valid payload wins; later messages re-render.
+
+  Self-contained: open this file in a browser, set
+    window.__app_data__ = { features: [{lat: 0, lon: 0, attrs: {hi: "world"}}] }
+  in the console and reload, you'll see a marker at null island.
+-->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""
+/>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"
+/>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"
+/>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #1a1a1a; background: #f7f7f8; }
+  body { display: flex; flex-direction: column; height: 100vh; }
+  #gf-info {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    background: #ffffff;
+    border-bottom: 1px solid #e3e3e6;
+    font-size: 12.5px;
+    line-height: 1.4;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    align-items: center;
+  }
+  #gf-info .gf-stat { display: inline-flex; gap: 4px; }
+  #gf-info .gf-label { color: #6b6b73; }
+  #gf-info .gf-value { color: #1a1a1a; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #gf-info .gf-empty { color: #9a9aa1; font-style: italic; }
+  #gf-map { flex: 1 1 auto; min-height: 0; width: 100%; background: #e8eef3; }
+  .gf-popup-table { border-collapse: collapse; font-size: 12px; max-width: 280px; }
+  .gf-popup-table td { vertical-align: top; padding: 2px 6px; border-bottom: 1px solid #eee; }
+  .gf-popup-table td.gf-k { color: #6b6b73; font-weight: 500; }
+  .gf-popup-table td.gf-v { color: #1a1a1a; word-break: break-word; max-width: 200px; }
+  .gf-popup-table tr:last-child td { border-bottom: 0; }
+  .gf-popup-empty { font-size: 12px; color: #9a9aa1; font-style: italic; }
+  .gf-toast {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: rgba(33,33,40,0.92);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 1000;
+    display: none;
+  }
+</style>
+</head>
+<body>
+  <div id="gf-info" role="status" aria-live="polite">
+    <span class="gf-empty" id="gf-info-empty">Waiting for data&hellip;</span>
+    <span class="gf-stat" style="display:none" id="gf-stat-features">
+      <span class="gf-label">features</span><span class="gf-value" data-bind="features">0</span>
+    </span>
+    <span class="gf-stat" style="display:none" id="gf-stat-bbox">
+      <span class="gf-label">bbox</span><span class="gf-value" data-bind="bbox">&mdash;</span>
+    </span>
+    <span class="gf-stat" style="display:none" id="gf-stat-layers">
+      <span class="gf-label">layers</span><span class="gf-value" data-bind="layers">0</span>
+    </span>
+  </div>
+  <div id="gf-map"></div>
+  <div class="gf-toast" id="gf-toast"></div>
+
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin=""
+></script>
+<script
+  src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"
+></script>
+<script>
+(function () {
+  "use strict";
+
+  // -------- payload acquisition (postMessage > URL param > window global) ----
+  var lastPayload = null;
+  var renderState = { map: null, layer: null };
+
+  function init() {
+    setupMap();
+    // The MCP Apps spec is still settling; we accept a few message shapes.
+    // Best-guess: { type: "tool_result", payload: <our payload> }.
+    // Document this assumption inline so Phase 4 adopters can adjust.
+    window.addEventListener("message", function (ev) {
+      // Only accept payloads from the embedding host (parent window).
+      // Other frames that can reach this iframe MUST NOT be able to
+      // trigger re-renders or feed arbitrary feature data.
+      if (ev.source !== window.parent) return;
+      var payload = extractFromMessage(ev.data);
+      if (payload) render(payload);
+    });
+
+    var fromUrl = readFromUrlParam();
+    if (fromUrl) {
+      render(fromUrl);
+      return;
+    }
+    if (window.__app_data__) {
+      render(window.__app_data__);
+    }
+  }
+
+  function extractFromMessage(data) {
+    if (!data || typeof data !== "object") return null;
+    // Accept several envelopes; the MCP Apps host may evolve.
+    if (data.type === "tool_result" && data.payload) return data.payload;
+    if (data.type === "render" && data.payload) return data.payload;
+    if (data.features || (data.payload && data.payload.features)) {
+      return data.features ? data : data.payload;
+    }
+    return null;
+  }
+
+  function readFromUrlParam() {
+    try {
+      var qs = new URLSearchParams(window.location.search);
+      var raw = qs.get("data");
+      if (!raw) return null;
+      // URLSearchParams decodes '+' to ' ' (form-encoding semantics),
+      // corrupting standard base64. Normalize ' ' → '+' and accept
+      // url-safe variants ('-' / '_') before atob.
+      var b64 = raw.replace(/ /g, "+").replace(/-/g, "+").replace(/_/g, "/");
+      var pad = b64.length % 4;
+      if (pad) b64 += new Array(5 - pad).join("=");
+      // atob returns a binary string; round through Uint8Array +
+      // TextDecoder for UTF-8 safety. The legacy decodeURIComponent(
+      // escape(...)) pattern is deprecated and breaks on non-Latin
+      // text / emoji in feature properties.
+      var binary = atob(b64);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return JSON.parse(new TextDecoder("utf-8").decode(bytes));
+    } catch (e) {
+      toast("Bad ?data= payload: " + e.message);
+      return null;
+    }
+  }
+
+  // -------- map setup ------------------------------------------------------
+
+  function setupMap() {
+    if (typeof L === "undefined") {
+      toast("Leaflet failed to load");
+      return;
+    }
+    var map = L.map("gf-map", { worldCopyJump: true }).setView([20, 0], 2);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+    renderState.map = map;
+  }
+
+  // -------- payload normalization ------------------------------------------
+
+  function normalize(payload) {
+    if (!payload) return null;
+    var raw = payload.features != null ? payload.features : payload;
+    if (raw && raw.type === "FeatureCollection" && Array.isArray(raw.features)) {
+      return {
+        fc: raw,
+        layerCount: Array.isArray(payload.layers) ? payload.layers.length : 0,
+      };
+    }
+    if (Array.isArray(raw)) {
+      var features = [];
+      for (var i = 0; i < raw.length; i++) {
+        var row = raw[i];
+        if (!row) continue;
+        var lat = Number(row.lat);
+        var lon = Number(row.lon != null ? row.lon : row.lng);
+        if (!isFinite(lat) || !isFinite(lon)) continue;
+        features.push({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [lon, lat] },
+          properties: row.attrs || {},
+        });
+      }
+      return {
+        fc: { type: "FeatureCollection", features: features },
+        layerCount: Array.isArray(payload.layers) ? payload.layers.length : 0,
+      };
+    }
+    return null;
+  }
+
+  // -------- render ---------------------------------------------------------
+
+  function render(payload) {
+    lastPayload = payload;
+    var norm = normalize(payload);
+    if (!norm) {
+      toast("Unrecognized payload shape");
+      return;
+    }
+    var fc = norm.fc;
+    var map = renderState.map;
+    if (!map) return;
+
+    if (renderState.layer) {
+      map.removeLayer(renderState.layer);
+      renderState.layer = null;
+    }
+
+    var featureCount = (fc.features || []).length;
+    var useClustering = featureCount > 100 && typeof L.markerClusterGroup === "function";
+    var layer = useClustering
+      ? L.markerClusterGroup({ chunkedLoading: true })
+      : L.featureGroup();
+
+    var geo = L.geoJSON(fc, {
+      pointToLayer: function (feature, latlng) {
+        return L.marker(latlng);
+      },
+      onEachFeature: function (feature, lyr) {
+        var attrs = (feature && feature.properties) || {};
+        lyr.bindPopup(buildPopup(attrs), { maxWidth: 320 });
+      },
+    });
+
+    if (useClustering) {
+      layer.addLayer(geo);
+      map.addLayer(layer);
+      renderState.layer = layer;
+    } else {
+      geo.addTo(map);
+      renderState.layer = geo;
+    }
+
+    fitToFeatures(map, useClustering ? layer : geo, featureCount);
+    updateInfoPanel(fc, norm.layerCount);
+  }
+
+  function buildPopup(attrs) {
+    var keys = Object.keys(attrs || {});
+    if (keys.length === 0) {
+      return '<div class="gf-popup-empty">(no properties)</div>';
+    }
+    keys.sort();
+    var rows = keys.map(function (k) {
+      return (
+        '<tr><td class="gf-k">' +
+        esc(k) +
+        '</td><td class="gf-v">' +
+        formatValue(attrs[k]) +
+        "</td></tr>"
+      );
+    });
+    return '<table class="gf-popup-table">' + rows.join("") + "</table>";
+  }
+
+  function formatValue(v) {
+    if (v == null) return "<em>null</em>";
+    if (typeof v === "object") {
+      try { return esc(JSON.stringify(v)); } catch (e) { return esc(String(v)); }
+    }
+    return esc(String(v));
+  }
+
+  function fitToFeatures(map, layer, count) {
+    if (count === 0) {
+      map.setView([20, 0], 2);
+      return;
+    }
+    try {
+      var bounds = layer.getBounds();
+      if (bounds && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
+      }
+    } catch (e) {
+      // Single-point fallback: zoom to it.
+      if (count === 1) {
+        var f = (layer.getLayers && layer.getLayers()[0]) || null;
+        if (f && f.getLatLng) map.setView(f.getLatLng(), 6);
+      }
+    }
+  }
+
+  function updateInfoPanel(fc, layerCount) {
+    var empty = document.getElementById("gf-info-empty");
+    var stats = ["gf-stat-features", "gf-stat-bbox", "gf-stat-layers"];
+    if (empty) empty.style.display = "none";
+    stats.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = "";
+    });
+
+    var count = (fc.features || []).length;
+    bind("features", String(count));
+    bind("layers", String(layerCount));
+    bind("bbox", computeBboxString(fc));
+  }
+
+  function computeBboxString(fc) {
+    var minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity, any = false;
+    (fc.features || []).forEach(function (f) {
+      walkCoords(f.geometry, function (lon, lat) {
+        if (!isFinite(lon) || !isFinite(lat)) return;
+        any = true;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+      });
+    });
+    if (!any) return "—";
+    return (
+      fmt(minLon) + "," + fmt(minLat) + " → " + fmt(maxLon) + "," + fmt(maxLat)
+    );
+  }
+
+  function walkCoords(geom, cb) {
+    if (!geom) return;
+    var c = geom.coordinates;
+    if (!c) return;
+    switch (geom.type) {
+      case "Point": cb(c[0], c[1]); return;
+      case "MultiPoint":
+      case "LineString":
+        c.forEach(function (p) { cb(p[0], p[1]); });
+        return;
+      case "MultiLineString":
+      case "Polygon":
+        c.forEach(function (ring) { ring.forEach(function (p) { cb(p[0], p[1]); }); });
+        return;
+      case "MultiPolygon":
+        c.forEach(function (poly) {
+          poly.forEach(function (ring) {
+            ring.forEach(function (p) { cb(p[0], p[1]); });
+          });
+        });
+        return;
+      case "GeometryCollection":
+        (geom.geometries || []).forEach(function (g) { walkCoords(g, cb); });
+        return;
+    }
+  }
+
+  function bind(key, value) {
+    var nodes = document.querySelectorAll('[data-bind="' + key + '"]');
+    for (var i = 0; i < nodes.length; i++) nodes[i].textContent = value;
+  }
+
+  function fmt(n) {
+    return Math.round(n * 1000) / 1000;
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function toast(msg) {
+    var el = document.getElementById("gf-toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = "block";
+    setTimeout(function () { el.style.display = "none"; }, 4000);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>

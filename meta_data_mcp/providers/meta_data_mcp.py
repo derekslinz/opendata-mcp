@@ -1124,6 +1124,21 @@ def handle_read_all_providers(uri: AnyUrl) -> str:
 
 RESOURCES_HANDLERS["registry://all-providers"] = handle_read_all_providers
 
+
+###################
+# UI resources (MCP Apps shape primitives — v2.0 Phase 2)
+###################
+
+# Register the reusable ``ui://meta-data-mcp/shape/*`` bundles. Phase 4
+# provider sweeps bind individual tools to a primitive by setting
+# ``Tool._meta = {"ui": {"resourceUri": <URI>}}``. The bundles
+# themselves live under ``meta_data_mcp/ui_resources/``; this single
+# call is the only wiring the discovery provider owns.
+from meta_data_mcp.ui_resources import register_shapes  # noqa: E402
+
+register_shapes(RESOURCES, RESOURCES_HANDLERS)
+
+
 ###################
 # Prompts
 ###################
