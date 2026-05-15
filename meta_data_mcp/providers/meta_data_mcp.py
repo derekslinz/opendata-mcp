@@ -75,6 +75,17 @@ class FindProvidersParams(BaseModel):
         le=100,
         description="Maximum number of providers to return (1-100, default 20).",
     )
+    activate_top: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description=(
+            "If > 0, automatically activate the top-N matching providers so their "
+            "tools become callable in this session. Default 0 means find-providers "
+            "is read-only — you must call opendata-activate-provider explicitly to "
+            "load tools."
+        ),
+    )
 
 
 async def handle_find_providers(
@@ -120,6 +131,30 @@ async def handle_find_providers(
                 "server. Its tools will become available immediately "
                 "afterwards."
             )
+        elif matches:
+            if params.activate_top > 0:
+                activations: list[dict[str, Any]] = []
+                for entry in matches[: params.activate_top]:
+                    activations.append(_activate_provider(entry.id))
+                payload["auto_activated"] = activations
+                if any(
+                    a.get("status") in ("activated", "already_active")
+                    for a in activations
+                ):
+                    await _notify_tools_changed()
+                payload["next_step"] = (
+                    f"Loaded tools for the top {len(activations)} provider(s). "
+                    "Their tool names are in 'auto_activated[*].tools' and will "
+                    "appear in your tools list on the next refresh."
+                )
+            else:
+                payload["next_step"] = (
+                    "To make a provider's tools callable in this session, call "
+                    "opendata-activate-provider with provider_id=<id>. To list "
+                    "currently active providers, call opendata-list-active-providers. "
+                    "Pass activate_top=N to find-providers to skip the explicit "
+                    "activation step for the top-N results."
+                )
 
         return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
@@ -371,8 +406,10 @@ async def handle_create_plugin(
         register_plugin(entry)
 
         # Hot-load the new module's tools into this running server.
-        owner_by_tool = {name: "(existing)" for name in TOOLS_HANDLERS}
-        added = _merge_plugin(new_module, plugin_id, owner_by_tool)
+        added = _merge_plugin(new_module, plugin_id)
+        if added > 0:
+            _active_providers.add(plugin_id)
+            await _notify_tools_changed()
 
         new_tool_names = [t.name for t in (getattr(new_module, "TOOLS", None) or [])]
 
@@ -1123,14 +1160,155 @@ for prompt_id, case_info in USE_CASES.items():
     PROMPTS_HANDLERS[prompt_id] = make_handler(case_info["text"], case_info["title"])
 
 
+###################
+# activate-provider
+###################
+
+
+class ActivateProviderParams(BaseModel):
+    """Parameters for opendata-activate-provider."""
+
+    provider_id: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Provider id to activate (e.g. 'us_data_gov' or 'us-data-gov'). "
+            "Use opendata-find-providers or opendata-list-providers to "
+            "discover available ids."
+        ),
+    )
+
+
+async def handle_activate_provider(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the opendata-activate-provider tool call."""
+    params = ActivateProviderParams(**(arguments or {}))
+    report = _activate_provider(params.provider_id)
+    if report.get("status") in ("activated", "already_active"):
+        await _notify_tools_changed()
+    return [types.TextContent(type="text", text=serialize_for_llm(report))]
+
+
+TOOLS.append(
+    types.Tool(
+        name="opendata-activate-provider",
+        description=(
+            "Activate a registered provider so its tools become callable in this "
+            "session. By default the server starts in discovery-only mode — only "
+            "meta tools (find-providers, list-providers, etc.) are advertised. "
+            "Activation imports the plugin module and merges its tools into the "
+            "advertised list, then sends a tools/list_changed notification so the "
+            "client refetches its catalog. Idempotent."
+        ),
+        inputSchema=ActivateProviderParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["opendata-activate-provider"] = handle_activate_provider
+
+
+###################
+# deactivate-provider
+###################
+
+
+class DeactivateProviderParams(BaseModel):
+    """Parameters for opendata-deactivate-provider."""
+
+    provider_id: str = Field(
+        ...,
+        min_length=1,
+        description="Provider id to deactivate.",
+    )
+
+
+async def handle_deactivate_provider(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the opendata-deactivate-provider tool call."""
+    params = DeactivateProviderParams(**(arguments or {}))
+    report = _deactivate_provider(params.provider_id)
+    if report.get("status") == "deactivated":
+        await _notify_tools_changed()
+    return [types.TextContent(type="text", text=serialize_for_llm(report))]
+
+
+TOOLS.append(
+    types.Tool(
+        name="opendata-deactivate-provider",
+        description=(
+            "Remove a previously-activated provider's tools from the session's "
+            "advertised list. The Python module remains imported (Python caches "
+            "modules) but its tools no longer appear in tools/list. A "
+            "tools/list_changed notification is sent so the client refetches."
+        ),
+        inputSchema=DeactivateProviderParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["opendata-deactivate-provider"] = handle_deactivate_provider
+
+
+###################
+# list-active-providers
+###################
+
+
+class ListActiveProvidersParams(BaseModel):
+    """No parameters."""
+
+
+async def handle_list_active_providers(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the opendata-list-active-providers tool call."""
+    ListActiveProvidersParams(**(arguments or {}))
+    # Plugin-owned tools are anything _owner_by_tool maps to a non-meta value.
+    # Everything else in TOOLS_HANDLERS is a meta tool. Counting this way
+    # keeps the report correct even if _owner_by_tool was never seeded
+    # (e.g. when callers bypass _load_all_plugins).
+    plugin_tools = {name for name, owner in _owner_by_tool.items() if owner != "meta"}
+    meta_tools = [name for name in TOOLS_HANDLERS if name not in plugin_tools]
+    payload = {
+        "count": len(_active_providers),
+        "active_providers": sorted(_active_providers),
+        "tools_per_provider": {
+            pid: sorted(name for name, owner in _owner_by_tool.items() if owner == pid)
+            for pid in sorted(_active_providers)
+        },
+        "meta_tool_count": len(meta_tools),
+        "plugin_tool_count": len(plugin_tools),
+    }
+    return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+
+
+TOOLS.append(
+    types.Tool(
+        name="opendata-list-active-providers",
+        description=(
+            "List the providers currently activated in this session, along with "
+            "the tool names each contributes. Useful for inspecting why a "
+            "particular tool is (or isn't) advertised."
+        ),
+        inputSchema=ListActiveProvidersParams.model_json_schema(),
+    )
+)
+TOOLS_HANDLERS["opendata-list-active-providers"] = handle_list_active_providers
+
+
 # ---------------------------------------------------------------------------
 # Plugin loading
 # ---------------------------------------------------------------------------
 #
 # A plugin is a sibling module under meta_data_mcp.providers that exposes
-# `TOOLS` and `TOOLS_HANDLERS`. At server start we import every plugin
-# listed in the registry and merge its tools into THIS server's tool
-# namespace. The result: one server, every plugin's tools available.
+# `TOOLS` and `TOOLS_HANDLERS`. By default the server starts in DISCOVERY-
+# ONLY mode — only the meta tools defined in THIS module are advertised —
+# and individual plugins are activated on demand via
+# ``opendata-activate-provider`` (or in batch via the
+# ``META_DATA_MCP_PRELOAD`` environment variable). This keeps the
+# tool-catalog footprint small for clients with limited context budgets.
+#
+# Set ``META_DATA_MCP_PRELOAD=*`` to restore the legacy behavior of
+# loading every registered plugin at startup.
 
 # Module names that should never be loaded as data plugins.
 _NON_PLUGIN_MODULES: frozenset[str] = frozenset(
@@ -1141,16 +1319,34 @@ _NON_PLUGIN_MODULES: frozenset[str] = frozenset(
     }
 )
 
+# Module-level activation tracking. ``_owner_by_tool`` is the canonical
+# source of truth for "which provider owns this tool name" — used by
+# ``_deactivate_provider`` to find the tools to remove.
+_active_providers: set[str] = set()
+_owner_by_tool: dict[str, str] = {}
+
+# Reference to the running MCP server instance, set by ``main()``. Used
+# by the activation helpers to send ``tools/list_changed`` notifications
+# so clients refetch the catalog after a provider is added or removed.
+_server: Any | None = None
+
 
 def _merge_plugin(
     module: Any,
     plugin_id: str,
-    owner_by_tool: dict[str, str],
+    owner_by_tool: dict[str, str] | None = None,
 ) -> int:
     """Merge a plugin module's TOOLS/TOOLS_HANDLERS into the server.
 
+    ``owner_by_tool`` defaults to the module-level tracker. Callers that
+    want collision detection only (without committing to the global
+    tracker) can supply their own dict.
+
     Returns the number of tools actually added (after collision filtering).
     """
+    if owner_by_tool is None:
+        owner_by_tool = _owner_by_tool
+
     plugin_tools = getattr(module, "TOOLS", None) or []
     plugin_handlers = getattr(module, "TOOLS_HANDLERS", None) or {}
 
@@ -1181,36 +1377,189 @@ def _merge_plugin(
     return added
 
 
+def _resolve_provider_id(provider_id: str) -> str | None:
+    """Find a provider id in the static or dynamic registry.
+
+    Accepts the canonical underscore form (``us_data_gov``) or the
+    hyphenated server-name form (``us-data-gov``). Returns the canonical
+    id when found, or ``None`` when no match exists.
+    """
+    from meta_data_mcp.registry import DYNAMIC_REGISTRY
+
+    needle_underscore = provider_id.replace("-", "_")
+    needle_hyphen = provider_id.replace("_", "-")
+    for entry in (*REGISTRY, *DYNAMIC_REGISTRY):
+        if entry.id in (needle_underscore, provider_id):
+            return entry.id
+        if entry.server_name in (needle_hyphen, provider_id):
+            return entry.id
+    return None
+
+
+async def _notify_tools_changed() -> None:
+    """Best-effort: ask the running session to refresh its tool list.
+
+    Silent on any failure — the activation/deactivation already happened
+    in our local state; failing to notify just means the client will see
+    the new state on its next ``tools/list`` poll.
+    """
+    if _server is None:
+        return
+    try:
+        ctx = _server.request_context
+        await ctx.session.send_tool_list_changed()
+    except Exception as exc:  # noqa: BLE001 — notification is best-effort
+        log.debug("tools/list_changed notification skipped: %s", exc)
+
+
+def _activate_provider(provider_id: str) -> dict[str, Any]:
+    """Import a plugin module and merge its tools into the running server.
+
+    Returns a status report dict. Idempotent — repeated activation of an
+    already-active provider returns ``status: already_active``.
+    """
+    canonical = _resolve_provider_id(provider_id)
+    if canonical is None:
+        return {
+            "status": "error",
+            "provider_id": provider_id,
+            "error": "unknown provider id — not in REGISTRY or DYNAMIC_REGISTRY",
+        }
+    if canonical in _active_providers:
+        return {
+            "status": "already_active",
+            "provider_id": canonical,
+            "tools": sorted(
+                name for name, owner in _owner_by_tool.items() if owner == canonical
+            ),
+        }
+    if canonical in _NON_PLUGIN_MODULES:
+        return {
+            "status": "error",
+            "provider_id": canonical,
+            "error": "this id is not a data plugin",
+        }
+    try:
+        module = importlib.import_module(f"meta_data_mcp.providers.{canonical}")
+    except Exception as exc:  # noqa: BLE001 — surface any import error
+        return {
+            "status": "error",
+            "provider_id": canonical,
+            "error": f"plugin failed to import: {exc}",
+        }
+    added = _merge_plugin(module, canonical)
+    if added == 0 and not any(o == canonical for o in _owner_by_tool.values()):
+        return {
+            "status": "error",
+            "provider_id": canonical,
+            "error": "plugin imported but exposed no usable tools",
+        }
+    _active_providers.add(canonical)
+    return {
+        "status": "activated",
+        "provider_id": canonical,
+        "tools_added": added,
+        "tools": sorted(
+            name for name, owner in _owner_by_tool.items() if owner == canonical
+        ),
+    }
+
+
+def _deactivate_provider(provider_id: str) -> dict[str, Any]:
+    """Remove a plugin's tools from the running server's advertised list.
+
+    The Python module remains imported (Python caches modules in
+    ``sys.modules``); this only removes the tools from ``TOOLS`` and
+    ``TOOLS_HANDLERS`` so they no longer show up in ``tools/list``.
+    """
+    canonical = _resolve_provider_id(provider_id) or provider_id
+    if canonical not in _active_providers:
+        return {
+            "status": "not_active",
+            "provider_id": canonical,
+        }
+    removed = sorted(
+        name for name, owner in list(_owner_by_tool.items()) if owner == canonical
+    )
+    for name in removed:
+        _owner_by_tool.pop(name, None)
+        TOOLS_HANDLERS.pop(name, None)
+    TOOLS[:] = [t for t in TOOLS if t.name not in set(removed)]
+    _active_providers.discard(canonical)
+    return {
+        "status": "deactivated",
+        "provider_id": canonical,
+        "tools_removed": len(removed),
+        "tools": removed,
+    }
+
+
 def _load_all_plugins() -> tuple[int, int]:
-    """Import every registered plugin and merge its tools into THIS server.
+    """Import the plugins selected by ``META_DATA_MCP_PRELOAD`` at startup.
+
+    Reads the comma-separated env var. Default (unset or empty) loads no
+    plugins — only meta tools are advertised. Special value ``*`` loads
+    every plugin (legacy behavior, useful when the client can handle a
+    large tool catalog). Individual ids may be either underscore or
+    hyphen form.
 
     Returns (plugins_loaded, tools_added).
     """
-    owner_by_tool: dict[str, str] = {name: "meta" for name in TOOLS_HANDLERS}
+    import os
+
+    raw = os.getenv("META_DATA_MCP_PRELOAD", "").strip()
+    # Initialize the owner-map with the meta server's own tool names.
+    for name in TOOLS_HANDLERS:
+        _owner_by_tool.setdefault(name, "meta")
+
+    if not raw:
+        return (0, 0)
+
+    if raw == "*":
+        target_ids = [e.id for e in REGISTRY if e.id not in _NON_PLUGIN_MODULES]
+    else:
+        target_ids = []
+        for token in raw.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            canonical = _resolve_provider_id(token)
+            if canonical is None:
+                log.warning("META_DATA_MCP_PRELOAD: unknown plugin id '%s'", token)
+                continue
+            if canonical in _NON_PLUGIN_MODULES:
+                continue
+            target_ids.append(canonical)
+
     loaded = 0
     added = 0
-    for entry in REGISTRY:
-        if entry.id in _NON_PLUGIN_MODULES:
-            continue
+    for pid in target_ids:
         try:
-            module = importlib.import_module(f"meta_data_mcp.providers.{entry.id}")
+            module = importlib.import_module(f"meta_data_mcp.providers.{pid}")
         except ImportError as exc:
-            log.warning("Plugin '%s' could not be imported: %s", entry.id, exc)
+            log.warning("Plugin '%s' could not be imported: %s", pid, exc)
             continue
         except Exception as exc:  # noqa: BLE001 — one broken plugin must not block the rest
-            log.warning("Plugin '%s' raised during import: %s", entry.id, exc)
+            log.warning("Plugin '%s' raised during import: %s", pid, exc)
             continue
-        added += _merge_plugin(module, entry.id, owner_by_tool)
-        loaded += 1
+        before = len(TOOLS)
+        added += _merge_plugin(module, pid)
+        if len(TOOLS) > before:
+            _active_providers.add(pid)
+            loaded += 1
     return loaded, added
 
 
 async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
     from meta_data_mcp.utils import create_mcp_server, run_server
 
+    global _server
+
     plugins_loaded, plugin_tools_added = _load_all_plugins()
     log.info(
-        "meta-data-mcp — %d plugins loaded, %d plugin tools + %d discovery tools",
+        "meta-data-mcp — %d plugins preloaded, %d plugin tools + %d discovery tools "
+        "(set META_DATA_MCP_PRELOAD=* to preload all, or use opendata-activate-provider "
+        "at runtime)",
         plugins_loaded,
         plugin_tools_added,
         len(TOOLS) - plugin_tools_added,
@@ -1225,6 +1574,7 @@ async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.
         prompts=PROMPTS,
         prompts_handlers=PROMPTS_HANDLERS,
     )
+    _server = server
 
     await run_server(server, transport, port, host)
 

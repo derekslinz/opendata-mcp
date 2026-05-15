@@ -58,6 +58,15 @@ They are dependencies for v1.3's reliability story and are partially active toda
   - `us_cisa_kev` — CISA Known Exploited Vulnerabilities catalog; authoritative US-CISA list of actively-exploited vulns under BOD 22-01. No auth.
   - `global_osv_dev` — Google's Open Source Vulnerabilities database; aggregated advisories across GHSA, PYSEC, RustSec, Go, npm, Maven, etc. No auth. First provider to use the new `http_post` helper.
   - All three pass `provider=` to `http_get` / `http_post`, so they feed the health registry and receive translated `ProviderError` exceptions out of the box.
+- ✅ **Lazy plugin activation (default tool surface 357 → 11)** (`meta_data_mcp/providers/meta_data_mcp.py`)
+  - Previously, `meta-data-mcp run` eagerly imported every registered plugin and merged ~357 tool schemas into the catalog — ~210K tokens of overhead per MCP connection.
+  - Now: server starts in **discovery-only mode**. Only the 11 meta tools (`opendata-find-providers`, `opendata-list-domains`, etc., plus the new activate/deactivate/list-active triad) are advertised at startup.
+  - New tools: `opendata-activate-provider(provider_id)` and `opendata-deactivate-provider(provider_id)` hot-load and unload individual plugins at runtime, then send a `tools/list_changed` notification so clients refetch their tool catalogs.
+  - `opendata-list-active-providers` reports which providers are currently advertised and which tools each contributes.
+  - `opendata-find-providers` gains an opt-in `activate_top: int = Field(default=0, ge=0, le=10)` knob — when set, the top-N matches are auto-activated and the response describes what was loaded. Default 0 preserves the read-only semantics of discovery.
+  - `META_DATA_MCP_PRELOAD` environment variable selects which providers to preload at startup: comma-separated ids, `*` for "load all" (legacy behavior, full escape hatch), or unset/empty for pure discovery (the new default).
+  - `opendata-create-plugin` now uses the same shared activation tracker, so newly-generated plugins also send `tools/list_changed`.
+  - Tests: `tests/providers/test_lazy_activation.py` (+15 cases) cover default startup state, activate/deactivate semantics, id-form normalization, `activate_top` opt-in behavior, and the `META_DATA_MCP_PRELOAD` env var.
 - ✅ **Coverage gap closure: 5 new providers across 5 verticals** (registry +5 → 74 total; DOMAINS +3 → 30)
   - `global_openaq` — open global air-quality data (PM2.5, PM10, NO2, O3, etc.) from government monitors and low-cost sensors. Closes the *air-quality* vertical (no auth; optional `OPENAQ_API_KEY`).
   - `global_gdelt` — GDELT 2.0 news/events monitoring; article search and tone/volume time-series across 100+ languages. Closes the *news* vertical (no auth; new `news` domain).
