@@ -18,7 +18,7 @@ Meta-data-mcp is evolving from a simple provider registry into an intelligent di
 - ✅ LRU caching with TTL (`OrderedDict` in `RoutingEngine`, default `cache_size=1000`, `cache_ttl_seconds=3600`)
 - ✅ Explanation tool: `opendata-explain-choice` (`providers/meta_data_mcp.py:789`)
 - ✅ Discovery tools: `opendata-find-providers`, `opendata-list-domains`, `opendata-list-regions`, `opendata-describe-provider`, `opendata-list-providers`, `opendata-create-plugin`, `opendata-draft-spec`
-- ✅ CLI: `run`, `version`, `info`, `setup`, `remove`, `cleanup`, `inspect` (`meta_data_mcp/cli.py`)
+- ✅ CLI: `run`, `version`, `list`, `info`, `setup`, `remove`, `clients`, `cleanup`, `inspect` (`meta_data_mcp/cli.py`)
 - ✅ Backward compatibility maintained
 - ✅ Provider rename: `opendata_mcp_meta` → `meta_data_mcp`
 
@@ -57,11 +57,11 @@ is no longer realistic — design has not produced code. Re-baseline below.
 
 ### Carry-over work from v1.1.x
 
-- [ ] Wire `translate_http_error` (from `errors.py`, PR #43) into `http_get`'s error path in `utils.py` so it classifies responses and calls `health.record_failure` / `health.record_success`, feeding the dormant `HealthScorer`
+- [ ] Wire `translate_http_error` (from `errors.py`, PR #43) into `http_get`'s error path in `utils.py` and add explicit success-path `health.record_success()` in `http_get`, so both failures and successful responses feed the dormant `HealthScorer`
 - [ ] Raise the default `health` weight in `RoutingEngine.weights` once the feed exists (currently `0.0`)
 - [ ] Migrate the remaining 65 providers to `ProviderConfig` (1/66 today: `au_data_gov`)
 - [ ] Migrate the remaining 65 providers to call `translate_http_error` in their handlers (1/66 today: `us_data_gov`)
-- [ ] Migrate the remaining 62 providers to use `NonEmptyStr` / `Slug` / `PageInt` / `PageSize` from `fields.py` (4/66 today: providers from PR #36 follow-up)
+- [ ] Migrate the remaining 62 providers to use `NonEmptyStr` / `Slug` / `PageInt` / `PageSize` from `fields.py` (4/66 today from PR #44: `us_noaa_awc`, `us_federal_register`, `us_courtlistener`, `global_overpass`)
 - [ ] Have `http_get` consume `ProviderConfig` directly instead of accepting `base_url`/auth per-call (noted as "future work" in `provider_config.py:6`)
 
 ### Scope
