@@ -39,6 +39,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-fda-openfda"
 BASE_URL = "https://api.fda.gov"
 
 # Registration Variables
@@ -79,7 +80,9 @@ class OpenFDADrugEventsParams(BaseModel):
 def fetch_drug_events(params: OpenFDADrugEventsParams) -> Any:
     """Fetch drug adverse-event reports from openFDA."""
     query_params = _build_query(params.search, params.limit, params.skip)
-    response = http_get(f"{BASE_URL}/drug/event.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/drug/event.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -123,7 +126,9 @@ class OpenFDADrugLabelsParams(BaseModel):
 def fetch_drug_labels(params: OpenFDADrugLabelsParams) -> Any:
     """Fetch structured drug labeling from openFDA."""
     query_params = _build_query(params.search, params.limit)
-    response = http_get(f"{BASE_URL}/drug/label.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/drug/label.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -167,7 +172,9 @@ class OpenFDADrugEnforcementParams(BaseModel):
 def fetch_drug_enforcement(params: OpenFDADrugEnforcementParams) -> Any:
     """Fetch drug enforcement (recall) records from openFDA."""
     query_params = _build_query(params.search, params.limit)
-    response = http_get(f"{BASE_URL}/drug/enforcement.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/drug/enforcement.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -211,7 +218,9 @@ class OpenFDADeviceEventsParams(BaseModel):
 def fetch_device_events(params: OpenFDADeviceEventsParams) -> Any:
     """Fetch device adverse-event (MAUDE) reports from openFDA."""
     query_params = _build_query(params.search, params.limit)
-    response = http_get(f"{BASE_URL}/device/event.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/device/event.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -255,7 +264,9 @@ class OpenFDADeviceRecallsParams(BaseModel):
 def fetch_device_recalls(params: OpenFDADeviceRecallsParams) -> Any:
     """Fetch device recall records from openFDA."""
     query_params = _build_query(params.search, params.limit)
-    response = http_get(f"{BASE_URL}/device/recall.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/device/recall.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -299,7 +310,9 @@ class OpenFDADevice510kParams(BaseModel):
 def fetch_device_510k(params: OpenFDADevice510kParams) -> Any:
     """Fetch 510(k) device clearance records from openFDA."""
     query_params = _build_query(params.search, params.limit)
-    response = http_get(f"{BASE_URL}/device/510k.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/device/510k.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -343,7 +356,9 @@ class OpenFDAFoodEnforcementParams(BaseModel):
 def fetch_food_enforcement(params: OpenFDAFoodEnforcementParams) -> Any:
     """Fetch food enforcement (recall) records from openFDA."""
     query_params = _build_query(params.search, params.limit)
-    response = http_get(f"{BASE_URL}/food/enforcement.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/food/enforcement.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -391,7 +406,9 @@ def fetch_animal_veterinary_events(
     """Fetch animal & veterinary adverse-event reports from openFDA."""
     query_params = _build_query(params.search, params.limit)
     response = http_get(
-        f"{BASE_URL}/animalandveterinary/event.json", params=query_params
+        f"{BASE_URL}/animalandveterinary/event.json",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

@@ -36,6 +36,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-noaa-tides"
 BASE_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
 STATIONS_URL = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
 
@@ -85,7 +86,7 @@ def fetch_noaa_tides_water_level(params: NOAATidesWaterLevelParams) -> Any:
         params.station, params.datum, params.units, params.time_zone, "water_level"
     )
     query_params["date"] = params.date
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -142,7 +143,7 @@ def fetch_noaa_tides_predictions(params: NOAATidesPredictionsParams) -> Any:
     query_params["end_date"] = params.end_date
     if params.interval:
         query_params["interval"] = params.interval
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -195,7 +196,7 @@ def _fetch_met_product(params: NOAATidesMetParams, product: str) -> Any:
         params.station, params.datum, params.units, params.time_zone, product
     )
     query_params["date"] = params.date
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -359,7 +360,7 @@ def fetch_noaa_tides_station_metadata(
 ) -> Any:
     """Call the CO-OPS Metadata API stations endpoint."""
     query_params: dict[str, Any] = {"type": params.type}
-    response = http_get(STATIONS_URL, params=query_params)
+    response = http_get(STATIONS_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 

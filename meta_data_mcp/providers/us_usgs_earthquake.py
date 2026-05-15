@@ -34,6 +34,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-usgs-earthquake"
 BASE_URL = "https://earthquake.usgs.gov/fdsnws/event/1"
 FEED_BASE_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary"
 
@@ -99,7 +100,7 @@ def fetch_usgs_eq_query(params: USGSEqQueryParams) -> dict:
         value = getattr(params, key)
         if value is not None:
             query_params[key] = value
-    response = http_get(f"{BASE_URL}/query", params=query_params)
+    response = http_get(f"{BASE_URL}/query", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -148,7 +149,7 @@ def fetch_usgs_eq_count(params: USGSEqCountParams) -> dict:
         value = getattr(params, key)
         if value is not None:
             query_params[key] = value
-    response = http_get(f"{BASE_URL}/count", params=query_params)
+    response = http_get(f"{BASE_URL}/count", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -188,7 +189,7 @@ class USGSEqFeedParams(BaseModel):
 
 def _fetch_feed(url: str) -> dict:
     """Helper: fetch one of the static GeoJSON summary feeds."""
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -336,7 +337,9 @@ class USGSEqVersionParams(BaseModel):
 
 def fetch_usgs_eq_application_version(_params: USGSEqVersionParams) -> str:
     """Call the FDSN /version endpoint. Response is plain text, not JSON."""
-    response = http_get(f"{BASE_URL}/version", headers={"Accept": "text/plain"})
+    response = http_get(
+        f"{BASE_URL}/version", headers={"Accept": "text/plain"}, provider=PROVIDER_ID
+    )
     return response.text
 
 

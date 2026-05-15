@@ -37,6 +37,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-coingecko"
 BASE_URL = "https://api.coingecko.com/api/v3"
 
 # Registration Variables
@@ -78,7 +79,9 @@ def fetch_coingecko_simple_price(params: CoinGeckoSimplePriceParams) -> dict:
         "include_market_cap": str(params.include_market_cap).lower(),
         "include_24hr_change": str(params.include_24hr_change).lower(),
     }
-    response = http_get(f"{BASE_URL}/simple/price", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/simple/price", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -126,7 +129,9 @@ def fetch_coingecko_list_coins(params: CoinGeckoListCoinsParams) -> list:
     query_params: dict[str, Any] = {
         "include_platform": str(params.include_platform).lower(),
     }
-    response = http_get(f"{BASE_URL}/coins/list", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/coins/list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -189,7 +194,9 @@ def fetch_coingecko_coins_markets(params: CoinGeckoCoinsMarketsParams) -> list:
     }
     if params.ids:
         query_params["ids"] = params.ids
-    response = http_get(f"{BASE_URL}/coins/markets", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/coins/markets", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -236,7 +243,9 @@ def fetch_coingecko_get_coin(params: CoinGeckoGetCoinParams) -> dict:
         "community_data": "false",
         "developer_data": "false",
     }
-    response = http_get(f"{BASE_URL}/coins/{params.id}", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/coins/{params.id}", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -284,7 +293,11 @@ class CoinGeckoCoinHistoryParams(BaseModel):
 def fetch_coingecko_coin_history(params: CoinGeckoCoinHistoryParams) -> dict:
     """Fetch a historical coin snapshot from CoinGecko."""
     query_params: dict[str, Any] = {"date": params.date}
-    response = http_get(f"{BASE_URL}/coins/{params.id}/history", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/coins/{params.id}/history",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -341,7 +354,9 @@ def fetch_coingecko_coin_market_chart(
         "days": params.days,
     }
     response = http_get(
-        f"{BASE_URL}/coins/{params.id}/market_chart", params=query_params
+        f"{BASE_URL}/coins/{params.id}/market_chart",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -382,7 +397,7 @@ class CoinGeckoSearchTrendingParams(BaseModel):
 
 def fetch_coingecko_search_trending(_: CoinGeckoSearchTrendingParams) -> dict:
     """Fetch trending searches from CoinGecko."""
-    response = http_get(f"{BASE_URL}/search/trending")
+    response = http_get(f"{BASE_URL}/search/trending", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -420,7 +435,7 @@ class CoinGeckoGlobalParams(BaseModel):
 
 def fetch_coingecko_global(_: CoinGeckoGlobalParams) -> dict:
     """Fetch the global market summary from CoinGecko."""
-    response = http_get(f"{BASE_URL}/global")
+    response = http_get(f"{BASE_URL}/global", provider=PROVIDER_ID)
     return response.json()
 
 

@@ -23,6 +23,7 @@ from meta_data_mcp.utils import (
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "us-raleigh"
 BASE_URL = "https://data.raleighnc.gov"
 
 RESOURCES: List[Any] = []
@@ -58,7 +59,7 @@ def fetch_us_raleigh_search_catalog(params: UsRaleighSearchCatalogParams) -> Any
         query["q"] = params.q
     if params.limit is not None:
         query["limit"] = params.limit
-    response = http_get(url, params=query or None)
+    response = http_get(url, params=query or None, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -103,7 +104,7 @@ def fetch_us_raleigh_get_metadata(params: UsRaleighGetMetadataParams) -> Any:
     """Fetch data for the us-raleigh-get-metadata tool."""
     url = f"{BASE_URL}/api/views/{params.dataset_id}"
     query: dict = {}
-    response = http_get(url, params=query or None)
+    response = http_get(url, params=query or None, provider=PROVIDER_ID)
     return response.json()
 
 

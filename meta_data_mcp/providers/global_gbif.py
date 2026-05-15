@@ -34,6 +34,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-gbif"
 BASE_URL = "https://api.gbif.org/v1"
 
 # Registration Variables
@@ -76,7 +77,9 @@ def fetch_gbif_search_occurrences(params: GBIFSearchOccurrencesParams) -> dict:
         query_params["year"] = params.year
     if params.hasCoordinate is not None:
         query_params["hasCoordinate"] = str(params.hasCoordinate).lower()
-    response = http_get(f"{BASE_URL}/occurrence/search", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/occurrence/search", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -116,7 +119,7 @@ class GBIFGetOccurrenceParams(BaseModel):
 
 def fetch_gbif_get_occurrence(params: GBIFGetOccurrenceParams) -> dict:
     """Call /occurrence/{key}."""
-    response = http_get(f"{BASE_URL}/occurrence/{params.key}")
+    response = http_get(f"{BASE_URL}/occurrence/{params.key}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -166,7 +169,9 @@ def fetch_gbif_search_species(params: GBIFSearchSpeciesParams) -> dict:
     query_params: dict[str, Any] = {"q": params.q, "limit": params.limit}
     if params.rank:
         query_params["rank"] = params.rank
-    response = http_get(f"{BASE_URL}/species/search", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/species/search", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -208,7 +213,7 @@ class GBIFGetSpeciesParams(BaseModel):
 
 def fetch_gbif_get_species(params: GBIFGetSpeciesParams) -> dict:
     """Call /species/{key}."""
-    response = http_get(f"{BASE_URL}/species/{params.key}")
+    response = http_get(f"{BASE_URL}/species/{params.key}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -252,7 +257,9 @@ class GBIFSpeciesSuggestParams(BaseModel):
 def fetch_gbif_species_suggest(params: GBIFSpeciesSuggestParams) -> Any:
     """Call /species/suggest."""
     query_params: dict[str, Any] = {"q": params.q, "limit": params.limit}
-    response = http_get(f"{BASE_URL}/species/suggest", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/species/suggest", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -307,7 +314,9 @@ def fetch_gbif_list_datasets(params: GBIFListDatasetsParams) -> dict:
         query_params["type"] = params.type
     if params.country:
         query_params["country"] = params.country
-    response = http_get(f"{BASE_URL}/dataset", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/dataset", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -347,7 +356,7 @@ class GBIFGetDatasetParams(BaseModel):
 
 def fetch_gbif_get_dataset(params: GBIFGetDatasetParams) -> dict:
     """Call /dataset/{key}."""
-    response = http_get(f"{BASE_URL}/dataset/{params.key}")
+    response = http_get(f"{BASE_URL}/dataset/{params.key}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -394,7 +403,9 @@ def fetch_gbif_occurrence_counts(params: GBIFOccurrenceCountsParams) -> Any:
     query_params: dict[str, Any] = {}
     if params.country:
         query_params["country"] = params.country
-    response = http_get(f"{BASE_URL}/occurrence/counts", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/occurrence/counts", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 

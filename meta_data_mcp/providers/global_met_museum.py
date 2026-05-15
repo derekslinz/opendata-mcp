@@ -34,6 +34,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-met-museum"
 BASE_URL = "https://collectionapi.metmuseum.org/public/collection/v1"
 
 # Registration Variables
@@ -69,7 +70,9 @@ def fetch_met_list_objects(params: MetListObjectsParams) -> dict:
         query_params["departmentIds"] = params.departmentIds
     if params.metadataDate:
         query_params["metadataDate"] = params.metadataDate
-    response = http_get(f"{BASE_URL}/objects", params=query_params or None)
+    response = http_get(
+        f"{BASE_URL}/objects", params=query_params or None, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -109,7 +112,7 @@ class MetGetObjectParams(BaseModel):
 
 def fetch_met_get_object(params: MetGetObjectParams) -> dict:
     """Call the Met /objects/{objectID} endpoint."""
-    response = http_get(f"{BASE_URL}/objects/{params.objectID}")
+    response = http_get(f"{BASE_URL}/objects/{params.objectID}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -184,7 +187,7 @@ def fetch_met_search(params: MetSearchParams) -> dict:
         query_params["dateBegin"] = params.dateBegin
     if params.dateEnd is not None:
         query_params["dateEnd"] = params.dateEnd
-    response = http_get(f"{BASE_URL}/search", params=query_params)
+    response = http_get(f"{BASE_URL}/search", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -224,7 +227,7 @@ class MetListDepartmentsParams(BaseModel):
 
 def fetch_met_list_departments(params: MetListDepartmentsParams) -> dict:
     """Call the Met /departments endpoint."""
-    response = http_get(f"{BASE_URL}/departments")
+    response = http_get(f"{BASE_URL}/departments", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -270,7 +273,7 @@ def fetch_met_search_by_artist(params: MetSearchByArtistParams) -> dict:
         "artistOrCulture": "true",
         "q": params.q,
     }
-    response = http_get(f"{BASE_URL}/search", params=query_params)
+    response = http_get(f"{BASE_URL}/search", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 

@@ -23,6 +23,7 @@ from meta_data_mcp.utils import (
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "us-arcgis-item"
 BASE_URL = "https://www.arcgis.com"
 
 RESOURCES: List[Any] = []
@@ -56,7 +57,7 @@ def fetch_us_arcgis_get_item(params: UsArcgisGetItemParams) -> Any:
     query: dict = {}
     if params.f is not None:
         query["f"] = params.f
-    response = http_get(url, params=query or None)
+    response = http_get(url, params=query or None, provider=PROVIDER_ID)
     return response.json()
 
 

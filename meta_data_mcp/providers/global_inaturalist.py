@@ -36,6 +36,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-inaturalist"
 BASE_URL = "https://api.inaturalist.org/v1"
 
 # Registration Variables
@@ -83,7 +84,9 @@ def fetch_inaturalist_search_observations(
         value = getattr(params, key)
         if value is not None:
             query_params[key] = value
-    response = http_get(f"{BASE_URL}/observations", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/observations", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -127,7 +130,7 @@ def fetch_inaturalist_get_observation(
     params: INaturalistGetObservationParams,
 ) -> dict:
     """Call /observations/{id}."""
-    response = http_get(f"{BASE_URL}/observations/{params.id}")
+    response = http_get(f"{BASE_URL}/observations/{params.id}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -177,7 +180,7 @@ def fetch_inaturalist_search_taxa(params: INaturalistSearchTaxaParams) -> dict:
     query_params: dict[str, Any] = {"q": params.q, "per_page": params.per_page}
     if params.rank:
         query_params["rank"] = params.rank
-    response = http_get(f"{BASE_URL}/taxa", params=query_params)
+    response = http_get(f"{BASE_URL}/taxa", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -219,7 +222,7 @@ class INaturalistGetTaxonParams(BaseModel):
 
 def fetch_inaturalist_get_taxon(params: INaturalistGetTaxonParams) -> dict:
     """Call /taxa/{id}."""
-    response = http_get(f"{BASE_URL}/taxa/{params.id}")
+    response = http_get(f"{BASE_URL}/taxa/{params.id}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -263,7 +266,9 @@ class INaturalistListPlacesParams(BaseModel):
 def fetch_inaturalist_list_places(params: INaturalistListPlacesParams) -> dict:
     """Call /places/autocomplete."""
     query_params: dict[str, Any] = {"q": params.q, "per_page": params.per_page}
-    response = http_get(f"{BASE_URL}/places/autocomplete", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/places/autocomplete", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -305,7 +310,7 @@ class INaturalistGetPlaceParams(BaseModel):
 
 def fetch_inaturalist_get_place(params: INaturalistGetPlaceParams) -> dict:
     """Call /places/{id}."""
-    response = http_get(f"{BASE_URL}/places/{params.id}")
+    response = http_get(f"{BASE_URL}/places/{params.id}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -351,7 +356,9 @@ def fetch_inaturalist_list_projects(params: INaturalistListProjectsParams) -> di
     query_params: dict[str, Any] = {"per_page": params.per_page}
     if params.q:
         query_params["q"] = params.q
-    response = http_get(f"{BASE_URL}/projects", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/projects", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -391,7 +398,7 @@ class INaturalistGetUserParams(BaseModel):
 
 def fetch_inaturalist_get_user(params: INaturalistGetUserParams) -> dict:
     """Call /users/{id}."""
-    response = http_get(f"{BASE_URL}/users/{params.id}")
+    response = http_get(f"{BASE_URL}/users/{params.id}", provider=PROVIDER_ID)
     return response.json()
 
 

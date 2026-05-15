@@ -36,6 +36,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-crossref"
 BASE_URL = "https://api.crossref.org"
 
 # Registration Variables
@@ -89,7 +90,7 @@ def fetch_crossref_works_search(params: CrossrefWorksSearchParams) -> dict:
         query_params["sort"] = params.sort
     if params.order:
         query_params["order"] = params.order
-    response = http_get(f"{BASE_URL}/works", params=query_params)
+    response = http_get(f"{BASE_URL}/works", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -131,7 +132,7 @@ def fetch_crossref_get_work(params: CrossrefGetWorkParams) -> dict:
     """Call Crossref /works/{doi}."""
     # safe="" forces full URL-encoding (including the '/').
     encoded = quote(params.doi, safe="")
-    response = http_get(f"{BASE_URL}/works/{encoded}")
+    response = http_get(f"{BASE_URL}/works/{encoded}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -184,7 +185,7 @@ def fetch_crossref_works_by_author(params: CrossrefWorksByAuthorParams) -> dict:
     }
     if params.select:
         query_params["select"] = params.select
-    response = http_get(f"{BASE_URL}/works", params=query_params)
+    response = http_get(f"{BASE_URL}/works", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -231,7 +232,7 @@ def fetch_crossref_works_by_title(params: CrossrefWorksByTitleParams) -> dict:
         "query.title": params.title,
         "rows": params.rows,
     }
-    response = http_get(f"{BASE_URL}/works", params=query_params)
+    response = http_get(f"{BASE_URL}/works", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -278,7 +279,9 @@ def fetch_crossref_journals_search(params: CrossrefJournalsSearchParams) -> dict
         "query": params.query,
         "rows": params.rows,
     }
-    response = http_get(f"{BASE_URL}/journals", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/journals", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -320,7 +323,7 @@ class CrossrefGetJournalParams(BaseModel):
 
 def fetch_crossref_get_journal(params: CrossrefGetJournalParams) -> dict:
     """Call Crossref /journals/{issn}."""
-    response = http_get(f"{BASE_URL}/journals/{params.issn}")
+    response = http_get(f"{BASE_URL}/journals/{params.issn}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -367,7 +370,9 @@ def fetch_crossref_funders_search(params: CrossrefFundersSearchParams) -> dict:
         "query": params.query,
         "rows": params.rows,
     }
-    response = http_get(f"{BASE_URL}/funders", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/funders", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 

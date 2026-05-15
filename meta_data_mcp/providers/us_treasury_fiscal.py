@@ -46,6 +46,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-treasury-fiscal"
 BASE_URL = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
 
 # Known Fiscal Data endpoints surfaced by treasury-list-endpoints. The Fiscal
@@ -132,6 +133,7 @@ def fetch_treasury_debt_to_penny(params: TreasuryDebtToPennyParams) -> dict:
         params=_build_params(
             fields=params.fields, page_size=params.page_size, filter=params.filter
         ),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -181,6 +183,7 @@ def fetch_treasury_avg_interest_rates(
     response = http_get(
         f"{BASE_URL}/v2/accounting/od/avg_interest_rates",
         params=_build_params(page_size=params.page_size, filter=params.filter),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -232,6 +235,7 @@ def fetch_treasury_dts_operating_cash(
     response = http_get(
         f"{BASE_URL}/v1/accounting/dts/operating_cash_balance",
         params=_build_params(page_size=params.page_size, filter=params.filter),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -283,6 +287,7 @@ def fetch_treasury_dts_public_debt(
     response = http_get(
         f"{BASE_URL}/v1/accounting/dts/public_debt_transactions",
         params=_build_params(page_size=params.page_size, filter=params.filter),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -332,6 +337,7 @@ def fetch_treasury_exchange_rates(
     response = http_get(
         f"{BASE_URL}/v1/accounting/od/rates_of_exchange",
         params=_build_params(page_size=params.page_size, filter=params.filter),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -440,6 +446,7 @@ def fetch_treasury_search_records(
             filter=params.filter,
             sort=params.sort,
         ),
+        provider=PROVIDER_ID,
     )
     return response.json()
 

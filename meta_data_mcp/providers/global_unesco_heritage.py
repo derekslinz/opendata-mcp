@@ -30,6 +30,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "global-unesco-heritage"
 BASE_URL = "https://whc.unesco.org/api/sites"
 
 RESOURCES: List[Any] = []
@@ -98,7 +99,7 @@ def fetch_unesco_heritage_list_sites(
         query_params["danger"] = params.danger
     if params.order:
         query_params["order"] = params.order
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -145,8 +146,7 @@ class UNESCOHeritageGetSiteParams(BaseModel):
 def fetch_unesco_heritage_get_site(params: UNESCOHeritageGetSiteParams) -> dict:
     """Fetch a specific UNESCO World Heritage Site by ID."""
     response = http_get(
-        f"{BASE_URL}/{params.site_id}",
-        params={"format": "json"},
+        f"{BASE_URL}/{params.site_id}", params={"format": "json"}, provider=PROVIDER_ID
     )
     return response.json()
 
@@ -205,7 +205,7 @@ def fetch_unesco_heritage_search(params: UNESCOHeritageSearchParams) -> dict:
         "page": params.page,
         "per_page": params.per_page,
     }
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 

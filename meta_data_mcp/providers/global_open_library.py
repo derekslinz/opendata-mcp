@@ -36,6 +36,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-open-library"
 BASE_URL = "https://openlibrary.org"
 
 # Registration Variables
@@ -75,7 +76,9 @@ def fetch_open_library_search_books(params: OpenLibrarySearchBooksParams) -> dic
         query_params["author"] = params.author
     if params.q:
         query_params["q"] = params.q
-    response = http_get(f"{BASE_URL}/search.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/search.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -121,7 +124,9 @@ def fetch_open_library_search_authors(
 ) -> dict:
     """Search Open Library authors."""
     query_params: dict[str, Any] = {"q": params.q, "limit": params.limit}
-    response = http_get(f"{BASE_URL}/search/authors.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/search/authors.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -163,7 +168,7 @@ class OpenLibraryGetWorkParams(BaseModel):
 
 def fetch_open_library_get_work(params: OpenLibraryGetWorkParams) -> dict:
     """Fetch an Open Library work record."""
-    response = http_get(f"{BASE_URL}/works/{params.work_id}.json")
+    response = http_get(f"{BASE_URL}/works/{params.work_id}.json", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -207,7 +212,9 @@ class OpenLibraryGetEditionParams(BaseModel):
 
 def fetch_open_library_get_edition(params: OpenLibraryGetEditionParams) -> dict:
     """Fetch an Open Library edition record."""
-    response = http_get(f"{BASE_URL}/books/{params.edition_id}.json")
+    response = http_get(
+        f"{BASE_URL}/books/{params.edition_id}.json", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -249,7 +256,9 @@ class OpenLibraryGetAuthorParams(BaseModel):
 
 def fetch_open_library_get_author(params: OpenLibraryGetAuthorParams) -> dict:
     """Fetch an Open Library author record."""
-    response = http_get(f"{BASE_URL}/authors/{params.author_id}.json")
+    response = http_get(
+        f"{BASE_URL}/authors/{params.author_id}.json", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -293,7 +302,7 @@ class OpenLibraryISBNLookupParams(BaseModel):
 
 def fetch_open_library_isbn_lookup(params: OpenLibraryISBNLookupParams) -> dict:
     """Look up a book by ISBN."""
-    response = http_get(f"{BASE_URL}/isbn/{params.isbn}.json")
+    response = http_get(f"{BASE_URL}/isbn/{params.isbn}.json", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -342,7 +351,9 @@ def fetch_open_library_subject(params: OpenLibrarySubjectParams) -> dict:
     """Fetch the subject feed for a subject slug."""
     query_params: dict[str, Any] = {"limit": params.limit}
     response = http_get(
-        f"{BASE_URL}/subjects/{params.subject}.json", params=query_params
+        f"{BASE_URL}/subjects/{params.subject}.json",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

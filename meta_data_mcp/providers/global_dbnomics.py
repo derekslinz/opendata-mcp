@@ -22,6 +22,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-dbnomics"
 BASE_URL = "https://api.db.nomics.world/v22"
 
 # Registration Variables
@@ -46,7 +47,7 @@ class DBnomicsSearchParams(BaseModel):
 def search_dbnomics(params: DBnomicsSearchParams) -> Any:
     """Search for datasets and series on DBnomics."""
     query_params = {"q": params.query, "limit": params.limit, "offset": params.offset}
-    response = http_get(f"{BASE_URL}/search", params=query_params)
+    response = http_get(f"{BASE_URL}/search", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -79,7 +80,7 @@ TOOLS_HANDLERS["dbnomics-search"] = handle_dbnomics_search
 
 def list_dbnomics_providers() -> Any:
     """List all data providers available on DBnomics."""
-    response = http_get(f"{BASE_URL}/providers")
+    response = http_get(f"{BASE_URL}/providers", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -121,7 +122,7 @@ class DBnomicsSeriesParams(BaseModel):
 def fetch_dbnomics_series(params: DBnomicsSeriesParams) -> Any:
     """Fetch data for specific series from DBnomics."""
     query_params = {"series_ids": params.series_ids}
-    response = http_get(f"{BASE_URL}/series", params=query_params)
+    response = http_get(f"{BASE_URL}/series", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 

@@ -36,6 +36,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "global-ripe-stat"
 BASE_URL = "https://stat.ripe.net/data"
 
 RESOURCES: List[Any] = []
@@ -66,6 +67,7 @@ def fetch_ripestat_network_info(params: RIPEStatNetworkInfoParams) -> dict:
     response = http_get(
         f"{BASE_URL}/network-info/data.json",
         params={"resource": params.resource},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -123,7 +125,9 @@ def fetch_ripestat_bgp_state(params: RIPEStatBGPStateParams) -> dict:
     query_params: dict[str, Any] = {"resource": params.resource}
     if params.rrcs:
         query_params["rrcs"] = params.rrcs
-    response = http_get(f"{BASE_URL}/bgp-state/data.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/bgp-state/data.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -174,6 +178,7 @@ def fetch_ripestat_prefix_overview(params: RIPEStatPrefixOverviewParams) -> dict
     response = http_get(
         f"{BASE_URL}/prefix-overview/data.json",
         params={"resource": params.resource},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -243,7 +248,11 @@ def fetch_ripestat_announced_prefixes(
         query_params["endtime"] = params.endtime
     if params.min_peers_seeing is not None:
         query_params["min_peers_seeing"] = params.min_peers_seeing
-    response = http_get(f"{BASE_URL}/announced-prefixes/data.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/announced-prefixes/data.json",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -304,7 +313,11 @@ def fetch_ripestat_routing_history(params: RIPEStatRoutingHistoryParams) -> dict
         query_params["starttime"] = params.starttime
     if params.endtime:
         query_params["endtime"] = params.endtime
-    response = http_get(f"{BASE_URL}/routing-history/data.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/routing-history/data.json",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -363,7 +376,11 @@ def fetch_ripestat_asn_neighbours(params: RIPEStatASNNeighboursParams) -> dict:
         query_params["starttime"] = params.starttime
     if params.endtime:
         query_params["endtime"] = params.endtime
-    response = http_get(f"{BASE_URL}/asn-neighbours/data.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/asn-neighbours/data.json",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -431,7 +448,9 @@ def fetch_ripestat_asn_neighbours_history(
     if params.max_rows is not None:
         query_params["max_rows"] = params.max_rows
     response = http_get(
-        f"{BASE_URL}/asn-neighbours-history/data.json", params=query_params
+        f"{BASE_URL}/asn-neighbours-history/data.json",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -484,6 +503,7 @@ def fetch_ripestat_geoloc(params: RIPEStatGeolocParams) -> dict:
     response = http_get(
         f"{BASE_URL}/geoloc/data.json",
         params={"resource": params.resource},
+        provider=PROVIDER_ID,
     )
     return response.json()
 

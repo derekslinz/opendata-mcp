@@ -39,6 +39,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-disease-sh"
 BASE_URL = "https://disease.sh/v3/covid-19"
 
 # Registration Variables
@@ -61,7 +62,7 @@ class DiseaseShGlobalParams(BaseModel):
 
 def fetch_global(_params: DiseaseShGlobalParams) -> dict:
     """Fetch worldwide aggregate COVID-19 totals from /all."""
-    response = http_get(f"{BASE_URL}/all", timeout=30.0)
+    response = http_get(f"{BASE_URL}/all", timeout=30.0, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -112,6 +113,7 @@ def fetch_countries(params: DiseaseShCountriesParams) -> list:
         f"{BASE_URL}/countries",
         params=query_params or None,
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -155,8 +157,7 @@ class DiseaseShCountryParams(BaseModel):
 def fetch_country(params: DiseaseShCountryParams) -> dict:
     """Fetch COVID-19 totals for a single country."""
     response = http_get(
-        f"{BASE_URL}/countries/{params.country}",
-        timeout=30.0,
+        f"{BASE_URL}/countries/{params.country}", timeout=30.0, provider=PROVIDER_ID
     )
     return response.json()
 
@@ -210,6 +211,7 @@ def fetch_historical_all(params: DiseaseShHistoricalAllParams) -> dict:
         f"{BASE_URL}/historical/all",
         params=query_params or None,
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -262,6 +264,7 @@ def fetch_historical_country(params: DiseaseShHistoricalCountryParams) -> dict:
         f"{BASE_URL}/historical/{params.country}",
         params=query_params or None,
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -316,6 +319,7 @@ def fetch_vaccine_coverage(params: DiseaseShVaccineCoverageParams) -> dict:
         "https://disease.sh/v3/covid-19/vaccine/coverage",
         params=query_params or None,
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

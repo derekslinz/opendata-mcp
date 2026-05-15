@@ -265,7 +265,9 @@ def _render_fetch_fn(tool: dict[str, Any], requires_env: list[str]) -> str:
     body_parts = [url_line, "    query: dict = {}"]
     body_parts.extend(env_lines)
     body_parts.extend(query_assignments)
-    body_parts.append("    response = http_get(url, params=query or None)")
+    body_parts.append(
+        "    response = http_get(url, params=query or None, provider=PROVIDER_ID)"
+    )
 
     if tool["response_format"] == "json":
         body_parts.append("    return response.json()")
@@ -404,6 +406,7 @@ def render_provider(spec: dict[str, Any]) -> str:
 
     header = (
         "log = logging.getLogger(__name__)\n\n"
+        f"PROVIDER_ID = {_py_literal(spec['server_name'])}\n"
         f"BASE_URL = {_py_literal(spec['base_url'])}\n\n"
         "RESOURCES: List[Any] = []\n"
         "RESOURCES_HANDLERS: dict[str, Any] = {}\n"

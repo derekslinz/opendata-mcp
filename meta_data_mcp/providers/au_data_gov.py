@@ -38,6 +38,8 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 # Initialize logging
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "au-data-gov"
+
 # Constants
 CONFIG = ProviderConfig(
     base_url="https://data.gov.au/data/api/3/action",
@@ -80,7 +82,9 @@ def fetch_au_datagov_search_datasets(params: AUDataGovSearchDatasetsParams) -> d
         "rows": params.rows,
         "start": params.start,
     }
-    response = http_get(f"{CONFIG.base_url}/package_search", params=query_params)
+    response = http_get(
+        f"{CONFIG.base_url}/package_search", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -120,7 +124,11 @@ class AUDataGovGetDatasetParams(BaseModel):
 
 def fetch_au_datagov_get_dataset(params: AUDataGovGetDatasetParams) -> dict:
     """Call CKAN package_show on data.gov.au."""
-    response = http_get(f"{CONFIG.base_url}/package_show", params={"id": params.id})
+    response = http_get(
+        f"{CONFIG.base_url}/package_show",
+        params={"id": params.id},
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -171,7 +179,11 @@ def fetch_au_datagov_list_organizations(
         "all_fields": "true",
         "limit": params.limit,
     }
-    response = http_get(f"{CONFIG.base_url}/organization_list", params=query_params)
+    response = http_get(
+        f"{CONFIG.base_url}/organization_list",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -212,7 +224,9 @@ class AUDataGovGetOrganizationParams(BaseModel):
 def fetch_au_datagov_get_organization(params: AUDataGovGetOrganizationParams) -> dict:
     """Call CKAN organization_show on data.gov.au."""
     response = http_get(
-        f"{CONFIG.base_url}/organization_show", params={"id": params.id}
+        f"{CONFIG.base_url}/organization_show",
+        params={"id": params.id},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -261,7 +275,9 @@ def fetch_au_datagov_list_groups(params: AUDataGovListGroupsParams) -> dict:
     query_params: dict[str, Any] = {
         "all_fields": "true" if params.all_fields else "false",
     }
-    response = http_get(f"{CONFIG.base_url}/group_list", params=query_params)
+    response = http_get(
+        f"{CONFIG.base_url}/group_list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -307,7 +323,9 @@ def fetch_au_datagov_list_tags(params: AUDataGovListTagsParams) -> dict:
     query_params: dict[str, Any] = {}
     if params.query:
         query_params["query"] = params.query
-    response = http_get(f"{CONFIG.base_url}/tag_list", params=query_params)
+    response = http_get(
+        f"{CONFIG.base_url}/tag_list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 

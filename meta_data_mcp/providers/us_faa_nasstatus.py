@@ -45,6 +45,7 @@ from meta_data_mcp.utils import http_get, MAX_RESPONSE_CHARS
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-faa-nasstatus"
 BASE_URL = "https://nasstatus.faa.gov/api"
 XML_HEADERS = {"Accept": "application/xml"}
 
@@ -69,7 +70,11 @@ def fetch_faa_airport_status(_: FAAAirportStatusParams) -> str:
 
     Returns the raw response text (XML); consumers must parse it.
     """
-    response = http_get(f"{BASE_URL}/airport-status-information", headers=XML_HEADERS)
+    response = http_get(
+        f"{BASE_URL}/airport-status-information",
+        headers=XML_HEADERS,
+        provider=PROVIDER_ID,
+    )
     return response.text
 
 
@@ -119,6 +124,7 @@ def fetch_faa_ground_stops(_: FAAGroundStopsParams) -> str:
         f"{BASE_URL}/airport-events",
         params={"eventType": "GS"},
         headers=XML_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 
@@ -164,6 +170,7 @@ def fetch_faa_departure_delays(_: FAADepartureDelaysParams) -> str:
         f"{BASE_URL}/airport-events",
         params={"eventType": "GD"},
         headers=XML_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 
@@ -209,6 +216,7 @@ def fetch_faa_arrival_delays(_: FAAArrivalDelaysParams) -> str:
         f"{BASE_URL}/airport-events",
         params={"eventType": "ARRDLY"},
         headers=XML_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 

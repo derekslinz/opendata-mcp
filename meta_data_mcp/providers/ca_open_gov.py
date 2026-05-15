@@ -35,6 +35,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "ca-open-gov"
 BASE_URL = "https://open.canada.ca/data/api/action"
 
 # Registration Variables
@@ -73,7 +74,9 @@ def fetch_ca_opengov_search_datasets(params: CAOpenGovSearchDatasetsParams) -> d
         "rows": params.rows,
         "start": params.start,
     }
-    response = http_get(f"{BASE_URL}/package_search", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/package_search", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -113,7 +116,9 @@ class CAOpenGovGetDatasetParams(BaseModel):
 
 def fetch_ca_opengov_get_dataset(params: CAOpenGovGetDatasetParams) -> dict:
     """Call CKAN package_show on open.canada.ca."""
-    response = http_get(f"{BASE_URL}/package_show", params={"id": params.id})
+    response = http_get(
+        f"{BASE_URL}/package_show", params={"id": params.id}, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -164,7 +169,9 @@ def fetch_ca_opengov_list_organizations(
         "all_fields": "true",
         "limit": params.limit,
     }
-    response = http_get(f"{BASE_URL}/organization_list", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/organization_list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -204,7 +211,9 @@ class CAOpenGovGetOrganizationParams(BaseModel):
 
 def fetch_ca_opengov_get_organization(params: CAOpenGovGetOrganizationParams) -> dict:
     """Call CKAN organization_show on open.canada.ca."""
-    response = http_get(f"{BASE_URL}/organization_show", params={"id": params.id})
+    response = http_get(
+        f"{BASE_URL}/organization_show", params={"id": params.id}, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -252,7 +261,9 @@ def fetch_ca_opengov_list_groups(params: CAOpenGovListGroupsParams) -> dict:
     query_params: dict[str, Any] = {
         "all_fields": "true" if params.all_fields else "false",
     }
-    response = http_get(f"{BASE_URL}/group_list", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/group_list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -298,7 +309,9 @@ def fetch_ca_opengov_list_tags(params: CAOpenGovListTagsParams) -> dict:
     query_params: dict[str, Any] = {}
     if params.query:
         query_params["query"] = params.query
-    response = http_get(f"{BASE_URL}/tag_list", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/tag_list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -338,7 +351,7 @@ class CAOpenGovListLicensesParams(BaseModel):
 
 def fetch_ca_opengov_list_licenses(params: CAOpenGovListLicensesParams) -> dict:
     """Call CKAN license_list on open.canada.ca."""
-    response = http_get(f"{BASE_URL}/license_list")
+    response = http_get(f"{BASE_URL}/license_list", provider=PROVIDER_ID)
     return response.json()
 
 

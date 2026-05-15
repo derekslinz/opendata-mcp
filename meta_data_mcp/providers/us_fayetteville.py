@@ -23,6 +23,7 @@ from meta_data_mcp.utils import (
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "us-fayetteville"
 BASE_URL = "https://data.fayettevillenc.gov"
 
 RESOURCES: List[Any] = []
@@ -60,7 +61,7 @@ def fetch_us_fayetteville_search_catalog(
         query["q"] = params.q
     if params.limit is not None:
         query["limit"] = params.limit
-    response = http_get(url, params=query or None)
+    response = http_get(url, params=query or None, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -105,7 +106,7 @@ def fetch_us_fayetteville_get_metadata(params: UsFayettevilleGetMetadataParams) 
     """Fetch data for the us-fayetteville-get-metadata tool."""
     url = f"{BASE_URL}/api/views/{params.dataset_id}"
     query: dict = {}
-    response = http_get(url, params=query or None)
+    response = http_get(url, params=query or None, provider=PROVIDER_ID)
     return response.json()
 
 

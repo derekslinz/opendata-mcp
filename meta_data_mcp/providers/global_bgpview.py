@@ -18,6 +18,8 @@ from meta_data_mcp.utils import serialize_for_llm
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "global-bgpview"
+
 RESOURCES: List[Any] = []
 RESOURCES_HANDLERS: dict[str, Any] = {}
 TOOLS: List[types.Tool] = []

@@ -34,6 +34,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-frankfurter"
 BASE_URL = "https://api.frankfurter.app"
 
 # Registration Variables
@@ -66,7 +67,7 @@ def fetch_frankfurter_latest(params: FrankfurterLatestParams) -> dict:
     query_params: dict[str, Any] = {"from": params.base}
     if params.targets:
         query_params["to"] = params.targets
-    response = http_get(f"{BASE_URL}/latest", params=query_params)
+    response = http_get(f"{BASE_URL}/latest", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -121,7 +122,9 @@ def fetch_frankfurter_historical(params: FrankfurterHistoricalParams) -> dict:
     query_params: dict[str, Any] = {"from": params.base}
     if params.targets:
         query_params["to"] = params.targets
-    response = http_get(f"{BASE_URL}/{params.date}", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/{params.date}", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -183,7 +186,11 @@ def fetch_frankfurter_time_series(params: FrankfurterTimeSeriesParams) -> dict:
     query_params: dict[str, Any] = {"from": params.base}
     if params.targets:
         query_params["to"] = params.targets
-    response = http_get(f"{BASE_URL}/{params.start}..{params.end}", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/{params.start}..{params.end}",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -223,7 +230,7 @@ class FrankfurterCurrenciesParams(BaseModel):
 
 def fetch_frankfurter_currencies(_: FrankfurterCurrenciesParams) -> dict:
     """Fetch the list of supported currencies."""
-    response = http_get(f"{BASE_URL}/currencies")
+    response = http_get(f"{BASE_URL}/currencies", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -279,7 +286,7 @@ def fetch_frankfurter_convert(params: FrankfurterConvertParams) -> dict:
         "from": params.base,
         "to": params.target,
     }
-    response = http_get(f"{BASE_URL}/latest", params=query_params)
+    response = http_get(f"{BASE_URL}/latest", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 

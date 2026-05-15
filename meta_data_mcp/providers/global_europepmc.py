@@ -35,6 +35,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-europepmc"
 BASE_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 
 # Europe PMC fullTextXML endpoint returns XML.
@@ -81,7 +82,7 @@ def fetch_europepmc_search(params: EuropePmcSearchParams) -> dict:
         "cursorMark": params.cursorMark,
         "resultType": params.resultType,
     }
-    response = http_get(f"{BASE_URL}/search", params=query_params)
+    response = http_get(f"{BASE_URL}/search", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -131,7 +132,9 @@ def fetch_europepmc_get_article(params: EuropePmcGetArticleParams) -> dict:
         "format": "json",
     }
     response = http_get(
-        f"{BASE_URL}/article/{params.source}/{params.id}", params=query_params
+        f"{BASE_URL}/article/{params.source}/{params.id}",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -181,7 +184,9 @@ def fetch_europepmc_references(params: EuropePmcReferencesParams) -> dict:
         "pageSize": params.pageSize,
     }
     response = http_get(
-        f"{BASE_URL}/{params.source}/{params.id}/references", params=query_params
+        f"{BASE_URL}/{params.source}/{params.id}/references",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -231,7 +236,9 @@ def fetch_europepmc_citations(params: EuropePmcCitationsParams) -> dict:
         "pageSize": params.pageSize,
     }
     response = http_get(
-        f"{BASE_URL}/{params.source}/{params.id}/citations", params=query_params
+        f"{BASE_URL}/{params.source}/{params.id}/citations",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -280,6 +287,7 @@ def fetch_europepmc_fulltext_xml(params: EuropePmcFullTextXmlParams) -> str:
     response = http_get(
         f"{BASE_URL}/{params.source}/{params.id}/fullTextXML",
         headers=_XML_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 
@@ -335,6 +343,7 @@ def fetch_europepmc_supplementaryfiles(
     response = http_get(
         f"{BASE_URL}/{params.source}/{params.id}/supplementaryFiles",
         params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

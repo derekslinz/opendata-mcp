@@ -22,6 +22,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-rcsb-pdb"
 BASE_URL = "https://data.rcsb.org/rest/v1"
 
 # Registration Variables
@@ -43,7 +44,9 @@ class PDBEntryParams(BaseModel):
 
 def fetch_pdb_entry(params: PDBEntryParams) -> Any:
     """Fetch entry metadata from RCSB PDB."""
-    response = http_get(f"{BASE_URL}/core/entry/{params.entry_id}")
+    response = http_get(
+        f"{BASE_URL}/core/entry/{params.entry_id}", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -84,7 +87,8 @@ class PDBPolymerParams(BaseModel):
 def fetch_pdb_polymer(params: PDBPolymerParams) -> Any:
     """Fetch polymer entity data from RCSB PDB."""
     response = http_get(
-        f"{BASE_URL}/core/polymer_entity/{params.entry_id}/{params.entity_id}"
+        f"{BASE_URL}/core/polymer_entity/{params.entry_id}/{params.entity_id}",
+        provider=PROVIDER_ID,
     )
     return response.json()
 
