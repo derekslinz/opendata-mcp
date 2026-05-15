@@ -28,6 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -194,16 +195,56 @@ def fetch_frankfurter_time_series(params: FrankfurterTimeSeriesParams) -> dict:
     return response.json()
 
 
+def _frankfurter_time_series_to_shape_payload(data: dict) -> dict:
+    """Adapt Frankfurter's nested ``{rates: {date: {currency: value}}}``
+    response to the ``ui://meta-data-mcp/shape/timeseries/v1`` payload:
+    ``{points: [{date, value, series}], axes: {x, y}}``.
+
+    Each ``(date, currency, value)`` tuple becomes one point, with the
+    currency code carried in ``series`` so multi-currency time series
+    render as separate lines.
+    """
+    base = data.get("base", "")
+    points = []
+    for date in sorted(data.get("rates", {})):
+        per_currency = data["rates"][date]
+        if not isinstance(per_currency, dict):
+            continue
+        for currency, value in per_currency.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            points.append({"date": date, "value": value, "series": currency})
+    payload = {
+        "points": points,
+        "axes": {
+            "x": "Date",
+            "y": f"Rate (per 1 {base})" if base else "Rate",
+        },
+    }
+    for key in ("amount", "base", "start_date", "end_date"):
+        if key in data:
+            payload[key] = data[key]
+    return payload
+
+
 async def handle_frankfurter_time_series(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the frankfurter-time-series tool call."""
+    """Handle the frankfurter-time-series tool call.
+
+    The response is in the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload format so the
+    MCP Apps host can render the result inline via the bound shape
+    primitive. Phase 4 of the v2.0 plan: tool result shape is the
+    visualization input.
+    """
     try:
         if not arguments or "start" not in arguments or "end" not in arguments:
             raise ValueError("start and end are required")
         params = FrankfurterTimeSeriesParams(**arguments)
         data = fetch_frankfurter_time_series(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _frankfurter_time_series_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching Frankfurter time series: {e}")
         raise
@@ -214,6 +255,12 @@ TOOLS.append(
         name="frankfurter-time-series",
         description="Get a time series of ECB reference FX rates between two dates.",
         inputSchema=FrankfurterTimeSeriesParams.model_json_schema(),
+        # MCP Apps binding: render via the shared timeseries shape primitive.
+        # Pass via the alias keyword (`_meta`), not `meta=` — the SDK's Tool
+        # model doesn't enable populate_by_name, so `meta=` silently drops
+        # into extras and never reaches the wire. See
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["frankfurter-time-series"] = handle_frankfurter_time_series
