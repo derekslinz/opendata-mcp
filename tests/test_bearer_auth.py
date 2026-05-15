@@ -67,9 +67,7 @@ async def test_sse_with_correct_token_passes_through():
     app = _build_app("secret")
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get(
-            "/sse", headers={"Authorization": "Bearer secret"}
-        )
+        response = await client.get("/sse", headers={"Authorization": "Bearer secret"})
     assert response.status_code == 200
     assert response.text == "sse-ok"
 
@@ -92,9 +90,7 @@ async def test_non_bearer_scheme_is_rejected():
     app = _build_app("secret")
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get(
-            "/sse", headers={"Authorization": "Basic c2VjcmV0"}
-        )
+        response = await client.get("/sse", headers={"Authorization": "Basic c2VjcmV0"})
     assert response.status_code == 401
 
 

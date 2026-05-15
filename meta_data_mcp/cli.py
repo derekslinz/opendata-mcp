@@ -481,9 +481,7 @@ def setup(
     for spec in targets:
         config_path = spec.config_path_fn()
         if config_path is None:
-            click.echo(
-                f"  - {spec.label}: skipped (unsupported on this OS)", err=True
-            )
+            click.echo(f"  - {spec.label}: skipped (unsupported on this OS)", err=True)
             continue
         if _write_server_to_client(spec, config_path, entry, force=force):
             successes += 1
@@ -538,9 +536,7 @@ def _write_server_to_client(
 
     removed = _migrate_legacy_entries(config)
     if removed:
-        click.echo(
-            f"  - {spec.label}: removed {len(removed)} legacy entry/entries."
-        )
+        click.echo(f"  - {spec.label}: removed {len(removed)} legacy entry/entries.")
 
     if SERVER_KEY in config["mcpServers"] and not force:
         if not click.confirm(

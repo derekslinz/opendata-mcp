@@ -205,9 +205,7 @@ def test_setup_print_json_omits_auth_when_token_unset(runner, tmp_path, monkeypa
     assert "bearer" not in result.stderr.lower()
 
 
-def test_setup_print_json_surfaces_auth_when_token_set(
-    runner, tmp_path, monkeypatch
-):
+def test_setup_print_json_surfaces_auth_when_token_set(runner, tmp_path, monkeypatch):
     """With token set, stderr surfaces SSE client config instructions."""
     monkeypatch.setenv("META_DATA_MCP_AUTH_TOKEN", "test-token-abc123")
     with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
@@ -295,9 +293,7 @@ def test_setup_client_flag_targets_one_explicit_client(runner, tmp_path):
     """`--client claude-code` writes only to ~/.claude.json, ignoring detection."""
     with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
         with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
-            result = runner.invoke(
-                cli, ["setup", "--client", "claude-code", "--force"]
-            )
+            result = runner.invoke(cli, ["setup", "--client", "claude-code", "--force"])
 
     assert result.exit_code == 0, result.output
     config = json.loads((tmp_path / ".claude.json").read_text())
@@ -327,9 +323,7 @@ def test_setup_client_all_writes_to_every_supported_client(runner, tmp_path):
 
 def test_setup_client_unknown_key_errors(runner, tmp_path):
     with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
-        result = runner.invoke(
-            cli, ["setup", "--client", "not-a-client", "--force"]
-        )
+        result = runner.invoke(cli, ["setup", "--client", "not-a-client", "--force"])
     assert result.exit_code != 0
     assert "Unknown client" in result.output
 
@@ -366,7 +360,9 @@ def test_clients_command_lists_status(runner, tmp_path):
     assert "Claude Code" in result.output
     assert "configured" in result.output  # claude-code has SERVER_KEY
     assert "Cursor" in result.output
-    assert "installed (not configured)" in result.output  # cursor: dir exists, file doesn't
+    assert (
+        "installed (not configured)" in result.output
+    )  # cursor: dir exists, file doesn't
 
 
 def test_setup_handles_null_mcpservers_value(runner, tmp_path):
@@ -418,17 +414,13 @@ def test_setup_skips_string_mcpservers_value(runner, tmp_path):
 
     with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
         with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
-            result = runner.invoke(
-                cli, ["setup", "--client", "claude-code", "--force"]
-            )
+            result = runner.invoke(cli, ["setup", "--client", "claude-code", "--force"])
 
     # No-success exit + per-client skip message (proves no crash)
     assert result.exit_code != 0
     assert "non-object" in result.output and "str" in result.output
     # File untouched — preserves user data
-    assert json.loads((tmp_path / ".claude.json").read_text()) == {
-        "mcpServers": "oops"
-    }
+    assert json.loads((tmp_path / ".claude.json").read_text()) == {"mcpServers": "oops"}
 
 
 def test_setup_skips_top_level_non_object_config(runner, tmp_path):
@@ -437,9 +429,7 @@ def test_setup_skips_top_level_non_object_config(runner, tmp_path):
 
     with patch("meta_data_mcp.cli.platform.system", return_value="Linux"):
         with patch("meta_data_mcp.cli.Path.home", return_value=tmp_path):
-            result = runner.invoke(
-                cli, ["setup", "--client", "claude-code", "--force"]
-            )
+            result = runner.invoke(cli, ["setup", "--client", "claude-code", "--force"])
 
     # No-success exit code, but the run completed without TypeError
     assert result.exit_code != 0
@@ -510,9 +500,7 @@ def test_remove_client_all_targets_every_supported_client(runner, tmp_path):
     """`remove --client all` strips meta-data-mcp from every client where it's set,
     regardless of whether the client is detected as installed."""
     # Claude Code: has SERVER_KEY
-    (tmp_path / ".claude.json").write_text(
-        '{"mcpServers": {"meta-data-mcp": {}}}'
-    )
+    (tmp_path / ".claude.json").write_text('{"mcpServers": {"meta-data-mcp": {}}}')
     # Cursor: has SERVER_KEY
     (tmp_path / ".cursor").mkdir()
     (tmp_path / ".cursor" / "mcp.json").write_text(
@@ -533,7 +521,9 @@ def test_remove_client_all_targets_every_supported_client(runner, tmp_path):
     assert "Cursor" in result.output
 
     claude = json.loads((tmp_path / ".claude.json").read_text())
-    assert "mcpServers" not in claude  # was {"meta-data-mcp": {}}; emptied → key dropped
+    assert (
+        "mcpServers" not in claude
+    )  # was {"meta-data-mcp": {}}; emptied → key dropped
 
     cursor = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
     assert "meta-data-mcp" not in cursor["mcpServers"]

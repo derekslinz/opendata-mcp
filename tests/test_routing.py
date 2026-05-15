@@ -70,13 +70,9 @@ async def test_route_sees_dynamically_registered_plugins():
             )
         )
         engine = RoutingEngine()
-        results = await engine.route(
-            query="dynamic-routing-sentinel-keyword", limit=5
-        )
+        results = await engine.route(query="dynamic-routing-sentinel-keyword", limit=5)
         assert any(r.entry.id == sentinel_id for r in results), (
             f"dynamic plugin not visible in route() output; got {[r.entry.id for r in results]}"
         )
     finally:
-        DYNAMIC_REGISTRY[:] = [
-            e for e in DYNAMIC_REGISTRY if e.id != sentinel_id
-        ]
+        DYNAMIC_REGISTRY[:] = [e for e in DYNAMIC_REGISTRY if e.id != sentinel_id]
