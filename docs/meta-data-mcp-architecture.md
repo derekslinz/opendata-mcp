@@ -108,7 +108,7 @@ Benchmarked on 50 providers, M1 MacBook Pro.
 ### File Structure
 
 ```
-opendata_mcp/
+meta_data_mcp/
 ├── routing.py                    # RoutingEngine & Scorers
 ├── providers/
 │   └── meta_data_mcp.py         # Integration point
@@ -249,6 +249,6 @@ engine = RoutingEngine(
 
 ---
 
-**Status**: Production-ready v1.1 merged to main (PR #19)  
+**Status**: Production-ready v0.99.3 merged to main (PR #46)  
 **Next Phase**: Hierarchical discovery (v1.2)  
 **Feedback**: File issues or PRs for suggestions

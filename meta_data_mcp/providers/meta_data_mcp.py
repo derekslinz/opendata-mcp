@@ -22,6 +22,7 @@ server.
 import importlib
 import logging
 import re
+from pathlib import Path
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
@@ -38,6 +39,11 @@ from meta_data_mcp.registry import (
 from meta_data_mcp.routing import RoutingEngine
 
 log = logging.getLogger(__name__)
+
+# Detect whether this module is running from a source checkout.
+# ``opendata-create-plugin`` requires the generator script that ships with
+# the source tree but is *not* included in the installed wheel.
+_GENERATOR_PATH = Path(__file__).resolve().parents[2] / "tools" / "generate_provider.py"
 
 # Module-level singleton — cache survives across tool calls within the same server process.
 _engine = RoutingEngine()
@@ -265,6 +271,21 @@ async def handle_create_plugin(
 
         plugin_id = spec["id"]
 
+        if not _ID_RE.match(plugin_id):
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {
+                            "error": (
+                                f"Plugin id {plugin_id!r} must be lowercase "
+                                "snake_case (matches /^[a-z][a-z0-9_]*$/)."
+                            )
+                        }
+                    ),
+                )
+            ]
+
         if get_provider(plugin_id) is not None:
             return [
                 types.TextContent(
@@ -280,30 +301,9 @@ async def handle_create_plugin(
                 )
             ]
 
-        # Resolve repo paths. When installed via uvx, the source tree is in
-        # the read-only uv cache — we still try to write because the failure
-        # is informative.
-        from pathlib import Path
-
-        repo_root = Path(__file__).resolve().parents[2]
-        specs_dir = repo_root / "tools" / "specs"
-        generator = repo_root / "tools" / "generate_provider.py"
-
-        if not generator.exists():
-            return [
-                types.TextContent(
-                    type="text",
-                    text=serialize_for_llm(
-                        {
-                            "error": (
-                                f"Generator not found at {generator}. Autonomous "
-                                "plugin creation requires running from a source "
-                                "checkout, not a uvx install."
-                            )
-                        }
-                    ),
-                )
-            ]
+        # Resolve repo paths using the module-level generator path constant.
+        specs_dir = _GENERATOR_PATH.parent / "specs"
+        generator = _GENERATOR_PATH
 
         try:
             specs_dir.mkdir(parents=True, exist_ok=True)
@@ -356,14 +356,17 @@ async def handle_create_plugin(
             ]
 
         # Register in the in-memory dynamic registry.
+        # Prefer explicit wrapper arguments; fall back to values already
+        # present in the YAML spec so callers who pass spec_yaml produced by
+        # `opendata-draft-spec` don't end up with empty metadata.
         entry = ProviderEntry(
             id=plugin_id,
             server_name=spec.get("server_name", plugin_id.replace("_", "-")),
             title=spec.get("title", plugin_id),
             description=spec.get("description", ""),
-            domains=tuple(params.domains),
-            regions=tuple(params.regions),
-            keywords=tuple(params.keywords),
+            domains=tuple(params.domains or spec.get("domains", [])),
+            regions=tuple(params.regions or spec.get("regions", [])),
+            keywords=tuple(params.keywords or spec.get("keywords", [])),
             homepage=spec.get("homepage", ""),
             license_note=params.license_note,
             requires_env=tuple(params.requires_env),
@@ -405,22 +408,23 @@ async def handle_create_plugin(
         ]
 
 
-TOOLS.append(
-    types.Tool(
-        name="opendata-create-plugin",
-        description=(
-            "Autonomously create a new plugin for this meta-data-mcp server "
-            "from a YAML spec. Use this when `opendata-find-providers` "
-            "returned no match. Recommended flow: first call "
-            "`opendata-draft-spec` with structured fields to get a valid "
-            "YAML spec, then pass it here. The new plugin is materialized "
-            "to disk, imported, registered in the live registry, and its "
-            "tools become available immediately."
-        ),
-        inputSchema=CreatePluginParams.model_json_schema(),
+if _GENERATOR_PATH.exists():
+    TOOLS.append(
+        types.Tool(
+            name="opendata-create-plugin",
+            description=(
+                "Autonomously create a new plugin for this meta-data-mcp server "
+                "from a YAML spec. Use this when `opendata-find-providers` "
+                "returned no match. Recommended flow: first call "
+                "`opendata-draft-spec` with structured fields to get a valid "
+                "YAML spec, then pass it here. The new plugin is materialized "
+                "to disk, imported, registered in the live registry, and its "
+                "tools become available immediately."
+            ),
+            inputSchema=CreatePluginParams.model_json_schema(),
+        )
     )
-)
-TOOLS_HANDLERS["opendata-create-plugin"] = handle_create_plugin
+    TOOLS_HANDLERS["opendata-create-plugin"] = handle_create_plugin
 
 
 ###################

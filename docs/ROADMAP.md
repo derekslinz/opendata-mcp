@@ -12,7 +12,7 @@ Meta-data-mcp is evolving from a simple provider registry into an intelligent di
 - ✅ list-domains, list-regions, describe-provider tools
 - ✅ CLI integration
 
-### v1.1 (Current - Merged)
+### v0.99.3 (Current - Merged)
 - ✅ Sophisticated multi-criteria routing (RoutingEngine)
 - ✅ 4 scoring strategies (Token, Fuzzy, Metadata, Semantic)
 - ✅ LRU caching with TTL
@@ -299,8 +299,8 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 
 ## Success Metrics
 
-| Metric | v1.1 | v1.2 | v1.3 |
-|--------|------|------|------|
+| Metric | v0.99.3 | v1.2 | v1.3 |
+|--------|---------|------|------|
 | Query latency (p99) | <100ms | <150ms | <500ms |
 | Cache hit rate | >90% | >85% | >80% |
 | Provider coverage | 50 | 50 | Dynamic |
@@ -312,8 +312,8 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 
 ### Filing Issues
 - Feature requests: Use template `[ROADMAP]` prefix
-- Bugs: Include version (v1.1, v1.2, etc.)
-- Enhancement: Link to relevant roadmap section
+- **Bugs**: Include version (v0.99.3, v1.2, etc.)
+- **Enhancement**: Link to relevant roadmap section
 
 ### Contributing Code
 - Pick an item from the roadmap
@@ -321,12 +321,12 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 - Submit PR with comprehensive tests
 
 ### Feedback
-- Current experience with v1.1? File feedback issue
+- Current experience with v0.99.3? File feedback issue
 - Prioritization for v1.2? Comment on roadmap
 - Missing a feature? Describe your use case
 
 ---
 
 **Last Updated**: 2026-05-13  
-**Maintained By**: opendata-mcp team  
-**Status**: v1.1 merged, v1.2 in design phase
+**Maintained By**: meta-data-mcp team  
+**Status**: v0.99.3 merged, v1.2 in design phase

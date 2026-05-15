@@ -89,7 +89,7 @@ jobs:
       - name: Compile Python sources
         run: |
           source .venv/bin/activate
-          python -m compileall opendata_mcp tests
+          python -m compileall meta_data_mcp tests
 
   lockfile:
     runs-on: ubuntu-latest
