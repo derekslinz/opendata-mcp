@@ -232,6 +232,7 @@ actually paste into the remote-client config:
 ```jsonc
 {
   "meta-data-mcp": {
+    "type": "sse",
     "url": "https://YOUR-HOST/sse",
     "headers": {
       "Authorization": "Bearer <the-same-token>"
@@ -239,6 +240,13 @@ actually paste into the remote-client config:
   }
 }
 ```
+
+> **The `"type": "sse"` field matters.** Claude Code validates entries
+> under `mcpServers` strictly: without it the entry is treated as a
+> stdio launcher, validation expects `command`, and the server is
+> skipped with `command: expected string, received undefined`.
+> Other clients (Cursor, Windsurf) accept the bare `{url, headers}`
+> shape, but including `"type": "sse"` is always safe.
 
 Replace `YOUR-HOST` with your hostname (e.g. `mcp.linzalytics.com`) and
 paste the result into:
@@ -308,3 +316,29 @@ sudo systemctl restart meta-data-mcp
 | Client never sees tools | Client doesn't support remote SSE | Use `setup --client <name>` with the local stdio snippet instead |
 | `unauthorized` on `/sse` despite valid header | CORS preflight stripped the header | Already handled — CORS middleware sits outermost; confirm proxy doesn't drop `Authorization` |
 | Server warning `auth DISABLED` on startup | `META_DATA_MCP_AUTH_TOKEN` not visible to the process | Verify with `sudo systemctl show meta-data-mcp -p Environment`; reload if you edited the env file |
+| `Could not find session for ID: …` after `systemctl restart` | Session state is in-memory; restart wipes every active session | The client must re-handshake (re-open `/sse`, capture the new `endpoint` event, re-send `initialize`). For Claude Code this means running `/mcp` once; if a tool call after that fails with `Invalid request parameters` or `Received request before initialization was complete`, run `/mcp` again — the first reconnect re-opens SSE but Claude Code does not always replay `initialize` automatically. See [Behaviour on restart](#behaviour-on-restart). |
+| `Could not write spec file: Read-only file system` from `opendata-create-plugin` | `ProtectSystem=strict` makes the source tree read-only at runtime | The install script ([scripts/install-systemd-service.sh](../scripts/install-systemd-service.sh)) now adds `tools/specs/`, `meta_data_mcp/providers/`, and `tests/providers/` to `ReadWritePaths`. For an existing deployment, edit `/etc/systemd/system/meta-data-mcp.service` to add those three paths, `systemctl daemon-reload`, then restart. |
+
+## Behaviour on restart
+
+MCP-over-SSE sessions are **process-local in-memory state**. `SseServerTransport` allocates a fresh `session_id` for every SSE handshake and remembers it only in the running Python process. When the systemd service restarts (or crashes and is restarted), every active session is forgotten.
+
+What that means in practice:
+
+- The reverse proxy keeps the TLS endpoint up, so `https://mcp.YOUR-HOST/` keeps serving the health-check 200 immediately.
+- Connected clients see EOF on their SSE stream when the server exits, then reconnect transparently when uvicorn comes back up.
+- **However, MCP clients do not always replay the `initialize` handshake against the new session.** Posts to `/messages?session_id=…` against the now-dead session return `404 Could not find session`; posts to the freshly-opened session before `initialize` return JSON-RPC `-32602 Invalid request parameters` (the server logs `Received request before initialization was complete`).
+
+This is upstream MCP-SDK + client behaviour, not specific to meta-data-mcp. The pragmatic fix is to **avoid unnecessary restarts** — the things that currently require one are:
+
+- Code deploys (`git pull && uv sync && systemctl restart`).
+- Token rotation (`/etc/meta-data-mcp/env` is loaded only at process start).
+- Changes to the systemd unit (`daemon-reload && restart`).
+
+Plugin creation via `opendata-create-plugin` does **not** require a restart — it hot-loads the new module into the running registry, and the new tools become visible on the next `tools/list` from any connected client.
+
+When a restart is unavoidable, clients should explicitly re-handshake:
+
+- **Claude Code**: run `/mcp` and click reconnect on `meta-data-mcp`. If the first tool call after that fails, run `/mcp` once more — the second reconnect tends to also re-send `initialize`.
+- **Cursor / Windsurf / Cline**: usually fully renegotiate sessions on EOF without user action.
+- **Custom clients**: on SSE-stream EOF, re-open `/sse`, read the new `endpoint` event, then POST a fresh `initialize` before any tool calls.

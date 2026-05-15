@@ -430,6 +430,7 @@ def setup(
         if auth_token:
             remote_snippet = {
                 SERVER_KEY: {
+                    "type": "sse",
                     "url": "https://YOUR-HOST/sse",
                     "headers": {"Authorization": f"Bearer {auth_token}"},
                 }

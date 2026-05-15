@@ -164,6 +164,15 @@ fi
 USER_HOME=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
 [ -n "$USER_HOME" ] || die "could not resolve home dir for user '$SERVICE_USER'"
 
+# Ensure ReadWritePaths in the unit actually exist before systemd tries to
+# mount them, otherwise the service fails with status=226/NAMESPACE.
+run sudo -u "$SERVICE_USER" mkdir -p "$USER_HOME/.cache" "$USER_HOME/.local/share"
+
+# PLUGIN_WRITE_PATHS is populated below in the --source branch (and stays
+# empty in the PyPI-install branch). Default to empty so the unit template
+# works either way.
+PLUGIN_WRITE_PATHS=""
+
 # 2. uv (for the service user)
 log "==> [2/6] ensuring uv is available for '$SERVICE_USER'"
 if [ "$DRY_RUN" -eq 0 ] && ! sudo -u "$SERVICE_USER" bash -lc 'command -v uv >/dev/null'; then
@@ -178,11 +187,30 @@ if [ -z "$SOURCE_DIR" ]; then
 else
   [ -d "$SOURCE_DIR" ] || die "--source dir does not exist: $SOURCE_DIR"
   log "==> [3/6] using source checkout at $SOURCE_DIR (no PyPI install)"
-  # Make sure the service user can read the source dir
-  if [ "$DRY_RUN" -eq 0 ] && [ "$(stat -c %U "$SOURCE_DIR" 2>/dev/null || stat -f %Su "$SOURCE_DIR")" != "$SERVICE_USER" ]; then
-    log "    note: $SOURCE_DIR is not owned by $SERVICE_USER; verify read permissions"
+  # The service user needs read+write on the source dir (uv builds .venv
+  # there). Only chown when the checkout is not already owned by the
+  # service user, and route it through `run` so it is logged and respects
+  # --dry-run.
+  SOURCE_DIR_OWNER="$(stat -c '%U:%G' "$SOURCE_DIR")"
+  REQUIRED_SOURCE_DIR_OWNER="$SERVICE_USER:$SERVICE_USER"
+  if [ "$SOURCE_DIR_OWNER" != "$REQUIRED_SOURCE_DIR_OWNER" ]; then
+    log "    source checkout owned by $SOURCE_DIR_OWNER; updating recursively to $REQUIRED_SOURCE_DIR_OWNER"
+    run chown -R "$REQUIRED_SOURCE_DIR_OWNER" "$SOURCE_DIR"
+  else
+    log "    source checkout already owned by $REQUIRED_SOURCE_DIR_OWNER; skipping chown"
   fi
-  EXEC_START="$USER_HOME/.local/bin/uv --directory $SOURCE_DIR run meta-data-mcp run --transport sse --host $HOST --port $PORT"
+  if [ "$DRY_RUN" -eq 0 ]; then
+    log "    pre-building venv (uv sync --frozen --no-dev) as $SERVICE_USER"
+    sudo -u "$SERVICE_USER" bash -lc "cd '$SOURCE_DIR' && uv sync --frozen --no-dev" >/dev/null
+  fi
+  # --no-sync at runtime: the venv is built; ProtectSystem=strict makes /opt
+  # read-only at run-time, so we must not let `uv run` try to re-sync.
+  EXEC_START="$USER_HOME/.local/bin/uv --directory $SOURCE_DIR run --no-sync meta-data-mcp run --transport sse --host $HOST --port $PORT"
+  # When running from a source checkout, opendata-create-plugin needs to
+  # write new plugin specs, provider modules, and matching test files back
+  # into the source tree. ProtectSystem=strict would block that, so expose
+  # the three specific directories as ReadWritePaths.
+  PLUGIN_WRITE_PATHS="$SOURCE_DIR/tools/specs $SOURCE_DIR/meta_data_mcp/providers $SOURCE_DIR/tests/providers"
 fi
 
 # 4. Bearer token + env file
@@ -239,7 +267,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=$USER_HOME/.cache $USER_HOME/.local/share
+ReadWritePaths=$USER_HOME/.cache $USER_HOME/.local/share $PLUGIN_WRITE_PATHS
 PrivateTmp=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

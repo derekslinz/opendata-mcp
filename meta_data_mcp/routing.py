@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict
 from dataclasses import dataclass
 
-from meta_data_mcp.registry import REGISTRY, ProviderEntry
+from meta_data_mcp.registry import ProviderEntry, iter_registry
 
 log = logging.getLogger(__name__)
 
@@ -269,8 +269,13 @@ class RoutingEngine:
                 else:
                     del self.cache[cache_key]
 
-        # Apply hard filters (outside lock — read-only REGISTRY access)
-        filtered = [p for p in REGISTRY if self._passes_filters(p, domain, region)]
+        # Apply hard filters (outside lock — read-only registry access).
+        # iter_registry() yields both the static REGISTRY and the in-memory
+        # DYNAMIC_REGISTRY, so plugins hot-loaded via `opendata-create-plugin`
+        # show up here without a server restart.
+        filtered = [
+            p for p in iter_registry() if self._passes_filters(p, domain, region)
+        ]
 
         # Score each provider
         scored: list[ScoredProvider] = []
