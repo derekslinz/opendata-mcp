@@ -1,18 +1,22 @@
 """Tests for the global-faostat provider."""
 
+import json
 from unittest.mock import Mock, patch
 
 import pytest
 
 from meta_data_mcp.providers.global_faostat import (
+    TOOLS,
     FaostatDataParams,
     FaostatListDomainsParams,
     FaostatListItemsParams,
+    _faostat_data_to_shape_payload,
     fetch_faostat_data,
     fetch_faostat_list_domains,
     fetch_faostat_list_items,
     handle_faostat_data,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -97,8 +101,113 @@ def test_data_limit_validation():
 
 @pytest.mark.anyio
 async def test_handle_data():
-    payload = {"data": [{"area": "USA", "value": 100}]}
+    payload = {
+        "data": [
+            {
+                "Area": "USA",
+                "Item": "Maize",
+                "Element": "Production",
+                "Year": 2022,
+                "Unit": "t",
+                "Value": 100,
+            }
+        ]
+    }
     with patch("httpx.get") as mock_get:
         mock_get.return_value = _ok(payload)
         result = await handle_faostat_data({"domain_code": "QCL"})
         assert "USA" in result[0].text
+        assert "points" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for faostat-data.
+# ---------------------------------------------------------------------------
+
+
+def test_faostat_adapter_flattens_rows_to_points():
+    raw = {
+        "data": [
+            {
+                "Area": "USA",
+                "Item": "Maize",
+                "Element": "Production",
+                "Year": 2020,
+                "Unit": "t",
+                "Value": 100.0,
+            },
+            {
+                "Area": "USA",
+                "Item": "Maize",
+                "Element": "Production",
+                "Year": 2021,
+                "Unit": "t",
+                "Value": 110.0,
+            },
+        ]
+    }
+    payload = _faostat_data_to_shape_payload(raw)
+    assert payload["axes"] == {"x": "Year", "y": "t"}
+    assert len(payload["points"]) == 2
+    assert payload["points"][0] == {
+        "date": "2020",
+        "value": 100.0,
+        "series": "USA · Maize · Production",
+    }
+
+
+def test_faostat_adapter_lowercase_fields_also_work():
+    raw = {"data": [{"area": "BRA", "year": 2020, "value": 1.5}]}
+    payload = _faostat_data_to_shape_payload(raw)
+    assert payload["points"] == [{"date": "2020", "value": 1.5, "series": "BRA"}]
+
+
+def test_faostat_adapter_empty():
+    payload = _faostat_data_to_shape_payload({"data": []})
+    assert payload["points"] == []
+    assert payload["axes"]["x"] == "Year"
+
+
+def test_faostat_adapter_handles_non_list():
+    payload = _faostat_data_to_shape_payload({"data": None})
+    assert payload["points"] == []
+
+
+def test_faostat_adapter_skips_non_numeric():
+    raw = {
+        "data": [
+            {"Area": "USA", "Year": 2020, "Value": "bad"},
+            {"Area": "USA", "Year": 2021, "Value": 1.0},
+        ]
+    }
+    payload = _faostat_data_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+
+
+def test_faostat_data_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "faostat-data")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_faostat_data_returns_shape_payload():
+    payload = {
+        "data": [
+            {
+                "Area": "USA",
+                "Item": "Maize",
+                "Element": "Production",
+                "Year": 2020,
+                "Unit": "t",
+                "Value": 100.0,
+            }
+        ]
+    }
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value = _ok(payload)
+        result = await handle_faostat_data({"domain_code": "QCL"})
+        body = json.loads(result[0].text)
+        assert body["axes"]["y"] == "t"
+        assert body["points"][0]["date"] == "2020"

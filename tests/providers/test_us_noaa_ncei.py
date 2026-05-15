@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.us_noaa_ncei import (
+    TOOLS,
+    _ncei_daily_summaries_to_shape_payload,
     handle_ncei_get_daily_summaries,
     handle_ncei_get_global_summary,
     handle_ncei_search_stations,
@@ -11,6 +15,7 @@ from meta_data_mcp.providers.us_noaa_ncei import (
     handle_ncei_get_precipitation,
     handle_ncei_get_temperature,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -36,6 +41,79 @@ async def test_ncei_daily_summaries_success():
         )
         assert "USW00014739" in result[0].text
         assert "TMAX" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for noaa-ncei-get-daily-summaries.
+# ---------------------------------------------------------------------------
+
+
+def test_ncei_adapter_emits_one_point_per_numeric_field():
+    raw = [
+        {"STATION": "USW00014739", "DATE": "2024-01-01", "TMAX": "12", "TMIN": "3"},
+        {"STATION": "USW00014739", "DATE": "2024-01-02", "TMAX": "10", "TMIN": "2"},
+    ]
+    payload = _ncei_daily_summaries_to_shape_payload(raw)
+    assert payload["axes"] == {"x": "Date", "y": "Value"}
+    # 2 dates × 2 vars = 4 points
+    assert len(payload["points"]) == 4
+    series = {p["series"] for p in payload["points"]}
+    assert series == {"USW00014739:TMAX", "USW00014739:TMIN"}
+
+
+def test_ncei_adapter_handles_empty():
+    payload = _ncei_daily_summaries_to_shape_payload([])
+    assert payload["points"] == []
+
+
+def test_ncei_adapter_handles_non_list():
+    payload = _ncei_daily_summaries_to_shape_payload({})
+    assert payload["points"] == []
+
+
+def test_ncei_adapter_skips_non_numeric_fields():
+    raw = [
+        {
+            "STATION": "X",
+            "DATE": "2024-01-01",
+            "TMAX": "bad",
+            "TMIN": "5",
+            "NAME": "Some Place",
+        }
+    ]
+    payload = _ncei_daily_summaries_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+    assert payload["points"][0]["series"] == "X:TMIN"
+
+
+def test_ncei_daily_summaries_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "noaa-ncei-get-daily-summaries")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_ncei_daily_summaries_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = [
+            {"STATION": "X", "DATE": "2024-01-01", "TMAX": "12"}
+        ]
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_ncei_get_daily_summaries(
+            {
+                "stations": "X",
+                "startDate": "2024-01-01",
+                "endDate": "2024-01-01",
+            }
+        )
+        body = json.loads(result[0].text)
+        assert body["points"][0] == {
+            "date": "2024-01-01",
+            "value": 12.0,
+            "series": "X:TMAX",
+        }
 
 
 @pytest.mark.anyio

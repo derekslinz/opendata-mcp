@@ -33,6 +33,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -149,16 +150,62 @@ def fetch_get_indicator_data(params: WhoGhoGetIndicatorDataParams) -> dict:
     return response.json()
 
 
+def _who_gho_indicator_data_to_shape_payload(data: dict) -> dict:
+    """Adapt the WHO GHO OData v4 ``{value: [{TimeDim, SpatialDim,
+    NumericValue, ...}]}`` response to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    ``TimeDim`` is a year (integer); ``SpatialDim`` is an ISO-3 country
+    code, used as the series label so multi-country queries render as
+    separate lines.
+    """
+    rows = data.get("value") or []
+    if not isinstance(rows, list):
+        return {"points": [], "axes": {"x": "Year", "y": "Value"}}
+
+    points: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        year = row.get("TimeDim")
+        if year is None:
+            continue
+        value = row.get("NumericValue")
+        if (
+            value is None
+            or isinstance(value, bool)
+            or not isinstance(value, (int, float))
+        ):
+            continue
+        date = str(year)
+        spatial = row.get("SpatialDim")
+        point: dict[str, Any] = {"date": date, "value": value}
+        if spatial:
+            point["series"] = str(spatial)
+        points.append(point)
+
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    return {
+        "points": points,
+        "axes": {"x": "Year", "y": "Value"},
+    }
+
+
 async def handle_get_indicator_data(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the who-gho-get-indicator-data tool call."""
+    """Handle the who-gho-get-indicator-data tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "indicator_code" not in arguments:
             raise ValueError("indicator_code is required")
         params = WhoGhoGetIndicatorDataParams(**arguments)
         data = fetch_get_indicator_data(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _who_gho_indicator_data_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching WHO GHO indicator data: {e}")
         raise
@@ -172,6 +219,7 @@ TOOLS.append(
             "WHOSIS_000001). Supports OData $top and $filter."
         ),
         inputSchema=WhoGhoGetIndicatorDataParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["who-gho-get-indicator-data"] = handle_get_indicator_data

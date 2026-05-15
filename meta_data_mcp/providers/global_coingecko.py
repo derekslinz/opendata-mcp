@@ -26,11 +26,13 @@ Usage:
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -361,16 +363,65 @@ def fetch_coingecko_coin_market_chart(
     return response.json()
 
 
+def _coingecko_market_chart_to_shape_payload(data: dict, vs_currency: str = "") -> dict:
+    """Adapt CoinGecko's ``{prices: [[ts_ms, v], ...], market_caps: [...],
+    total_volumes: [...]}`` response to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    The three vectors are emitted as separate series so multi-pane viewers
+    can keep them on independent scales. Timestamps are millisecond Unix
+    epochs; we convert to ISO-8601 strings.
+    """
+    series_map = {
+        "prices": "Price",
+        "market_caps": "Market cap",
+        "total_volumes": "Volume",
+    }
+    points: list[dict[str, Any]] = []
+    for raw_key, series_label in series_map.items():
+        for pair in data.get(raw_key) or []:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            ts_ms, value = pair[0], pair[1]
+            if not isinstance(ts_ms, (int, float)) or isinstance(ts_ms, bool):
+                continue
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            try:
+                date = (
+                    datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                )
+            except (OverflowError, OSError, ValueError):
+                continue
+            points.append({"date": date, "value": value, "series": series_label})
+
+    points.sort(key=lambda p: (p["date"], p["series"]))
+    y_label = f"Value ({vs_currency.upper()})" if vs_currency else "Value"
+    return {
+        "points": points,
+        "axes": {"x": "Time", "y": y_label},
+    }
+
+
 async def handle_coingecko_coin_market_chart(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the coingecko-coin-market-chart tool call."""
+    """Handle the coingecko-coin-market-chart tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "id" not in arguments:
             raise ValueError("id is required")
         params = CoinGeckoCoinMarketChartParams(**arguments)
         data = fetch_coingecko_coin_market_chart(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _coingecko_market_chart_to_shape_payload(
+            data, vs_currency=params.vs_currency
+        )
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching CoinGecko market chart: {e}")
         raise
@@ -381,6 +432,7 @@ TOOLS.append(
         name="coingecko-coin-market-chart",
         description="Get historical price/market-cap/volume series for a coin over N days.",
         inputSchema=CoinGeckoCoinMarketChartParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["coingecko-coin-market-chart"] = handle_coingecko_coin_market_chart

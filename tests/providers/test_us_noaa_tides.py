@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.us_noaa_tides import (
+    TOOLS,
+    _noaa_tides_water_level_to_shape_payload,
     handle_noaa_tides_water_level,
     handle_noaa_tides_predictions,
     handle_noaa_tides_air_temperature,
@@ -12,6 +16,7 @@ from meta_data_mcp.providers.us_noaa_tides import (
     handle_noaa_tides_hourly_height,
     handle_noaa_tides_station_metadata,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -31,6 +36,68 @@ async def test_noaa_tides_water_level_success():
         result = await handle_noaa_tides_water_level({"station": "9447130"})
         assert "Seattle" in result[0].text
         assert "1.234" in result[0].text
+        assert "points" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for noaa-tides-water-level.
+# ---------------------------------------------------------------------------
+
+
+def test_noaa_tides_adapter_flattens_data_array():
+    raw = {
+        "metadata": {"id": "9447130", "name": "Seattle"},
+        "data": [
+            {"t": "2024-01-01 00:00", "v": "1.234"},
+            {"t": "2024-01-01 00:06", "v": "1.240"},
+        ],
+    }
+    payload = _noaa_tides_water_level_to_shape_payload(raw)
+    assert payload["axes"] == {"x": "Time", "y": "Water level"}
+    assert len(payload["points"]) == 2
+    assert payload["points"][0]["series"] == "Seattle"
+    assert payload["points"][0]["value"] == 1.234
+
+
+def test_noaa_tides_adapter_empty():
+    payload = _noaa_tides_water_level_to_shape_payload({})
+    assert payload["points"] == []
+
+
+def test_noaa_tides_adapter_skips_non_numeric():
+    raw = {
+        "data": [
+            {"t": "2024-01-01 00:00", "v": "bad"},
+            {"t": "2024-01-01 00:06", "v": "1.5"},
+        ]
+    }
+    payload = _noaa_tides_water_level_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+
+
+def test_noaa_tides_water_level_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "noaa-tides-water-level")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_noaa_tides_water_level_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "metadata": {"name": "Seattle"},
+            "data": [{"t": "2024-01-01 00:00", "v": "1.0"}],
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_noaa_tides_water_level({"station": "9447130"})
+        body = json.loads(result[0].text)
+        assert body["points"][0] == {
+            "date": "2024-01-01 00:00",
+            "value": 1.0,
+            "series": "Seattle",
+        }
 
 
 @pytest.mark.anyio

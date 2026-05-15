@@ -32,6 +32,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -128,16 +129,64 @@ def fetch_edgar_company_concept(params: EdgarCompanyConceptParams) -> dict:
     return response.json()
 
 
+def _edgar_company_concept_to_shape_payload(data: dict) -> dict:
+    """Adapt EDGAR's ``{cik, taxonomy, tag, label, units: {USD: [{end, val,
+    fy, fp, ...}]}}`` company-concept response to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    Each reporting unit (e.g. USD, shares) becomes its own series. The
+    ``end`` date is the x-axis (period end), ``val`` is the y value.
+    """
+    units = data.get("units")
+    if not isinstance(units, dict):
+        return {"points": [], "axes": {"x": "Period end", "y": "Value"}}
+
+    points: list[dict[str, Any]] = []
+    unit_set: set[str] = set()
+    for unit, rows in units.items():
+        if not isinstance(rows, list):
+            continue
+        unit_set.add(str(unit))
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            end = row.get("end")
+            value = row.get("val")
+            if not isinstance(end, str):
+                continue
+            if value is None or isinstance(value, bool):
+                continue
+            if not isinstance(value, (int, float)):
+                continue
+            points.append({"date": end, "value": value, "series": str(unit)})
+
+    points.sort(key=lambda p: (p["date"], p["series"]))
+    label = data.get("label") or data.get("tag") or "Value"
+    if len(unit_set) == 1:
+        y_label = f"{label} ({unit_set.pop()})"
+    else:
+        y_label = label
+    return {
+        "points": points,
+        "axes": {"x": "Period end", "y": y_label},
+    }
+
+
 async def handle_edgar_get_company_concept(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the edgar-get-company-concept tool call."""
+    """Handle the edgar-get-company-concept tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "cik" not in arguments or "concept" not in arguments:
             raise ValueError("cik and concept are required")
         params = EdgarCompanyConceptParams(**arguments)
         data = fetch_edgar_company_concept(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _edgar_company_concept_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching EDGAR company concept: {e}")
         raise
@@ -148,6 +197,7 @@ TOOLS.append(
         name="edgar-get-company-concept",
         description="Fetch historical values for a single US-GAAP XBRL concept on one company.",
         inputSchema=EdgarCompanyConceptParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["edgar-get-company-concept"] = handle_edgar_get_company_concept

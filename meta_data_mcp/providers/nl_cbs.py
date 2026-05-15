@@ -22,6 +22,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, to_json_text
 
 # Initialize logging
@@ -97,25 +98,73 @@ def fetch_cbs_data(params: CBSDataParams) -> dict:
     return response.json()
 
 
+_CBS_DATE_FIELDS = ("Perioden", "Periods", "Periode", "Period")
+_CBS_NON_NUMERIC_KEYS = {"ID", *_CBS_DATE_FIELDS}
+
+
+def _cbs_typed_dataset_to_shape_payload(data: dict) -> dict:
+    """Adapt CBS's ``{value: [{ID, Perioden, <metric1>, <metric2>, ...}]}``
+    response to the ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    The ``Perioden`` field (CBS code like ``2023MM01``) becomes the
+    x-axis; every other numeric field becomes a separate series so
+    tables with multiple measurement columns render as multiple lines.
+    """
+    rows = data.get("value")
+    if not isinstance(rows, list):
+        return {"points": [], "axes": {"x": "Period", "y": "Value"}}
+
+    points: list[dict[str, Any]] = []
+    date_field: Optional[str] = None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if date_field is None:
+            for cand in _CBS_DATE_FIELDS:
+                if cand in row and isinstance(row[cand], str):
+                    date_field = cand
+                    break
+            if date_field is None:
+                continue
+        date = row.get(date_field)
+        if not isinstance(date, str):
+            continue
+        for key, value in row.items():
+            if key in _CBS_NON_NUMERIC_KEYS:
+                continue
+            if value is None or isinstance(value, bool):
+                continue
+            if not isinstance(value, (int, float)):
+                # CBS sometimes returns numbers as strings — coerce.
+                try:
+                    value = float(value)
+                except (TypeError, ValueError):
+                    continue
+            points.append({"date": date, "value": value, "series": str(key)})
+
+    points.sort(key=lambda p: (p["date"], p["series"]))
+    return {
+        "points": points,
+        "axes": {"x": "Period", "y": "Value"},
+    }
+
+
 async def handle_cbs_data(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the cbs-get-typed-dataset tool call."""
+    """Handle the cbs-get-typed-dataset tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "table_id" not in arguments:
             raise ValueError("table_id is required")
 
         params = CBSDataParams(**arguments)
         data = fetch_cbs_data(params)
-        results = data.get("value", [])
-        # Some endpoints might support count but not all
-        total_count = data.get("odata.count")
-        response = CBSDataResponse(results=results, total_count=total_count)
-        return [
-            types.TextContent(
-                type="text", text=to_json_text(response.model_dump(), max_chars=20000)
-            )
-        ]
+        payload = _cbs_typed_dataset_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_json_text(payload))]
     except Exception as e:
         log.error(f"Error fetching CBS data: {e}")
         raise
@@ -126,6 +175,7 @@ TOOLS.append(
         name="cbs-get-typed-dataset",
         description="Fetch data from a specific CBS table ID using the TypedDataSet endpoint. Use 'cbs-list-tables' to find relevant table IDs.",
         inputSchema=CBSDataParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["cbs-get-typed-dataset"] = handle_cbs_data

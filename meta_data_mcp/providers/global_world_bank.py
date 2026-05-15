@@ -24,6 +24,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -283,16 +284,69 @@ def fetch_indicator_data(params: WorldBankIndicatorDataParams) -> list:
     return response.json()
 
 
+def _world_bank_indicator_data_to_shape_payload(data: Any) -> dict:
+    """Adapt World Bank's ``[metadata, [obs, ...]]`` response to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    Each observation has ``{date, value, country: {value: name}, indicator:
+    {value: name}}``. The country becomes the series (so multi-country
+    requests render as separate lines), the indicator name becomes the
+    y-axis label, and the date is taken verbatim (World Bank uses ``YYYY``
+    or ``YYYYQn`` strings).
+    """
+    if not isinstance(data, list) or len(data) < 2:
+        return {"points": [], "axes": {"x": "Year", "y": "Value"}}
+    rows = data[1] or []
+    if not isinstance(rows, list):
+        return {"points": [], "axes": {"x": "Year", "y": "Value"}}
+
+    points: list[dict[str, Any]] = []
+    indicator_name = ""
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        value = row.get("value")
+        if (
+            value is None
+            or isinstance(value, bool)
+            or not isinstance(value, (int, float))
+        ):
+            continue
+        date = row.get("date")
+        if not isinstance(date, str):
+            continue
+        country = row.get("country") or {}
+        country_label = country.get("value") if isinstance(country, dict) else None
+        indicator = row.get("indicator") or {}
+        if not indicator_name and isinstance(indicator, dict):
+            indicator_name = indicator.get("value") or ""
+        point: dict[str, Any] = {"date": date, "value": value}
+        if country_label:
+            point["series"] = country_label
+        points.append(point)
+
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    return {
+        "points": points,
+        "axes": {"x": "Year", "y": indicator_name or "Value"},
+    }
+
+
 async def handle_get_indicator_data(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the world-bank-get-indicator-data tool call."""
+    """Handle the world-bank-get-indicator-data tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "country" not in arguments or "indicator" not in arguments:
             raise ValueError("country and indicator are required")
         params = WorldBankIndicatorDataParams(**arguments)
         data = fetch_indicator_data(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _world_bank_indicator_data_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching World Bank indicator data: {e}")
         raise
@@ -301,8 +355,9 @@ async def handle_get_indicator_data(
 TOOLS.append(
     types.Tool(
         name="world-bank-get-indicator-data",
-        description="Fetch indicator time-series values for a country and indicator code. Returns a 2-element array [metadata, results].",
+        description="Fetch indicator time-series values for a country and indicator code.",
         inputSchema=WorldBankIndicatorDataParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["world-bank-get-indicator-data"] = handle_get_indicator_data

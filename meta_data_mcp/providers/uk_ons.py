@@ -24,6 +24,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -301,10 +302,71 @@ def fetch_get_observations(params: ONSGetObservationsParams) -> dict:
     return response.json()
 
 
+def _ons_get_observations_to_shape_payload(data: dict) -> dict:
+    """Adapt ONS's ``{observations: [{observation: "v", dimensions: {time:
+    "...", geography: ...}}]}`` response to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    The non-time dimension (typically geography) becomes the series label
+    when present so multi-region requests render as separate lines.
+    Observation values are strings — coerced defensively.
+    """
+    rows = data.get("observations") or []
+    if not isinstance(rows, list):
+        return {"points": [], "axes": {"x": "Time", "y": "Observation"}}
+
+    points: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        raw_value = row.get("observation")
+        if raw_value is None or isinstance(raw_value, bool):
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        dims = row.get("dimensions") or {}
+        if not isinstance(dims, dict):
+            dims = {}
+        time_val = dims.get("time")
+        if isinstance(time_val, dict):
+            date = time_val.get("id") or time_val.get("label")
+        else:
+            date = time_val
+        if not isinstance(date, str):
+            continue
+        # Series label: every non-time dimension joined by " · ".
+        bits: list[str] = []
+        for key, dim in dims.items():
+            if key == "time":
+                continue
+            if isinstance(dim, dict):
+                label = dim.get("label") or dim.get("id")
+            else:
+                label = dim
+            if label:
+                bits.append(str(label))
+        point: dict[str, Any] = {"date": date, "value": value}
+        if bits:
+            point["series"] = " · ".join(bits)
+        points.append(point)
+
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    return {
+        "points": points,
+        "axes": {"x": "Time", "y": "Observation"},
+    }
+
+
 async def handle_get_observations(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the uk-ons-get-observations tool call."""
+    """Handle the uk-ons-get-observations tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if (
             not arguments
@@ -315,7 +377,8 @@ async def handle_get_observations(
             raise ValueError("id, edition, and version are required")
         params = ONSGetObservationsParams(**arguments)
         data = fetch_get_observations(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _ons_get_observations_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching ONS observations: {e}")
         raise
@@ -326,6 +389,7 @@ TOOLS.append(
         name="uk-ons-get-observations",
         description="Fetch observations from a specific ONS dataset version, filterable by time and geography.",
         inputSchema=ONSGetObservationsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["uk-ons-get-observations"] = handle_get_observations

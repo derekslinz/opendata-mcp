@@ -40,6 +40,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -138,14 +139,47 @@ def fetch_treasury_debt_to_penny(params: TreasuryDebtToPennyParams) -> dict:
     return response.json()
 
 
+def _treasury_debt_to_penny_to_shape_payload(data: dict) -> dict:
+    """Adapt Fiscal Data's ``{data: [{record_date, tot_pub_debt_out_amt, ...}]}``
+    response to the ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    The numeric column ``tot_pub_debt_out_amt`` is delivered as a string;
+    we coerce defensively and skip non-coercible rows.
+    """
+    rows = data.get("data") or []
+    points: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        date = row.get("record_date")
+        raw_value = row.get("tot_pub_debt_out_amt")
+        if not isinstance(date, str) or raw_value is None:
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        points.append({"date": date, "value": value})
+    points.sort(key=lambda p: p["date"])
+    return {
+        "points": points,
+        "axes": {"x": "Date", "y": "Total public debt outstanding (USD)"},
+    }
+
+
 async def handle_treasury_get_debt_to_penny(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the treasury-get-debt-to-penny tool call."""
+    """Handle the treasury-get-debt-to-penny tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         params = TreasuryDebtToPennyParams(**(arguments or {}))
         data = fetch_treasury_debt_to_penny(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _treasury_debt_to_penny_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching Treasury debt-to-penny: {e}")
         raise
@@ -156,6 +190,7 @@ TOOLS.append(
         name="treasury-get-debt-to-penny",
         description="Fetch the US Treasury 'Debt to the Penny' dataset (daily total public debt outstanding).",
         inputSchema=TreasuryDebtToPennyParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["treasury-get-debt-to-penny"] = handle_treasury_get_debt_to_penny

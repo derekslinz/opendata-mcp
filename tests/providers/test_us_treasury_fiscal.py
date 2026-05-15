@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
@@ -5,6 +7,7 @@ import httpx
 from meta_data_mcp.providers.us_treasury_fiscal import (
     TOOLS,
     TOOLS_HANDLERS,
+    _treasury_debt_to_penny_to_shape_payload,
     handle_treasury_get_debt_to_penny,
     handle_treasury_get_avg_interest_rates,
     handle_treasury_get_dts_operating_cash,
@@ -13,6 +16,7 @@ from meta_data_mcp.providers.us_treasury_fiscal import (
     handle_treasury_list_endpoints,
     handle_treasury_search_records,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -95,11 +99,70 @@ async def test_treasury_get_debt_to_penny_success(mock_debt_to_penny_response):
         result = await handle_treasury_get_debt_to_penny(
             {"page_size": 5, "filter": "record_date:gte:2024-01-01"}
         )
-        assert "tot_pub_debt_out_amt" in result[0].text
+        assert "points" in result[0].text
         # Verify page[size] query key is forwarded properly through httpx params dict.
         sent_params = mock_get.call_args.kwargs["params"]
         assert sent_params["page[size]"] == 5
         assert sent_params["filter"] == "record_date:gte:2024-01-01"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for treasury-get-debt-to-penny.
+# ---------------------------------------------------------------------------
+
+
+def test_treasury_debt_adapter_flattens_to_points():
+    raw = {
+        "data": [
+            {"record_date": "2024-01-02", "tot_pub_debt_out_amt": "34001493655565.48"},
+            {"record_date": "2024-01-03", "tot_pub_debt_out_amt": "34010000000000.00"},
+        ]
+    }
+    payload = _treasury_debt_to_penny_to_shape_payload(raw)
+    assert payload["axes"]["x"] == "Date"
+    assert payload["axes"]["y"] == "Total public debt outstanding (USD)"
+    assert len(payload["points"]) == 2
+    assert payload["points"][0]["value"] == 34001493655565.48
+
+
+def test_treasury_debt_adapter_handles_empty():
+    payload = _treasury_debt_to_penny_to_shape_payload({"data": []})
+    assert payload["points"] == []
+
+
+def test_treasury_debt_adapter_skips_non_numeric():
+    raw = {
+        "data": [
+            {"record_date": "2024-01-02", "tot_pub_debt_out_amt": "bad"},
+            {"record_date": "2024-01-03", "tot_pub_debt_out_amt": "1.0"},
+            {"record_date": "2024-01-04"},  # missing field
+        ]
+    }
+    payload = _treasury_debt_to_penny_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+    assert payload["points"][0]["date"] == "2024-01-03"
+
+
+def test_treasury_debt_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "treasury-get-debt-to-penny")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_treasury_debt_to_penny_returns_shape_payload(
+    mock_debt_to_penny_response,
+):
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = mock_debt_to_penny_response
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_treasury_get_debt_to_penny({})
+        body = json.loads(result[0].text)
+        assert body["axes"]["x"] == "Date"
+        assert len(body["points"]) == 1
+        assert body["points"][0]["date"] == "2024-01-02"
 
 
 @pytest.mark.anyio

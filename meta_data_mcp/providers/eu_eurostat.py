@@ -22,6 +22,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, to_json_text
 
 PROVIDER_ID = "eu-eurostat"
@@ -174,19 +175,135 @@ def fetch_eurostat_data(params: EurostatDataParams) -> dict:
     return response.json()
 
 
+def _eurostat_dataset_to_shape_payload(data: dict) -> dict:
+    """Adapt a Eurostat JSON-stat 2.0 response to the
+    ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    JSON-stat encodes a multi-dimensional cube as a flat ``value`` array
+    indexed in row-major order against the ``size`` array. We locate the
+    time dimension (``time`` or the dimension whose role.time is set),
+    treat all other dimensions as series, and emit one point per
+    ``(non-time-coord, time-coord)`` slice that has a numeric value.
+
+    Sparse ``value`` objects (``{flat_idx: v}``) and dense arrays are
+    both supported. Missing entries are skipped.
+    """
+    ids = data.get("id") or []
+    sizes = data.get("size") or []
+    dimension = data.get("dimension") or {}
+    values_raw = data.get("value")
+    if not ids or not sizes or values_raw is None or len(ids) != len(sizes):
+        return {"points": [], "axes": {"x": "Time", "y": data.get("label") or "Value"}}
+
+    # Locate the time dimension. Eurostat conventionally names it 'time';
+    # JSON-stat also allows role.time to mark it explicitly.
+    time_idx = -1
+    if "time" in ids:
+        time_idx = ids.index("time")
+    else:
+        role_time = (data.get("role") or {}).get("time") or []
+        if role_time:
+            for cand in role_time:
+                if cand in ids:
+                    time_idx = ids.index(cand)
+                    break
+    if time_idx < 0:
+        # No time dimension → not a time series; defer to empty.
+        return {"points": [], "axes": {"x": "Time", "y": data.get("label") or "Value"}}
+
+    # Build per-dimension code lookups: position -> code.
+    pos_to_code: list[list[str]] = []
+    for dim_id, size in zip(ids, sizes):
+        dim_block = dimension.get(dim_id) or {}
+        category = dim_block.get("category") or {}
+        index_map = category.get("index") or {}
+        codes: list[str] = ["" for _ in range(size)]
+        if isinstance(index_map, dict):
+            for code, pos in index_map.items():
+                if isinstance(pos, int) and 0 <= pos < size:
+                    codes[pos] = code
+        elif isinstance(index_map, list):
+            for pos, code in enumerate(index_map):
+                if pos < size:
+                    codes[pos] = code
+        pos_to_code.append(codes)
+
+    # Row-major strides (last dim varies fastest).
+    strides = [1] * len(sizes)
+    for i in range(len(sizes) - 2, -1, -1):
+        strides[i] = strides[i + 1] * sizes[i + 1]
+    total = strides[0] * sizes[0] if sizes else 0
+
+    # Normalize values to {flat_idx: value}.
+    flat: dict[int, Any] = {}
+    if isinstance(values_raw, dict):
+        for k, v in values_raw.items():
+            try:
+                flat[int(k)] = v
+            except (TypeError, ValueError):
+                continue
+    elif isinstance(values_raw, list):
+        for i, v in enumerate(values_raw):
+            if v is None:
+                continue
+            flat[i] = v
+
+    time_label = (dimension.get(ids[time_idx]) or {}).get("label") or "Time"
+    y_label = data.get("label") or "Value"
+
+    # For each populated flat index, decode coordinates and emit a point.
+    points: list[dict[str, Any]] = []
+    for flat_idx, value in flat.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if flat_idx < 0 or flat_idx >= total:
+            continue
+        coords = []
+        remaining = flat_idx
+        for size, stride in zip(sizes, strides):
+            coord = remaining // stride
+            remaining = remaining % stride
+            coords.append(coord)
+        time_pos = coords[time_idx]
+        if not (0 <= time_pos < len(pos_to_code[time_idx])):
+            continue
+        date = pos_to_code[time_idx][time_pos]
+        if not date:
+            continue
+        series_parts = [
+            pos_to_code[i][coords[i]]
+            for i in range(len(ids))
+            if i != time_idx and 0 <= coords[i] < len(pos_to_code[i])
+        ]
+        point: dict[str, Any] = {"date": date, "value": value}
+        series_label = ".".join(p for p in series_parts if p)
+        if series_label:
+            point["series"] = series_label
+        points.append(point)
+
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    return {
+        "points": points,
+        "axes": {"x": time_label, "y": y_label},
+    }
+
+
 async def handle_eurostat_get_dataset(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the eurostat-get-dataset tool call."""
+    """Handle the eurostat-get-dataset tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "dataset_code" not in arguments:
             raise ValueError("dataset_code is required")
 
         params = EurostatDataParams(**arguments)
         data = fetch_eurostat_data(params)
-        return [
-            types.TextContent(type="text", text=to_json_text(data, max_chars=20000))
-        ]
+        payload = _eurostat_dataset_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_json_text(payload))]
     except Exception as e:
         log.error(f"Error fetching Eurostat data: {e}")
         raise
@@ -195,8 +312,9 @@ async def handle_eurostat_get_dataset(
 TOOLS.append(
     types.Tool(
         name="eurostat-get-dataset",
-        description="Fetch data from a specific Eurostat dataset in JSON-stat format.",
+        description="Fetch data from a specific Eurostat dataset (JSON-stat).",
         inputSchema=EurostatDataParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["eurostat-get-dataset"] = handle_eurostat_get_dataset

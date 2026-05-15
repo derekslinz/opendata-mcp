@@ -30,6 +30,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -90,16 +91,62 @@ def fetch_noaa_tides_water_level(params: NOAATidesWaterLevelParams) -> Any:
     return response.json()
 
 
+def _noaa_tides_water_level_to_shape_payload(data: dict) -> dict:
+    """Adapt CO-OPS datagetter's ``{metadata: {...}, data: [{t, v, ...}]}``
+    response to the ``ui://meta-data-mcp/shape/timeseries/v1`` payload.
+
+    The water level value ``v`` is a string; coerced defensively. Station
+    name from metadata flows into the series label when present.
+    """
+    metadata = data.get("metadata") or {}
+    station_name = ""
+    if isinstance(metadata, dict):
+        station_name = metadata.get("name") or metadata.get("id") or ""
+    rows = data.get("data") or []
+    if not isinstance(rows, list):
+        return {"points": [], "axes": {"x": "Time", "y": "Water level"}}
+
+    points: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        date = row.get("t")
+        raw_value = row.get("v")
+        if not isinstance(date, str) or raw_value is None:
+            continue
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(raw_value, bool):
+            continue
+        point: dict[str, Any] = {"date": date, "value": value}
+        if station_name:
+            point["series"] = str(station_name)
+        points.append(point)
+
+    points.sort(key=lambda p: (p["date"], p.get("series", "")))
+    return {
+        "points": points,
+        "axes": {"x": "Time", "y": "Water level"},
+    }
+
+
 async def handle_noaa_tides_water_level(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the noaa-tides-water-level tool call."""
+    """Handle the noaa-tides-water-level tool call.
+
+    Returns the ``ui://meta-data-mcp/shape/timeseries/v1`` payload so
+    MCP Apps hosts render the chart inline.
+    """
     try:
         if not arguments or "station" not in arguments:
             raise ValueError("station is required")
         params = NOAATidesWaterLevelParams(**arguments)
         data = fetch_noaa_tides_water_level(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _noaa_tides_water_level_to_shape_payload(data)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error fetching NOAA tides water level: {e}")
         raise
@@ -110,6 +157,7 @@ TOOLS.append(
         name="noaa-tides-water-level",
         description="Get observed water levels from a NOAA CO-OPS station.",
         inputSchema=NOAATidesWaterLevelParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": TIMESERIES_URI}},
     )
 )
 TOOLS_HANDLERS["noaa-tides-water-level"] = handle_noaa_tides_water_level

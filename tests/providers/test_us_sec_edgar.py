@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
@@ -5,6 +7,7 @@ import httpx
 from meta_data_mcp.providers.us_sec_edgar import (
     TOOLS,
     TOOLS_HANDLERS,
+    _edgar_company_concept_to_shape_payload,
     handle_edgar_get_company_submissions,
     handle_edgar_get_company_concept,
     handle_edgar_get_company_facts,
@@ -14,6 +17,7 @@ from meta_data_mcp.providers.us_sec_edgar import (
     handle_edgar_search_by_name,
     _pad_cik,
 )
+from meta_data_mcp.ui_resources.shape_timeseries_v1 import URI as TIMESERIES_URI
 
 
 @pytest.fixture
@@ -59,7 +63,13 @@ async def test_edgar_get_company_concept_success():
         mock_get.return_value.json.return_value = {
             "cik": 320193,
             "tag": "Revenues",
-            "units": {"USD": [{"val": 100, "fy": 2023}]},
+            "label": "Revenues",
+            "units": {
+                "USD": [
+                    {"end": "2022-09-24", "val": 394328000000, "fy": 2022},
+                    {"end": "2023-09-30", "val": 383285000000, "fy": 2023},
+                ]
+            },
         }
         mock_get.return_value.raise_for_status = Mock()
 
@@ -67,6 +77,90 @@ async def test_edgar_get_company_concept_success():
             {"cik": "320193", "concept": "Revenues"}
         )
         assert "Revenues" in result[0].text
+        assert "points" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: shape primitive binding for edgar-get-company-concept.
+# ---------------------------------------------------------------------------
+
+
+def test_edgar_concept_adapter_flattens_units_to_points():
+    raw = {
+        "cik": 320193,
+        "tag": "Revenues",
+        "label": "Revenues",
+        "units": {
+            "USD": [
+                {"end": "2022-09-24", "val": 394328000000},
+                {"end": "2023-09-30", "val": 383285000000},
+            ]
+        },
+    }
+    payload = _edgar_company_concept_to_shape_payload(raw)
+    assert payload["axes"]["y"] == "Revenues (USD)"
+    assert payload["axes"]["x"] == "Period end"
+    assert len(payload["points"]) == 2
+    assert payload["points"][0]["series"] == "USD"
+
+
+def test_edgar_concept_adapter_multiple_units():
+    raw = {
+        "label": "Shares Outstanding",
+        "units": {
+            "shares": [{"end": "2023-09-30", "val": 1.5e10}],
+            "pure": [{"end": "2023-09-30", "val": 1.0}],
+        },
+    }
+    payload = _edgar_company_concept_to_shape_payload(raw)
+    # Multiple units → label without parenthetical
+    assert payload["axes"]["y"] == "Shares Outstanding"
+
+
+def test_edgar_concept_adapter_empty():
+    payload = _edgar_company_concept_to_shape_payload({})
+    assert payload["points"] == []
+
+
+def test_edgar_concept_adapter_skips_non_numeric():
+    raw = {
+        "units": {
+            "USD": [
+                {"end": "2023-09-30", "val": None},
+                {"end": "2024-09-30", "val": "bad"},
+                {"end": "2025-09-30", "val": 1.0},
+            ]
+        }
+    }
+    payload = _edgar_company_concept_to_shape_payload(raw)
+    assert len(payload["points"]) == 1
+
+
+def test_edgar_get_company_concept_tool_bound_to_timeseries_shape():
+    tool = next(t for t in TOOLS if t.name == "edgar-get-company-concept")
+    assert tool.meta == {"ui": {"resourceUri": TIMESERIES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TIMESERIES_URI
+
+
+@pytest.mark.anyio
+async def test_edgar_get_company_concept_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "label": "Revenues",
+            "units": {"USD": [{"end": "2023-09-30", "val": 100.0}]},
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_edgar_get_company_concept(
+            {"cik": "320193", "concept": "Revenues"}
+        )
+        body = json.loads(result[0].text)
+        assert body["points"][0] == {
+            "date": "2023-09-30",
+            "value": 100.0,
+            "series": "USD",
+        }
 
 
 @pytest.mark.anyio
