@@ -28,12 +28,14 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
+      # Cache only ~/.cache/uv (the wheel/source cache). DO NOT cache .venv —
+      # restoring a project-local virtualenv from a previous run conflicts with
+      # `uv venv` on the next run (it refuses to overwrite). uv resolves and
+      # installs from ~/.cache/uv in seconds, so a fresh .venv per run is cheap.
       - name: Cache uv dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/uv
-            .venv
+          path: ~/.cache/uv
           key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
           restore-keys: |
             ${{ runner.os }}-uv-
@@ -47,7 +49,7 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          pytest tests/
+          pytest tests/ --ignore=tests/live
 
   lint:
     runs-on: ubuntu-latest
@@ -67,9 +69,7 @@ jobs:
       - name: Cache uv dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/uv
-            .venv
+          path: ~/.cache/uv
           key: ${{ runner.os }}-uv-lint-${{ hashFiles('pyproject.toml', 'uv.lock') }}
           restore-keys: |
             ${{ runner.os }}-uv-lint-
@@ -89,7 +89,7 @@ jobs:
       - name: Compile Python sources
         run: |
           source .venv/bin/activate
-          python -m compileall opendata_mcp tests
+          python -m compileall meta_data_mcp tests
 
   lockfile:
     runs-on: ubuntu-latest
