@@ -492,6 +492,84 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
     raise ValueError("max_chars is too small for a valid JSON object fallback")
 
 
+# ---------------------------------------------------------------------------
+# MCP Apps (`ui://`) resource helper
+# ---------------------------------------------------------------------------
+
+
+def register_ui_resource(
+    *,
+    name: str,
+    html: str,
+    description: str,
+    resources: list[types.Resource],
+    resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]],
+    server_name: str = "meta-data-mcp",
+    mime: str = "text/html",
+) -> str:
+    """Register a ``ui://<server_name>/<name>`` resource backed by static HTML.
+
+    The MCP Apps extension (https://modelcontextprotocol.io/docs/extensions/apps)
+    lets a server return interactive UIs by:
+
+    1. Declaring a ``ui://`` resource that holds the HTML (optionally with
+       inlined JS and CSS).
+    2. Binding a tool to it via ``_meta={"ui": {"resourceUri": ...}}`` so
+       the host renders that resource in a sandboxed iframe alongside the
+       tool's result. Pass the alias keyword ``_meta=`` — NOT ``meta=``.
+       The SDK's ``Tool`` model has ``meta`` aliased to ``_meta`` but does
+       not enable ``populate_by_name``, so ``meta=`` silently lands in
+       extras and never reaches the wire. See ``tests/test_ui_resource.py``
+       for the regression that pins this footgun.
+
+    This helper covers step 1. It appends a ``types.Resource`` to the caller's
+    ``resources`` list and registers a handler in ``resources_handlers`` that
+    returns the HTML string when the host calls ``resources/read``.
+
+    Args:
+        name: Path component for the URI (e.g. ``"discovery"``,
+            ``"shape/timeseries/v1"``). Slashes are allowed.
+        html: The full resource body. Usually HTML with inlined `<script>`
+            and `<style>` for self-contained delivery.
+        description: Short human-readable description that surfaces in the
+            host's resource catalog.
+        resources: The server's ``RESOURCES`` list (mutated in place).
+        resources_handlers: The server's ``RESOURCES_HANDLERS`` dict
+            (mutated in place).
+        server_name: Authority component of the URI. Defaults to
+            ``"meta-data-mcp"``; override per server if reusing this helper
+            from outside the meta server.
+        mime: Content-Type of the resource. Defaults to ``"text/html"``.
+
+    Returns:
+        The fully-qualified ``ui://`` URI as a string, suitable for passing
+        as ``_meta={"ui": {"resourceUri": <returned>}}`` on a Tool.
+
+    Raises:
+        ValueError: If ``name`` is empty or the resulting URI collides with
+            an already-registered handler.
+    """
+    if not name:
+        raise ValueError("name must be non-empty")
+    uri = f"ui://{server_name}/{name.lstrip('/')}"
+    if uri in resources_handlers:
+        raise ValueError(f"ui resource already registered: {uri}")
+    resources.append(
+        types.Resource(
+            uri=AnyUrl(uri),
+            name=name,
+            description=description,
+            mimeType=mime,
+        )
+    )
+
+    def _handler(_uri: AnyUrl) -> str:
+        return html
+
+    resources_handlers[uri] = _handler
+    return uri
+
+
 def create_mcp_server(
     server_name: str,
     resources: list[types.Resource] | None = None,
