@@ -35,7 +35,7 @@ class _ProviderHealthState:
     ``record_failure`` or ``record_success`` call the existing mass is first
     scaled by ``exp(-dt / _DECAY_TAU_SECONDS)`` and then 1.0 is added or
     subtracted. This means old failures are diluted before new ones arrive, so a
-    long-idle provider is not permanently re-penalised by a single new failure.
+    long-idle provider is not permanently re-penalized by a single new failure.
     ``last_update_ts`` records when the mass was last written so the same decay
     can be applied in ``health_score`` without mutating state.
     """
