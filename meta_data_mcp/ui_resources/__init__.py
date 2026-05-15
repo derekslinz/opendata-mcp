@@ -20,6 +20,7 @@ from mcp import types
 from pydantic import AnyUrl
 
 from .shape_geofeatures_v1 import register as _register_geofeatures
+from .shape_records_v1 import register as _register_records
 
 __all__ = ["register_shapes"]
 
@@ -36,12 +37,8 @@ def register_shapes(
     Returns a dict mapping shape name → URI for callers that want to
     log or surface the wiring; the return value is advisory and may be
     ignored.
-
-    NOTE to reviewers of parallel Phase 2 PRs: this function is the
-    merge point. Timeseries (Phase 2a) and records (Phase 2c) each add
-    their own ``_register`` call here. Three near-identical lines, no
-    coordination needed beyond filename / import ordering.
     """
     return {
         "geofeatures/v1": _register_geofeatures(resources, resources_handlers),
+        "records/v1": _register_records(resources, resources_handlers),
     }
