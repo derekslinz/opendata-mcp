@@ -50,6 +50,16 @@ before `gh pr merge`. CI green is necessary, not sufficient.
    `gh pr view <N> --json state,mergedAt` and
    `git fetch --prune origin`.
 
+7. **Confirm post-merge CI on the merge commit.**
+   `gh run list --branch main --limit 1 --json conclusion,headSha`.
+   If a stack of related PRs is merging in sequence, **GitHub's
+   server-side conflict resolution can produce code that wasn't
+   CI-tested.** PR #61's squash-merge dropped an import that the
+   function body still referenced; v1.1.0 shipped from broken main
+   because step 6 verified the merge landed but didn't re-check CI.
+   If the post-merge run fails, hotfix immediately before tagging or
+   merging anything else on top.
+
 ## When to skip a step
 
 Never skip step 3. It's the one that catches the bugs CI can't see.

@@ -293,6 +293,66 @@ async def test_ui_resource_is_served_by_create_mcp_server():
     assert server.name == "test-ui-resource"
 
 
+# ---------------------------------------------------------------------------
+# Regression: the parallel Phase 2 PR merges (#61/#62/#63) hit a conflict
+# resolution that silently dropped the timeseries import from
+# ``ui_resources/__init__.py``. The function body still referenced
+# ``_register_timeseries``, so ``register_shapes()`` crashed with a
+# NameError at server boot — and v1.1.0 shipped from broken main.
+#
+# This test pins the contract that ``register_shapes()`` actually registers
+# every shape in ``__init__.py``'s body, not just the ones whose imports
+# happen to be present.
+# ---------------------------------------------------------------------------
+
+
+def test_register_shapes_registers_every_shape_named_in_its_body():
+    """If a future merge drops a ``_register_*`` import while leaving the
+    call site in the function body, calling ``register_shapes`` raises
+    NameError — and this test catches it BEFORE the discovery provider
+    import does at server boot."""
+    from meta_data_mcp.ui_resources import register_shapes
+
+    resources, handlers = _fresh_state()
+    result = register_shapes(resources, handlers)
+
+    # Today's shapes: timeseries, geofeatures, records. If a new shape
+    # primitive lands without updating this assertion, that's a signal to
+    # add it explicitly here so the regression check stays honest.
+    expected = {
+        "timeseries/v1": "ui://meta-data-mcp/shape/timeseries/v1",
+        "geofeatures/v1": "ui://meta-data-mcp/shape/geofeatures/v1",
+        "records/v1": "ui://meta-data-mcp/shape/records/v1",
+    }
+    assert set(result) == set(expected), (
+        f"register_shapes returned {sorted(result)}, expected {sorted(expected)}"
+    )
+    for name, uri in expected.items():
+        assert result[name] == uri, f"{name} URI drifted: {result[name]} != {uri}"
+        assert uri in handlers, f"{name} handler missing from catalog"
+
+
+def test_discovery_provider_module_imports_without_crashing():
+    """The discovery provider calls ``register_shapes`` at module import.
+    If any shape's import is missing or a call signature drifts, this
+    import raises and the entire server fails to boot.
+
+    Importing the module here exercises the same code path CI exercises
+    on a fresh process — equivalent to the smoke that every other
+    ``providers/test_*.py`` indirectly does."""
+    import importlib
+
+    # importlib.import_module re-evaluates if not already cached; the
+    # first import in the suite would catch this anyway, but the
+    # explicit assertion documents the contract.
+    mod = importlib.import_module("meta_data_mcp.providers.meta_data_mcp")
+    # Sanity: the module exposes the catalog the shape primitives
+    # landed in.
+    assert any(
+        str(r.uri).startswith("ui://meta-data-mcp/shape/") for r in mod.RESOURCES
+    ), "discovery provider did not register any ui://meta-data-mcp/shape/* resources"
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
