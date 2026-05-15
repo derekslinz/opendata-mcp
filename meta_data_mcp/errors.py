@@ -21,8 +21,9 @@ class ProviderError(Exception):
     """Base class for translated provider failures.
 
     Carries provider id, kind label, retryable flag, optional HTTP status,
-    and the originating exception. Stable string form (no URLs leaked) so
-    error messages can flow safely back to LLM clients.
+    and the originating exception. The string form is stable for caller
+    handling; URL-safety is guaranteed for messages produced by
+    ``translate_http_error``.
     """
 
     def __init__(
@@ -184,6 +185,9 @@ def translate_http_error(provider: str, exc: Exception) -> ProviderError:
     Crucially: error messages produced here MUST NOT include raw URLs —
     the LLM client should see a stable, provider-scoped message.
     """
+    if isinstance(exc, ProviderError):
+        return exc
+
     import httpx  # local import to keep cold-start cost low
 
     if isinstance(exc, httpx.HTTPStatusError):

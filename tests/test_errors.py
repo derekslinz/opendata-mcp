@@ -196,6 +196,12 @@ def test_translate_generic_exception_returns_base():
     assert err.__cause__ is cause
 
 
+def test_translate_provider_error_passthrough():
+    original = NotFoundError(PROVIDER, "already translated")
+    translated = translate_http_error(PROVIDER, original)
+    assert translated is original
+
+
 # ---------------------------------------------------------------------------
 # String form: must not leak URLs / sensitive request data
 # ---------------------------------------------------------------------------

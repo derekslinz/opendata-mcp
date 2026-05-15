@@ -150,3 +150,13 @@ async def test_handle_get_dataset_translates_http_404_to_not_found():
         assert err.kind == "not_found"
         # str() form must not leak the upstream URL.
         assert "catalog.data.gov" not in str(err)
+
+
+@pytest.mark.anyio
+async def test_handle_get_dataset_does_not_translate_non_http_errors():
+    with patch(
+        "meta_data_mcp.providers.us_data_gov.fetch_datagov_dataset",
+        side_effect=ValueError("boom"),
+    ):
+        with pytest.raises(ValueError, match="boom"):
+            await handle_datagov_get_dataset({"dataset_id": "missing"})

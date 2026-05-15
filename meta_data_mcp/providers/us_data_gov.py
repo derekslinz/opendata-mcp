@@ -20,7 +20,7 @@ import httpx
 import mcp.types as types
 from pydantic import BaseModel, Field, ValidationError
 
-from meta_data_mcp.errors import translate_http_error
+from meta_data_mcp.errors import ProviderError, translate_http_error
 from meta_data_mcp.utils import to_json_text
 
 PROVIDER_ID = "us-data-gov"
@@ -117,7 +117,9 @@ async def handle_datagov_list_datasets(
         return [
             types.TextContent(type="text", text=to_json_text(output, max_chars=20000))
         ]
-    except Exception as e:
+    except ProviderError:
+        raise
+    except httpx.HTTPError as e:
         log.error(f"Error listing Data.gov datasets: {e}")
         raise translate_http_error(PROVIDER_ID, e) from e
 
@@ -193,7 +195,9 @@ async def handle_datagov_get_dataset(
     try:
         result = fetch_datagov_dataset(params)
         return [types.TextContent(type="text", text=to_json_text(result))]
-    except Exception as e:
+    except ProviderError:
+        raise
+    except httpx.HTTPError as e:
         log.error(f"Error fetching Data.gov dataset: {e}")
         raise translate_http_error(PROVIDER_ID, e) from e
 
