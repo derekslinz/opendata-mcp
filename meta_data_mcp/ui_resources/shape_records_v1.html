@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Records — meta-data-mcp shape primitive v1</title>
+  <!--
+    ui://meta-data-mcp/shape/records/v1 — faceted-table shape primitive
+    (MCP Apps extension, Phase 2c).
+
+    Payload (pushed via postMessage from the host iframe):
+      {
+        "rows":  [ { <column>: <any>, ... }, ... ],
+        "schema": { "columns": [ {"name", "type", "description?"}, ... ] },  // optional
+        "default_facets": [ "<column>", ... ]                                 // optional
+      }
+
+    Data-ingress priority (first present wins):
+      1. window.postMessage events of shape
+         { type: "tool_result" | "render", payload: <payload> }
+         (best-guess of the MCP Apps host contract; documented here so
+          Phase 4 adopters can refine if the spec lands differently).
+      2. ?data=<base64-JSON> URL parameter (developer ergonomics).
+      3. window.__app_data__ global set before script load (testing).
+
+    Dependency-free by design — see
+    tests/test_shape_records.py::test_bundle_has_no_external_script_sources.
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e5e5e5;
+      --accent: #2563eb;
+      --accent-bg: #eff6ff;
+      --header-bg: #f8fafc;
+      --row-alt: #fafafa;
+      --row-hover: #f1f5f9;
+      --danger: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f17;
+        --fg: #e8edf3;
+        --muted: #9aa3af;
+        --border: #1f2937;
+        --accent: #60a5fa;
+        --accent-bg: #1e293b;
+        --header-bg: #111827;
+        --row-alt: #0f1624;
+        --row-hover: #182030;
+        --danger: #f87171;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    #facets { border-right: 1px solid var(--border); padding: 12px; overflow-y: auto;
+      max-height: 100vh; }
+    #facets h2 { margin: 0 0 8px; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+    .facet { margin-bottom: 16px; }
+    .facet-name { font-weight: 600; margin-bottom: 4px; font-size: 12px; }
+    .facet-value { display: flex; align-items: center; gap: 6px; margin: 2px 0;
+      font-size: 12px; cursor: pointer; }
+    .facet-value input { margin: 0; }
+    .facet-value .count { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+    .facet-empty { color: var(--muted); font-style: italic; font-size: 12px; }
+    #main { padding: 12px; min-width: 0; overflow-x: hidden; }
+    #toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px;
+      flex-wrap: wrap; }
+    #search { flex: 1; min-width: 200px; padding: 6px 10px; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+    #search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+    #status { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+    #profile { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 8px; margin-bottom: 12px; }
+    .profile-card { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+      background: var(--header-bg); font-size: 11px; min-width: 0; }
+    .profile-card .pname { font-weight: 600; font-size: 12px; margin-bottom: 4px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .profile-card .pmeta { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .profile-card .ptop { margin-top: 4px; color: var(--fg); font-size: 11px;
+      overflow: hidden; text-overflow: ellipsis; }
+    .profile-card .ptop span { display: block; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; }
+    #table-wrap { border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th { position: sticky; top: 0; background: var(--header-bg); padding: 8px 10px;
+      text-align: left; font-weight: 600; border-bottom: 1px solid var(--border);
+      cursor: pointer; user-select: none; white-space: nowrap; }
+    thead th:hover { color: var(--accent); }
+    thead th .sort-ind { color: var(--muted); margin-left: 4px; font-size: 10px; }
+    thead th.sort-asc .sort-ind, thead th.sort-desc .sort-ind { color: var(--accent); }
+    tbody td { padding: 6px 10px; border-bottom: 1px solid var(--border);
+      max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    tbody tr:nth-child(even) { background: var(--row-alt); }
+    tbody tr:hover { background: var(--row-hover); }
+    tbody td.null { color: var(--muted); font-style: italic; }
+    #pagination { display: flex; gap: 8px; align-items: center; margin-top: 12px;
+      justify-content: center; font-size: 12px; }
+    #pagination button { padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--fg); cursor: pointer; font: inherit; }
+    #pagination button:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--accent); }
+    #pagination button:disabled { opacity: 0.4; cursor: default; }
+    #empty { padding: 40px; text-align: center; color: var(--muted); }
+    #empty.error { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="facets">
+      <h2>Facets</h2>
+      <div id="facets-list"></div>
+    </aside>
+    <main id="main">
+      <div id="toolbar">
+        <input id="search" type="search" placeholder="Search all columns…" autocomplete="off" aria-label="Search all columns">
+        <span id="status"></span>
+      </div>
+      <div id="profile"></div>
+      <div id="table-wrap">
+        <table>
+          <thead><tr id="thead-row"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div id="pagination"></div>
+      <div id="empty" hidden>No data yet — waiting for host payload.</div>
+    </main>
+  </div>
+  <script>
+  (function () {
+    'use strict';
+
+    var PAGE_SIZE = 50;
+    var FACET_AUTO_CARDINALITY_LIMIT = 50;
+    var TOP_K_PROFILE = 3;
+    // Sentinel for null/undefined/missing values in filter state. We
+    // can't use '' because real empty-string row values are legitimate
+    // and must filter independently from null. The sentinel is wrapped
+    // in non-breaking spaces so it can't accidentally collide with a
+    // user-provided literal string "NULL" — NBSP-wrapped strings are
+    // vanishingly unlikely in real data payloads.
+    var NULL_SENTINEL = '  __NULL__  ';
+    var NULL_DISPLAY = '∅ null';
+    function _key(v) {
+      return v === null || v === undefined ? NULL_SENTINEL : String(v);
+    }
+    function _displayFromKey(k) {
+      return k === NULL_SENTINEL ? NULL_DISPLAY : k;
+    }
+
+    var state = {
+      rows: [],
+      columns: [],          // [{name, type, description}]
+      defaultFacets: null,  // null = auto-pick string cols with cardinality <= limit
+      sortCol: null,
+      sortDir: 1,           // 1 asc, -1 desc
+      page: 0,
+      search: '',
+      filters: {},          // { colName: Set<string> }
+    };
+
+    // ----- Ingress: postMessage, URL param, global, in priority order -----
+
+    window.addEventListener('message', function (ev) {
+      // Only accept messages from the embedding host (the parent
+      // window). Other frames that can reach this iframe (ad iframes,
+      // dev-tools console, etc.) MUST NOT be able to trigger re-renders
+      // or feed arbitrary payloads.
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+      // The MCP Apps host contract is still settling; accept the two
+      // likeliest shapes plus a bare payload.
+      var payload = null;
+      if (msg.type === 'tool_result' || msg.type === 'render') {
+        payload = msg.payload;
+      } else if (msg.rows || msg.payload) {
+        payload = msg.payload || msg;
+      }
+      if (payload) hydrate(payload);
+    });
+
+    function loadFromUrl() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var b64 = params.get('data');
+        if (!b64) return null;
+        // URLSearchParams decodes '+' to ' ' (form-encoding semantics);
+        // also accept url-safe base64 ('-' / '_'). Normalize all to
+        // standard base64 before atob.
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join('=');
+        // atob → binary string. For UTF-8-safe JSON (emoji, non-Latin
+        // text), round through bytes + TextDecoder rather than the
+        // legacy decodeURIComponent(escape(...)) pattern.
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      } catch (e) {
+        showError('Invalid ?data= URL parameter: ' + e.message);
+        return null;
+      }
+    }
+
+    function loadFromGlobal() {
+      return (typeof window.__app_data__ === 'object' && window.__app_data__) || null;
+    }
+
+    // Fallback order: URL param > global. postMessage always wins later.
+    var initial = loadFromUrl() || loadFromGlobal();
+    if (initial) hydrate(initial);
+    else document.getElementById('empty').hidden = false;
+
+    // ----- Type inference -----
+
+    function inferType(values) {
+      // Skip nulls when inferring; if all null, default to 'string'.
+      var nonNull = values.filter(function (v) { return v !== null && v !== undefined && v !== ''; });
+      if (!nonNull.length) return 'string';
+      var allBool = nonNull.every(function (v) {
+        return v === true || v === false || v === 'true' || v === 'false';
+      });
+      if (allBool) return 'boolean';
+      var allDate = nonNull.every(function (v) {
+        if (typeof v !== 'string') return false;
+        // Accept ISO-8601 and YYYY-MM-DD; require a 4-digit year prefix.
+        return /^\d{4}-\d{2}-\d{2}/.test(v) && !isNaN(Date.parse(v));
+      });
+      if (allDate) return 'date';
+      var allNum = nonNull.every(function (v) {
+        if (typeof v === 'number') return !isNaN(v);
+        if (typeof v !== 'string') return false;
+        return v.trim() !== '' && !isNaN(Number(v));
+      });
+      if (allNum) return 'number';
+      return 'string';
+    }
+
+    function coerce(value, type) {
+      if (value === null || value === undefined || value === '') return null;
+      if (type === 'number') {
+        var n = typeof value === 'number' ? value : Number(value);
+        return isNaN(n) ? null : n;
+      }
+      if (type === 'date') {
+        var t = Date.parse(value);
+        return isNaN(t) ? null : t;
+      }
+      if (type === 'boolean') {
+        if (value === true || value === 'true') return true;
+        if (value === false || value === 'false') return false;
+        return null;
+      }
+      return String(value);
+    }
+
+    // ----- Hydration -----
+
+    function hydrate(payload) {
+      if (!payload || !Array.isArray(payload.rows)) {
+        showError('Payload missing required "rows" array.');
+        return;
+      }
+      state.rows = payload.rows;
+      state.defaultFacets = Array.isArray(payload.default_facets) ? payload.default_facets : null;
+
+      // Build column list: declared schema wins; otherwise union of keys.
+      var declared = payload.schema && Array.isArray(payload.schema.columns)
+        ? payload.schema.columns : null;
+      if (declared) {
+        state.columns = declared.map(function (c) {
+          return { name: c.name, type: c.type || null, description: c.description || '' };
+        });
+      } else {
+        var seen = Object.create(null);
+        var order = [];
+        for (var i = 0; i < state.rows.length; i++) {
+          var keys = Object.keys(state.rows[i] || {});
+          for (var k = 0; k < keys.length; k++) {
+            if (!seen[keys[k]]) { seen[keys[k]] = true; order.push(keys[k]); }
+          }
+        }
+        state.columns = order.map(function (n) { return { name: n, type: null, description: '' }; });
+      }
+
+      // Infer types where not declared.
+      for (var ci = 0; ci < state.columns.length; ci++) {
+        var col = state.columns[ci];
+        if (!col.type) {
+          var vals = state.rows.map(function (r) { return r ? r[col.name] : null; });
+          col.type = inferType(vals);
+        }
+      }
+
+      state.page = 0;
+      state.sortCol = null;
+      state.sortDir = 1;
+      state.search = '';
+      state.filters = {};
+      document.getElementById('search').value = '';
+      document.getElementById('empty').hidden = true;
+
+      renderHeader();
+      renderFacets();
+      renderProfile();
+      renderTable();
+    }
+
+    function showError(msg) {
+      var el = document.getElementById('empty');
+      el.hidden = false;
+      el.textContent = msg;
+      el.classList.add('error');
+    }
+
+    // ----- Filtering / sorting / pagination -----
+
+    function passesFilters(row) {
+      // Faceted: AND across cols, OR within a col. Use _key so null and
+      // empty-string are distinguishable (real empty strings filter
+      // independently from missing values).
+      for (var col in state.filters) {
+        var selected = state.filters[col];
+        if (!selected || !selected.size) continue;
+        if (!selected.has(_key(row[col]))) return false;
+      }
+      // Free-text search.
+      if (state.search) {
+        var q = state.search.toLowerCase();
+        var matched = false;
+        for (var i = 0; i < state.columns.length; i++) {
+          var n = state.columns[i].name;
+          var rv = row[n];
+          if (rv !== null && rv !== undefined && String(rv).toLowerCase().indexOf(q) !== -1) {
+            matched = true; break;
+          }
+        }
+        if (!matched) return false;
+      }
+      return true;
+    }
+
+    function filteredRows() {
+      return state.rows.filter(passesFilters);
+    }
+
+    function sortedRows() {
+      var rows = filteredRows();
+      if (!state.sortCol) return rows;
+      var col = state.columns.find(function (c) { return c.name === state.sortCol; });
+      if (!col) return rows;
+      var type = col.type;
+      var dir = state.sortDir;
+      return rows.slice().sort(function (a, b) {
+        var av = coerce(a[col.name], type);
+        var bv = coerce(b[col.name], type);
+        if (av === null && bv === null) return 0;
+        if (av === null) return 1;       // nulls last
+        if (bv === null) return -1;
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    }
+
+    // ----- Rendering -----
+
+    function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      if (attrs) {
+        for (var k in attrs) {
+          if (k === 'class') node.className = attrs[k];
+          else if (k === 'text') node.textContent = attrs[k];
+          else if (k.indexOf('on') === 0) node.addEventListener(k.slice(2), attrs[k]);
+          else node.setAttribute(k, attrs[k]);
+        }
+      }
+      if (children) {
+        for (var i = 0; i < children.length; i++) {
+          var c = children[i];
+          if (c == null) continue;
+          node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+        }
+      }
+      return node;
+    }
+
+    function renderHeader() {
+      var tr = document.getElementById('thead-row');
+      clear(tr);
+      state.columns.forEach(function (col) {
+        var ind = '';
+        var cls = '';
+        var ariaSort = 'none';
+        if (state.sortCol === col.name) {
+          ind = state.sortDir === 1 ? '↑' : '↓';
+          cls = state.sortDir === 1 ? 'sort-asc' : 'sort-desc';
+          ariaSort = state.sortDir === 1 ? 'ascending' : 'descending';
+        }
+        // Make headers keyboard-operable: tabindex makes them focusable,
+        // role=button signals click-like behavior to assistive tech,
+        // aria-sort exposes the current sort state, and Enter/Space
+        // trigger the same sortBy callback as mouse click.
+        var th = el('th', {
+          class: cls,
+          tabindex: '0',
+          role: 'button',
+          'aria-sort': ariaSort,
+          title: col.description || (col.type + ' · ' + col.name),
+          onclick: function () { sortBy(col.name); },
+          onkeydown: function (ev) {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              sortBy(col.name);
+            }
+          }
+        }, [
+          col.name,
+          el('span', { class: 'sort-ind', text: ind || '↕', 'aria-hidden': 'true' })
+        ]);
+        tr.appendChild(th);
+      });
+    }
+
+    function sortBy(name) {
+      if (state.sortCol === name) state.sortDir = -state.sortDir;
+      else { state.sortCol = name; state.sortDir = 1; }
+      state.page = 0;
+      renderHeader();
+      renderTable();
+    }
+
+    function renderFacets() {
+      var host = document.getElementById('facets-list');
+      clear(host);
+      var facetCols = pickFacetColumns();
+      if (!facetCols.length) {
+        host.appendChild(el('div', { class: 'facet-empty', text: 'No facet columns.' }));
+        return;
+      }
+      facetCols.forEach(function (col) {
+        var counts = Object.create(null);
+        for (var i = 0; i < state.rows.length; i++) {
+          var k = _key(state.rows[i][col.name]);
+          counts[k] = (counts[k] || 0) + 1;
+        }
+        var entries = Object.keys(counts).map(function (k) { return [k, counts[k]]; });
+        entries.sort(function (a, b) { return b[1] - a[1]; });
+        if (entries.length === 0) return;
+
+        var facet = el('div', { class: 'facet' });
+        facet.appendChild(el('div', { class: 'facet-name', text: col.name }));
+        entries.slice(0, 100).forEach(function (kv) {
+          // kv[0] is the filter-state key (NULL_SENTINEL for missing
+          // values, the raw string otherwise). The checkbox's `value`
+          // attribute carries the key so the DOM and state stay in
+          // sync; the label text shows the human-friendly version.
+          var key = kv[0];
+          var lbl = el('label', { class: 'facet-value' });
+          var cb = el('input', { type: 'checkbox', value: key });
+          if (state.filters[col.name] && state.filters[col.name].has(key)) cb.checked = true;
+          cb.addEventListener('change', function () {
+            if (!state.filters[col.name]) state.filters[col.name] = new Set();
+            if (cb.checked) state.filters[col.name].add(key);
+            else state.filters[col.name].delete(key);
+            state.page = 0;
+            renderTable();
+          });
+          lbl.appendChild(cb);
+          lbl.appendChild(document.createTextNode(_displayFromKey(key)));
+          lbl.appendChild(el('span', { class: 'count', text: String(kv[1]) }));
+          facet.appendChild(lbl);
+        });
+        if (entries.length > 100) {
+          facet.appendChild(el('div', { class: 'facet-empty',
+            text: '… and ' + (entries.length - 100) + ' more' }));
+        }
+        host.appendChild(facet);
+      });
+    }
+
+    function pickFacetColumns() {
+      if (state.defaultFacets && state.defaultFacets.length) {
+        return state.columns.filter(function (c) {
+          return state.defaultFacets.indexOf(c.name) !== -1;
+        });
+      }
+      // Auto: string columns with cardinality ≤ limit.
+      return state.columns.filter(function (col) {
+        if (col.type !== 'string' && col.type !== 'boolean') return false;
+        var seen = Object.create(null);
+        var count = 0;
+        for (var i = 0; i < state.rows.length; i++) {
+          var v = state.rows[i][col.name];
+          if (v === null || v === undefined || v === '') continue;
+          var s = String(v);
+          if (!seen[s]) { seen[s] = true; count++; }
+          if (count > FACET_AUTO_CARDINALITY_LIMIT) return false;
+        }
+        return count > 1;
+      });
+    }
+
+    function renderProfile() {
+      var host = document.getElementById('profile');
+      clear(host);
+      state.columns.forEach(function (col) {
+        var card = el('div', { class: 'profile-card' });
+        card.appendChild(el('div', { class: 'pname', text: col.name, title: col.description || col.name }));
+
+        var nullCount = 0, vals = [], distinct = Object.create(null);
+        for (var i = 0; i < state.rows.length; i++) {
+          var v = state.rows[i][col.name];
+          if (v === null || v === undefined || v === '') { nullCount++; continue; }
+          vals.push(v);
+          var s = String(v);
+          distinct[s] = (distinct[s] || 0) + 1;
+        }
+        var total = state.rows.length;
+        var nullPct = total ? (nullCount / total * 100) : 0;
+        var distinctN = Object.keys(distinct).length;
+
+        var meta = col.type + ' · ' + distinctN + ' distinct · ' + nullPct.toFixed(0) + '% null';
+        card.appendChild(el('div', { class: 'pmeta', text: meta }));
+
+        var top = el('div', { class: 'ptop' });
+        if ((col.type === 'number' || col.type === 'date') && vals.length) {
+          var nums = vals.map(function (v) { return coerce(v, col.type); })
+            .filter(function (n) { return n !== null; });
+          if (nums.length) {
+            var min = nums[0], max = nums[0];
+            for (var j = 1; j < nums.length; j++) {
+              if (nums[j] < min) min = nums[j];
+              if (nums[j] > max) max = nums[j];
+            }
+            var fmt = col.type === 'date'
+              ? function (n) { return new Date(n).toISOString().slice(0, 10); }
+              : function (n) { return String(n); };
+            top.appendChild(el('span', { text: 'min ' + fmt(min) }));
+            top.appendChild(el('span', { text: 'max ' + fmt(max) }));
+          }
+        } else {
+          var topK = Object.keys(distinct).map(function (k) { return [k, distinct[k]]; });
+          topK.sort(function (a, b) { return b[1] - a[1]; });
+          topK.slice(0, TOP_K_PROFILE).forEach(function (kv) {
+            top.appendChild(el('span', { text: kv[0] + ' (' + kv[1] + ')' }));
+          });
+        }
+        card.appendChild(top);
+        host.appendChild(card);
+      });
+    }
+
+    function renderTable() {
+      var rows = sortedRows();
+      var total = rows.length;
+      var totalAll = state.rows.length;
+      var pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      if (state.page >= pageCount) state.page = pageCount - 1;
+      var start = state.page * PAGE_SIZE;
+      var slice = rows.slice(start, start + PAGE_SIZE);
+
+      var tbody = document.getElementById('tbody');
+      clear(tbody);
+      slice.forEach(function (row) {
+        var tr = el('tr');
+        state.columns.forEach(function (col) {
+          var v = row[col.name];
+          var td = el('td');
+          if (v === null || v === undefined || v === '') {
+            td.className = 'null';
+            td.textContent = '∅';
+          } else {
+            td.textContent = String(v);
+            td.setAttribute('title', String(v));
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('status').textContent =
+        total === totalAll
+          ? total.toLocaleString() + ' rows'
+          : total.toLocaleString() + ' / ' + totalAll.toLocaleString() + ' rows';
+
+      renderPagination(pageCount);
+    }
+
+    function renderPagination(pageCount) {
+      var host = document.getElementById('pagination');
+      clear(host);
+      if (pageCount <= 1) return;
+      var prev = el('button', {
+        text: '‹ Prev',
+        onclick: function () { if (state.page > 0) { state.page--; renderTable(); } }
+      });
+      prev.disabled = state.page === 0;
+      var label = el('span', { text: 'Page ' + (state.page + 1) + ' of ' + pageCount });
+      var next = el('button', {
+        text: 'Next ›',
+        onclick: function () { if (state.page < pageCount - 1) { state.page++; renderTable(); } }
+      });
+      next.disabled = state.page === pageCount - 1;
+      host.appendChild(prev);
+      host.appendChild(label);
+      host.appendChild(next);
+    }
+
+    // ----- Wire search -----
+    document.getElementById('search').addEventListener('input', function (ev) {
+      state.search = ev.target.value.trim();
+      state.page = 0;
+      renderTable();
+    });
+  })();
+  </script>
+</body>
+</html>
