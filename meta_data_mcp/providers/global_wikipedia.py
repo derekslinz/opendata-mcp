@@ -40,6 +40,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-wikipedia"
 BASE_URL = "https://en.wikipedia.org/api/rest_v1"
 
 
@@ -81,7 +82,7 @@ class WikipediaSummaryParams(BaseModel):
 def fetch_wikipedia_summary(params: WikipediaSummaryParams) -> dict:
     """Call /page/summary/{title} on the Wikipedia REST API."""
     url = f"{_rest_base(params.lang)}/page/summary/{_encode_title(params.title)}"
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -125,7 +126,7 @@ class WikipediaHtmlParams(BaseModel):
 def fetch_wikipedia_html(params: WikipediaHtmlParams) -> str:
     """Call /page/html/{title} on the Wikipedia REST API; returns raw HTML."""
     url = f"{_rest_base(params.lang)}/page/html/{_encode_title(params.title)}"
-    response = http_get(url, headers={"Accept": "text/html"})
+    response = http_get(url, headers={"Accept": "text/html"}, provider=PROVIDER_ID)
     return response.text
 
 
@@ -171,7 +172,7 @@ def fetch_wikipedia_mobile_sections(params: WikipediaMobileSectionsParams) -> di
     url = (
         f"{_rest_base(params.lang)}/page/mobile-sections/{_encode_title(params.title)}"
     )
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -215,7 +216,7 @@ class WikipediaRelatedParams(BaseModel):
 def fetch_wikipedia_related(params: WikipediaRelatedParams) -> dict:
     """Call /page/related/{title} on the Wikipedia REST API."""
     url = f"{_rest_base(params.lang)}/page/related/{_encode_title(params.title)}"
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -259,7 +260,7 @@ class WikipediaMediaListParams(BaseModel):
 def fetch_wikipedia_media_list(params: WikipediaMediaListParams) -> dict:
     """Call /page/media-list/{title} on the Wikipedia REST API."""
     url = f"{_rest_base(params.lang)}/page/media-list/{_encode_title(params.title)}"
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -309,7 +310,9 @@ def fetch_wikipedia_search_title(params: WikipediaSearchTitleParams) -> list:
         "limit": params.limit,
         "format": "json",
     }
-    response = http_get(_action_api(params.lang), params=query_params)
+    response = http_get(
+        _action_api(params.lang), params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -362,7 +365,7 @@ def fetch_wikipedia_page_views(params: WikipediaPageViewsParams) -> dict:
         f"{params.lang}.wikipedia/all-access/all-agents/"
         f"{_encode_title(params.title)}/daily/{params.start}/{params.end}"
     )
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -419,7 +422,7 @@ def fetch_wikipedia_on_this_day(params: WikipediaOnThisDayParams) -> dict:
         f"{_rest_base(params.lang)}/feed/onthisday/"
         f"{params.type}/{params.month}/{params.day}"
     )
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 

@@ -39,6 +39,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-who-gho"
 BASE_URL = "https://ghoapi.azureedge.net/api"
 
 # Registration Variables
@@ -78,6 +79,7 @@ def fetch_list_indicators(params: WhoGhoListIndicatorsParams) -> dict:
         f"{BASE_URL}/Indicator",
         params=query_params or None,
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -142,6 +144,7 @@ def fetch_get_indicator_data(params: WhoGhoGetIndicatorDataParams) -> dict:
         f"{BASE_URL}/{params.indicator_code}",
         params=query_params or None,
         timeout=60.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -187,7 +190,7 @@ class WhoGhoListDimensionsParams(BaseModel):
 
 def fetch_list_dimensions(_params: WhoGhoListDimensionsParams) -> dict:
     """Fetch the list of GHO dimensions."""
-    response = http_get(f"{BASE_URL}/Dimension", timeout=30.0)
+    response = http_get(f"{BASE_URL}/Dimension", timeout=30.0, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -233,6 +236,7 @@ def fetch_list_dimension_values(params: WhoGhoListDimensionValuesParams) -> dict
     response = http_get(
         f"{BASE_URL}/DIMENSION/{params.dim}/DimensionValues",
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -280,6 +284,7 @@ def fetch_list_countries(_params: WhoGhoListCountriesParams) -> dict:
     response = http_get(
         f"{BASE_URL}/DIMENSION/COUNTRY/DimensionValues",
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

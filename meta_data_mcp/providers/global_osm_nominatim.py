@@ -38,6 +38,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-osm-nominatim"
 BASE_URL = "https://nominatim.openstreetmap.org"
 
 # Registration Variables
@@ -68,7 +69,9 @@ def fetch_search(params: NominatimSearchParams) -> Any:
         "addressdetails": 1,
         "extratags": 1,
     }
-    response = http_get(f"{BASE_URL}/search", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/search", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -124,7 +127,9 @@ def fetch_reverse(params: NominatimReverseParams) -> Any:
         "format": "json",
         "addressdetails": 1,
     }
-    response = http_get(f"{BASE_URL}/reverse", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/reverse", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -177,7 +182,9 @@ def fetch_lookup(params: NominatimLookupParams) -> Any:
         "format": "json",
         "addressdetails": 1,
     }
-    response = http_get(f"{BASE_URL}/lookup", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/lookup", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -241,7 +248,9 @@ def fetch_search_structured(params: NominatimSearchStructuredParams) -> Any:
     if params.postalcode:
         query_params["postalcode"] = params.postalcode
 
-    response = http_get(f"{BASE_URL}/search", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/search", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -288,6 +297,7 @@ def fetch_status(_params: NominatimStatusParams) -> Any:
         f"{BASE_URL}/status",
         params={"format": "json"},
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

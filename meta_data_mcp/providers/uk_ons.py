@@ -30,6 +30,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "uk-ons"
 BASE_URL = "https://api.beta.ons.gov.uk/v1"
 
 # Registration Variables
@@ -54,7 +55,9 @@ class ONSListDatasetsParams(BaseModel):
 def fetch_list_datasets(params: ONSListDatasetsParams) -> dict:
     """Fetch the list of ONS datasets."""
     query_params = {"limit": params.limit, "offset": params.offset}
-    response = http_get(f"{BASE_URL}/datasets", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/datasets", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -94,7 +97,9 @@ class ONSGetDatasetParams(BaseModel):
 
 def fetch_get_dataset(params: ONSGetDatasetParams) -> dict:
     """Fetch a single ONS dataset by ID."""
-    response = http_get(f"{BASE_URL}/datasets/{params.id}", timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/datasets/{params.id}", timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -136,7 +141,9 @@ class ONSListEditionsParams(BaseModel):
 
 def fetch_list_editions(params: ONSListEditionsParams) -> dict:
     """Fetch the list of editions for an ONS dataset."""
-    response = http_get(f"{BASE_URL}/datasets/{params.id}/editions", timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/datasets/{params.id}/editions", timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -180,7 +187,9 @@ class ONSGetEditionParams(BaseModel):
 def fetch_get_edition(params: ONSGetEditionParams) -> dict:
     """Fetch a single ONS edition for a dataset."""
     response = http_get(
-        f"{BASE_URL}/datasets/{params.id}/editions/{params.edition}", timeout=30.0
+        f"{BASE_URL}/datasets/{params.id}/editions/{params.edition}",
+        timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -227,6 +236,7 @@ def fetch_list_versions(params: ONSListVersionsParams) -> dict:
     response = http_get(
         f"{BASE_URL}/datasets/{params.id}/editions/{params.edition}/versions",
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -287,7 +297,7 @@ def fetch_get_observations(params: ONSGetObservationsParams) -> dict:
         f"{BASE_URL}/datasets/{params.id}/editions/{params.edition}"
         f"/versions/{params.version}/observations"
     )
-    response = http_get(url, params=query_params, timeout=30.0)
+    response = http_get(url, params=query_params, timeout=30.0, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -336,7 +346,12 @@ class ONSListCodeListsParams(BaseModel):
 def fetch_list_codelists(params: ONSListCodeListsParams) -> dict:
     """Fetch the list of ONS code-lists."""
     query_params = {"limit": params.limit, "offset": params.offset}
-    response = http_get(f"{BASE_URL}/code-lists", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/code-lists",
+        params=query_params,
+        timeout=30.0,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -376,7 +391,9 @@ class ONSGetCodeListParams(BaseModel):
 
 def fetch_get_codelist(params: ONSGetCodeListParams) -> dict:
     """Fetch a single ONS code-list by ID."""
-    response = http_get(f"{BASE_URL}/code-lists/{params.id}", timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/code-lists/{params.id}", timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 

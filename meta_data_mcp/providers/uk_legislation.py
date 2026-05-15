@@ -43,6 +43,7 @@ from meta_data_mcp.utils import http_get, MAX_RESPONSE_CHARS
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "uk-legislation"
 BASE_URL = "https://www.legislation.gov.uk"
 
 _ATOM_HEADERS = {"Accept": "application/atom+xml"}
@@ -92,7 +93,10 @@ def fetch_uk_legislation_search(params: UkLegislationSearchParams) -> str:
     if params.year is not None:
         query_params["year"] = params.year
     response = http_get(
-        f"{BASE_URL}/all/data.feed", params=query_params, headers=_ATOM_HEADERS
+        f"{BASE_URL}/all/data.feed",
+        params=query_params,
+        headers=_ATOM_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 
@@ -148,6 +152,7 @@ def fetch_uk_legislation_list_by_year(params: UkLegislationListByYearParams) -> 
         f"{BASE_URL}/{params.type}/{params.year}/data.feed",
         params=query_params,
         headers=_ATOM_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 
@@ -200,6 +205,7 @@ def fetch_uk_legislation_document_xml(
     response = http_get(
         f"{BASE_URL}/{params.type}/{params.year}/{params.number}/data.xml",
         headers=_XML_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 
@@ -259,6 +265,7 @@ def fetch_uk_legislation_document_html(
     response = http_get(
         f"{BASE_URL}/{params.type}/{params.year}/{params.number}/data.htm",
         headers=_HTML_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 
@@ -306,7 +313,9 @@ class UkLegislationListTypesParams(BaseModel):
 
 def fetch_uk_legislation_list_types(params: UkLegislationListTypesParams) -> str:
     """Call /browse and return the HTML text describing legislation types."""
-    response = http_get(f"{BASE_URL}/browse", headers=_HTML_HEADERS)
+    response = http_get(
+        f"{BASE_URL}/browse", headers=_HTML_HEADERS, provider=PROVIDER_ID
+    )
     return response.text
 
 
@@ -354,6 +363,7 @@ def fetch_uk_legislation_changes_feed(params: UkLegislationChangesFeedParams) ->
     response = http_get(
         f"{BASE_URL}/changes/affected/{params.type}/{params.year}/{params.number}/data.feed",
         headers=_ATOM_HEADERS,
+        provider=PROVIDER_ID,
     )
     return response.text
 

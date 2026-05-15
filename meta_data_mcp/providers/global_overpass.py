@@ -43,6 +43,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-overpass"
 BASE_URL = "https://overpass-api.de/api"
 
 # Registration Variables
@@ -64,6 +65,7 @@ def _run_overpass_query(query: str) -> Any:
         params={"data": query},
         timeout=60.0,
         headers={"Accept": "*/*"},
+        provider=PROVIDER_ID,
     )
     content_type = (
         response.headers.get("content-type", "") if hasattr(response, "headers") else ""
@@ -146,6 +148,7 @@ def fetch_status(_params: OverpassStatusParams) -> str:
         f"{BASE_URL}/status",
         timeout=30.0,
         headers={"Accept": "*/*"},
+        provider=PROVIDER_ID,
     )
     return response.text
 

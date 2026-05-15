@@ -22,6 +22,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-noaa-awc"
 BASE_URL = "https://aviationweather.gov/api/data"
 
 # Registration Variables
@@ -44,7 +45,7 @@ class AWCMetarParams(BaseModel):
 def fetch_awc_metar(params: AWCMetarParams) -> Any:
     """Fetch METAR data from NOAA AWC."""
     query_params = {"ids": params.ids, "format": "json"}
-    response = http_get(f"{BASE_URL}/metar", params=query_params)
+    response = http_get(f"{BASE_URL}/metar", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -84,7 +85,7 @@ class AWCTafParams(BaseModel):
 def fetch_awc_taf(params: AWCTafParams) -> Any:
     """Fetch TAF data from NOAA AWC."""
     query_params = {"ids": params.ids, "format": "json"}
-    response = http_get(f"{BASE_URL}/taf", params=query_params)
+    response = http_get(f"{BASE_URL}/taf", params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -124,7 +125,9 @@ class AWCStationParams(BaseModel):
 def fetch_awc_station(params: AWCStationParams) -> Any:
     """Fetch station metadata from NOAA AWC."""
     query_params = {"ids": params.ids, "format": "json"}
-    response = http_get(f"{BASE_URL}/station", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/station", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 

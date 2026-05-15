@@ -36,6 +36,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-noaa-ncei"
 BASE_URL = "https://www.ncei.noaa.gov/access/services/data/v1"
 SEARCH_DATA_URL = "https://www.ncei.noaa.gov/access/services/search/v1/data"
 SEARCH_DATASETS_URL = "https://www.ncei.noaa.gov/access/services/search/v1/datasets"
@@ -77,7 +78,7 @@ def fetch_ncei_daily_summaries(params: NCEIDailySummariesParams) -> Any:
     }
     if params.dataTypes:
         query_params["dataTypes"] = params.dataTypes
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -128,7 +129,7 @@ def fetch_ncei_global_summary(params: NCEIGlobalSummaryParams) -> Any:
         "endDate": params.endDate,
         "format": "json",
     }
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -192,7 +193,7 @@ def fetch_ncei_search_stations(params: NCEISearchStationsParams) -> Any:
         query_params["startDate"] = params.startDate
     if params.endDate:
         query_params["endDate"] = params.endDate
-    response = http_get(SEARCH_DATA_URL, params=query_params)
+    response = http_get(SEARCH_DATA_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -234,7 +235,7 @@ class NCEIListDatasetsParams(BaseModel):
 def fetch_ncei_list_datasets(params: NCEIListDatasetsParams) -> Any:
     """Call the NCEI search service to list dataset records."""
     query_params: dict[str, Any] = {"limit": params.limit, "offset": params.offset}
-    response = http_get(SEARCH_DATASETS_URL, params=query_params)
+    response = http_get(SEARCH_DATASETS_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -280,7 +281,7 @@ def fetch_ncei_station_meta(params: NCEIStationMetaParams) -> Any:
         "format": "json",
         "limit": 1,
     }
-    response = http_get(SEARCH_DATA_URL, params=query_params)
+    response = http_get(SEARCH_DATA_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -332,7 +333,7 @@ def fetch_ncei_precipitation(params: NCEIPrecipitationParams) -> Any:
         "endDate": params.endDate,
         "format": "json",
     }
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -384,7 +385,7 @@ def fetch_ncei_temperature(params: NCEITemperatureParams) -> Any:
         "endDate": params.endDate,
         "format": "json",
     }
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 

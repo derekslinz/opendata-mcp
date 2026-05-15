@@ -39,6 +39,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-clinicaltrials"
 BASE_URL = "https://clinicaltrials.gov/api/v2"
 
 # Registration Variables
@@ -84,7 +85,9 @@ def fetch_search_studies(params: CtgovSearchStudiesParams) -> dict:
     if params.fields:
         query_params["fields"] = params.fields
 
-    response = http_get(f"{BASE_URL}/studies", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/studies", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -141,6 +144,7 @@ def fetch_get_study(params: CtgovGetStudyParams) -> dict:
         f"{BASE_URL}/studies/{params.nctId}",
         params=query_params,
         timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -191,7 +195,9 @@ def fetch_search_by_condition(params: CtgovSearchByConditionParams) -> dict:
         "pageSize": params.pageSize,
         "format": "json",
     }
-    response = http_get(f"{BASE_URL}/studies", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/studies", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -243,7 +249,9 @@ def fetch_search_by_intervention(
         "pageSize": params.pageSize,
         "format": "json",
     }
-    response = http_get(f"{BASE_URL}/studies", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/studies", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -294,7 +302,9 @@ def fetch_search_by_location(params: CtgovSearchByLocationParams) -> dict:
         "pageSize": params.pageSize,
         "format": "json",
     }
-    response = http_get(f"{BASE_URL}/studies", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/studies", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -336,7 +346,7 @@ class CtgovListStatsParams(BaseModel):
 
 def fetch_list_stats(_params: CtgovListStatsParams) -> dict:
     """Fetch overall registry size statistics via /stats/size."""
-    response = http_get(f"{BASE_URL}/stats/size", timeout=30.0)
+    response = http_get(f"{BASE_URL}/stats/size", timeout=30.0, provider=PROVIDER_ID)
     return response.json()
 
 

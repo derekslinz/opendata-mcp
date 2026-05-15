@@ -35,6 +35,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "cern-opendata"
 BASE_URL = "https://opendata.cern.ch/api"
 
 # Registration Variables
@@ -67,7 +68,9 @@ def fetch_search_records(params: CERNSearchRecordsParams) -> dict:
     if params.q:
         query_params["q"] = params.q
 
-    response = http_get(f"{BASE_URL}/records/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/records/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -107,7 +110,7 @@ class CERNGetRecordParams(BaseModel):
 
 def fetch_get_record(params: CERNGetRecordParams) -> dict:
     """Fetch full metadata for a CERN Open Data record."""
-    response = http_get(f"{BASE_URL}/records/{params.record_id}")
+    response = http_get(f"{BASE_URL}/records/{params.record_id}", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -150,7 +153,9 @@ class CERNListCollectionsParams(BaseModel):
 def fetch_list_collections(params: CERNListCollectionsParams) -> dict:
     """List CERN Open Data Dataset records."""
     query_params = {"type": "Dataset", "size": params.size}
-    response = http_get(f"{BASE_URL}/records/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/records/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -201,7 +206,9 @@ def fetch_search_by_experiment(params: CERNSearchByExperimentParams) -> dict:
     if params.q:
         query_params["q"] = params.q
 
-    response = http_get(f"{BASE_URL}/records/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/records/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -248,7 +255,9 @@ def fetch_search_software(params: CERNSearchSoftwareParams) -> dict:
     if params.q:
         query_params["q"] = params.q
 
-    response = http_get(f"{BASE_URL}/records/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/records/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 

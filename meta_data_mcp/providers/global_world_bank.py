@@ -30,6 +30,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-world-bank"
 BASE_URL = "https://api.worldbank.org/v2"
 
 # Registration Variables
@@ -58,7 +59,9 @@ def fetch_list_countries(params: WorldBankListCountriesParams) -> list:
         "per_page": params.per_page,
         "page": params.page,
     }
-    response = http_get(f"{BASE_URL}/country", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/country", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -102,7 +105,10 @@ def fetch_get_country(params: WorldBankGetCountryParams) -> list:
     """Fetch a single country record from the World Bank API."""
     query_params = {"format": "json"}
     response = http_get(
-        f"{BASE_URL}/country/{params.country}", params=query_params, timeout=30.0
+        f"{BASE_URL}/country/{params.country}",
+        params=query_params,
+        timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -151,7 +157,9 @@ def fetch_list_indicators(params: WorldBankListIndicatorsParams) -> list:
         "per_page": params.per_page,
         "page": params.page,
     }
-    response = http_get(f"{BASE_URL}/indicator", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/indicator", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -208,7 +216,9 @@ def fetch_search_indicators(params: WorldBankSearchIndicatorsParams) -> list:
     if params.topic is not None:
         query_params["topic"] = params.topic
 
-    response = http_get(f"{BASE_URL}/indicator", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/indicator", params=query_params, timeout=30.0, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -269,7 +279,7 @@ def fetch_indicator_data(params: WorldBankIndicatorDataParams) -> list:
         query_params["date"] = f"{params.start}:{params.end}"
 
     url = f"{BASE_URL}/country/{params.country}/indicator/{params.indicator}"
-    response = http_get(url, params=query_params, timeout=30.0)
+    response = http_get(url, params=query_params, timeout=30.0, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -311,7 +321,12 @@ class WorldBankListTopicsParams(BaseModel):
 
 def fetch_list_topics(_params: WorldBankListTopicsParams) -> list:
     """Fetch the list of World Bank topics."""
-    response = http_get(f"{BASE_URL}/topic", params={"format": "json"}, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/topic",
+        params={"format": "json"},
+        timeout=30.0,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -351,7 +366,12 @@ class WorldBankListSourcesParams(BaseModel):
 
 def fetch_list_sources(_params: WorldBankListSourcesParams) -> list:
     """Fetch the list of World Bank data sources."""
-    response = http_get(f"{BASE_URL}/source", params={"format": "json"}, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/source",
+        params={"format": "json"},
+        timeout=30.0,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -392,7 +412,10 @@ class WorldBankListIncomeLevelsParams(BaseModel):
 def fetch_list_income_levels(_params: WorldBankListIncomeLevelsParams) -> list:
     """Fetch the World Bank income-level classifications."""
     response = http_get(
-        f"{BASE_URL}/incomeLevel", params={"format": "json"}, timeout=30.0
+        f"{BASE_URL}/incomeLevel",
+        params={"format": "json"},
+        timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

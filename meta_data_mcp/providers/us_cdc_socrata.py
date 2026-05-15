@@ -35,6 +35,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-cdc-socrata"
 BASE_URL = "https://data.cdc.gov"
 
 # Registration Variables
@@ -63,7 +64,9 @@ def fetch_search_datasets(params: CDCSearchDatasetsParams) -> Any:
     if params.q:
         query_params["q"] = params.q
 
-    response = http_get(f"{BASE_URL}/api/views", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/api/views", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -105,7 +108,9 @@ class CDCGetDatasetMetadataParams(BaseModel):
 
 def fetch_get_dataset_metadata(params: CDCGetDatasetMetadataParams) -> Any:
     """Fetch metadata for a CDC dataset."""
-    response = http_get(f"{BASE_URL}/api/views/{params.dataset_id}")
+    response = http_get(
+        f"{BASE_URL}/api/views/{params.dataset_id}", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -160,7 +165,9 @@ def fetch_query_dataset(params: CDCQueryDatasetParams) -> Any:
         query_params["$where"] = params.where
 
     response = http_get(
-        f"{BASE_URL}/resource/{params.dataset_id}.json", params=query_params
+        f"{BASE_URL}/resource/{params.dataset_id}.json",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -207,7 +214,9 @@ def fetch_count_dataset_rows(params: CDCCountDatasetRowsParams) -> Any:
     """Count the rows in a CDC dataset via SoQL aggregate."""
     query_params = {"$select": "count(*)"}
     response = http_get(
-        f"{BASE_URL}/resource/{params.dataset_id}.json", params=query_params
+        f"{BASE_URL}/resource/{params.dataset_id}.json",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -251,7 +260,9 @@ class CDCGetMetadataV1Params(BaseModel):
 def fetch_get_metadata_v1(params: CDCGetMetadataV1Params) -> Any:
     """Fetch CDC catalog metadata via the v1 metadata API."""
     query_params = {"limit": params.limit}
-    response = http_get(f"{BASE_URL}/api/views/metadata/v1", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/api/views/metadata/v1", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 

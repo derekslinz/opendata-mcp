@@ -35,6 +35,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-census-geocoder"
 BASE_URL = "https://geocoding.geo.census.gov/geocoder"
 
 # Registration Variables
@@ -69,7 +70,11 @@ def fetch_census_geocode_oneline(params: CensusGeocodeOnelineParams) -> dict:
         "benchmark": params.benchmark,
         "format": "json",
     }
-    response = http_get(f"{BASE_URL}/locations/onelineaddress", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/locations/onelineaddress",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -133,7 +138,9 @@ def fetch_census_geocode_address(params: CensusGeocodeAddressParams) -> dict:
         query_params["state"] = params.state
     if params.zip:
         query_params["zip"] = params.zip
-    response = http_get(f"{BASE_URL}/locations/address", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/locations/address", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -191,7 +198,9 @@ def fetch_census_geocode_coordinates(params: CensusGeocodeCoordinatesParams) -> 
         "vintage": params.vintage,
         "format": "json",
     }
-    response = http_get(f"{BASE_URL}/geographies/coordinates", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/geographies/coordinates", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -248,7 +257,11 @@ def fetch_census_geocode_oneline_geographies(
         "vintage": params.vintage,
         "format": "json",
     }
-    response = http_get(f"{BASE_URL}/geographies/onelineaddress", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/geographies/onelineaddress",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -316,7 +329,9 @@ def fetch_census_geocode_address_geographies(
         query_params["state"] = params.state
     if params.zip:
         query_params["zip"] = params.zip
-    response = http_get(f"{BASE_URL}/geographies/address", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/geographies/address", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -360,7 +375,9 @@ class CensusBenchmarksParams(BaseModel):
 
 def fetch_census_benchmarks(params: CensusBenchmarksParams) -> dict:
     """Call /benchmarks on the Census Geocoder."""
-    response = http_get(f"{BASE_URL}/benchmarks", params={"format": "json"})
+    response = http_get(
+        f"{BASE_URL}/benchmarks", params={"format": "json"}, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -407,7 +424,9 @@ def fetch_census_vintages(params: CensusVintagesParams) -> dict:
         "benchmark": params.benchmark,
         "format": "json",
     }
-    response = http_get(f"{BASE_URL}/vintages", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/vintages", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 

@@ -35,6 +35,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "eu-ecb"
 BASE_URL = "https://data-api.ecb.europa.eu/service"
 
 # Registration Variables
@@ -56,7 +57,9 @@ class ECBListDataflowsParams(BaseModel):
 def fetch_ecb_list_dataflows(_: ECBListDataflowsParams) -> dict:
     """Fetch every ECB dataflow definition."""
     query_params: dict[str, Any] = {"format": "jsondata"}
-    response = http_get(f"{BASE_URL}/dataflow/ECB/all/latest", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/dataflow/ECB/all/latest", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -98,7 +101,9 @@ def fetch_ecb_get_dataflow(params: ECBGetDataflowParams) -> dict:
     """Fetch metadata for a single ECB dataflow."""
     query_params: dict[str, Any] = {"format": "jsondata"}
     response = http_get(
-        f"{BASE_URL}/dataflow/ECB/{params.id}/latest", params=query_params
+        f"{BASE_URL}/dataflow/ECB/{params.id}/latest",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -169,7 +174,9 @@ def fetch_ecb_get_data(params: ECBGetDataParams) -> dict:
     if params.lastNObservations:
         query_params["lastNObservations"] = params.lastNObservations
     response = http_get(
-        f"{BASE_URL}/data/{params.flow}/{params.key}", params=query_params
+        f"{BASE_URL}/data/{params.flow}/{params.key}",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -217,7 +224,9 @@ def fetch_ecb_get_codelist(params: ECBGetCodelistParams) -> dict:
     """Fetch an ECB codelist."""
     query_params: dict[str, Any] = {"format": "jsondata"}
     response = http_get(
-        f"{BASE_URL}/codelist/ECB/{params.id}/latest", params=query_params
+        f"{BASE_URL}/codelist/ECB/{params.id}/latest",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -262,7 +271,9 @@ def fetch_ecb_get_conceptscheme(params: ECBGetConceptSchemeParams) -> dict:
     """Fetch an ECB concept scheme."""
     query_params: dict[str, Any] = {"format": "jsondata"}
     response = http_get(
-        f"{BASE_URL}/conceptscheme/ECB/{params.id}/latest", params=query_params
+        f"{BASE_URL}/conceptscheme/ECB/{params.id}/latest",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

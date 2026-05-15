@@ -42,15 +42,21 @@ def test_http_get_cache_hit_and_expiry(monkeypatch):
     mock_get = Mock(side_effect=[first, second])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    r1 = utils.http_get("https://example.test/api", cache_ttl=10)
-    r2 = utils.http_get("https://example.test/api", cache_ttl=10)
+    r1 = utils.http_get(
+        "https://example.test/api", cache_ttl=10, provider="test-provider"
+    )
+    r2 = utils.http_get(
+        "https://example.test/api", cache_ttl=10, provider="test-provider"
+    )
 
     assert r1 is first
     assert r2 is first
     assert mock_get.call_count == 1
 
     now = 111.0
-    r3 = utils.http_get("https://example.test/api", cache_ttl=10)
+    r3 = utils.http_get(
+        "https://example.test/api", cache_ttl=10, provider="test-provider"
+    )
     assert r3 is second
     assert mock_get.call_count == 2
 
@@ -67,12 +73,12 @@ def test_http_get_custom_ttl_does_not_change_default_ttl(monkeypatch):
     mock_get = Mock(side_effect=[resp_a1, resp_b1, resp_a2])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    utils.http_get("https://example.test/a", cache_ttl=1)
-    utils.http_get("https://example.test/b")
+    utils.http_get("https://example.test/a", cache_ttl=1, provider="test-provider")
+    utils.http_get("https://example.test/b", provider="test-provider")
 
     now = 202.0
-    a = utils.http_get("https://example.test/a", cache_ttl=1)
-    b = utils.http_get("https://example.test/b")
+    a = utils.http_get("https://example.test/a", cache_ttl=1, provider="test-provider")
+    b = utils.http_get("https://example.test/b", provider="test-provider")
 
     assert a is resp_a2
     assert b is resp_b1
@@ -90,11 +96,14 @@ def test_cache_isolates_auth_from_anonymous(monkeypatch):
     mock_get = Mock(side_effect=[anon_resp, auth_resp])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    r_anon = utils.http_get("https://example.test/api", cache_ttl=60)
+    r_anon = utils.http_get(
+        "https://example.test/api", cache_ttl=60, provider="test-provider"
+    )
     r_auth = utils.http_get(
         "https://example.test/api",
         cache_ttl=60,
         headers={"Authorization": "Token abc"},
+        provider="test-provider",
     )
 
     assert r_anon is anon_resp
@@ -102,11 +111,14 @@ def test_cache_isolates_auth_from_anonymous(monkeypatch):
     assert mock_get.call_count == 2
 
     # And confirm both are independently cached
-    r_anon_cached = utils.http_get("https://example.test/api", cache_ttl=60)
+    r_anon_cached = utils.http_get(
+        "https://example.test/api", cache_ttl=60, provider="test-provider"
+    )
     r_auth_cached = utils.http_get(
         "https://example.test/api",
         cache_ttl=60,
         headers={"Authorization": "Token abc"},
+        provider="test-provider",
     )
     assert r_anon_cached is anon_resp
     assert r_auth_cached is auth_resp
@@ -127,7 +139,7 @@ def test_http_get_retries_on_429_with_retry_after(monkeypatch):
     mock_get = Mock(side_effect=[rate_limited, ok])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    result = utils.http_get("https://example.test/api")
+    result = utils.http_get("https://example.test/api", provider="test-provider")
 
     assert result is ok
     assert mock_get.call_count == 2
@@ -146,14 +158,16 @@ def test_http_get_retries_on_503(monkeypatch):
     mock_get = Mock(side_effect=[fail1, fail2, ok])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    result = utils.http_get("https://example.test/api")
+    result = utils.http_get("https://example.test/api", provider="test-provider")
 
     assert result is ok
     assert mock_get.call_count == 3
 
 
 def test_http_get_gives_up_after_max_retries(monkeypatch):
-    """When retries are exhausted, http_get must raise HTTPStatusError."""
+    """When retries are exhausted, http_get raises UpstreamError."""
+    from meta_data_mcp.errors import UpstreamError
+
     utils._response_cache.clear()
     monkeypatch.setenv("OPENDATA_MCP_HTTP_RETRIES", "1")
     monkeypatch.setattr(utils.time, "sleep", lambda s: None)
@@ -163,14 +177,16 @@ def test_http_get_gives_up_after_max_retries(monkeypatch):
     mock_get = Mock(side_effect=[fail1, fail2])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    with pytest.raises(httpx.HTTPStatusError):
-        utils.http_get("https://example.test/api")
+    with pytest.raises(UpstreamError):
+        utils.http_get("https://example.test/api", provider="test-provider")
 
     assert mock_get.call_count == 2
 
 
 def test_http_get_no_retry_on_404(monkeypatch):
-    """4xx other than 429 should raise immediately without retry."""
+    """4xx other than 429 raises NotFoundError immediately."""
+    from meta_data_mcp.errors import NotFoundError
+
     utils._response_cache.clear()
     monkeypatch.setattr(utils.time, "sleep", lambda s: None)
 
@@ -178,8 +194,8 @@ def test_http_get_no_retry_on_404(monkeypatch):
     mock_get = Mock(side_effect=[not_found])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    with pytest.raises(httpx.HTTPStatusError):
-        utils.http_get("https://example.test/api")
+    with pytest.raises(NotFoundError):
+        utils.http_get("https://example.test/api", provider="test-provider")
 
     assert mock_get.call_count == 1
 
@@ -195,11 +211,14 @@ def test_cache_isolates_lowercase_auth_header(monkeypatch):
     mock_get = Mock(side_effect=[anon_resp, auth_resp])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    r_anon = utils.http_get("https://example.test/api", cache_ttl=60)
+    r_anon = utils.http_get(
+        "https://example.test/api", cache_ttl=60, provider="test-provider"
+    )
     r_auth = utils.http_get(
         "https://example.test/api",
         cache_ttl=60,
         headers={"authorization": "Token xyz"},
+        provider="test-provider",
     )
 
     assert r_anon is anon_resp
@@ -225,7 +244,7 @@ def test_http_get_retries_on_429_with_http_date_retry_after(monkeypatch):
     mock_get = Mock(side_effect=[rate_limited, ok])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    result = utils.http_get("https://example.test/api")
+    result = utils.http_get("https://example.test/api", provider="test-provider")
 
     assert result is ok
     assert mock_get.call_count == 2
@@ -248,7 +267,7 @@ def test_http_get_retry_after_capped_at_30s(monkeypatch):
     mock_get = Mock(side_effect=[rate_limited, ok])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    result = utils.http_get("https://example.test/api")
+    result = utils.http_get("https://example.test/api", provider="test-provider")
 
     assert result is ok
     assert mock_get.call_count == 2
@@ -268,13 +287,15 @@ def test_http_get_retries_env_var_invalid_falls_back_to_default(monkeypatch):
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
     # Default 2 retries → 3 total attempts, third succeeds
-    result = utils.http_get("https://example.test/api")
+    result = utils.http_get("https://example.test/api", provider="test-provider")
     assert result is ok
     assert mock_get.call_count == 3
 
 
 def test_http_get_retries_env_var_negative_treated_as_zero(monkeypatch):
     """Negative OPENDATA_MCP_HTTP_RETRIES is clamped to 0 (no retries)."""
+    from meta_data_mcp.errors import UpstreamError
+
     utils._response_cache.clear()
     monkeypatch.setenv("OPENDATA_MCP_HTTP_RETRIES", "-1")
     monkeypatch.setattr(utils.time, "sleep", lambda s: None)
@@ -283,8 +304,8 @@ def test_http_get_retries_env_var_negative_treated_as_zero(monkeypatch):
     mock_get = Mock(side_effect=[fail])
     monkeypatch.setattr(utils.httpx, "get", mock_get)
 
-    with pytest.raises(httpx.HTTPStatusError):
-        utils.http_get("https://example.test/api")
+    with pytest.raises(UpstreamError):
+        utils.http_get("https://example.test/api", provider="test-provider")
 
     assert mock_get.call_count == 1
 
@@ -390,35 +411,15 @@ def test_http_post_with_provider_translates_network_error(monkeypatch):
     assert health.health_score("test-provider") < 1.0
 
 
-def test_http_get_without_provider_keeps_raw_httpx_errors(monkeypatch):
-    """Without provider=, http_get preserves legacy raw-httpx behavior.
+def test_http_get_provider_is_mandatory():
+    """Calling http_get without provider= must raise TypeError at call site.
 
-    The control here: seed a known degraded score for a *different* provider
-    id, then call ``http_get`` without ``provider=`` and confirm the seeded
-    score is unchanged. A bug that wrongly recorded failures under a default
-    id would degrade *some* provider's score; seeding the only score in the
-    registry lets us prove the call left health state untouched.
+    The legacy anonymous path that swallowed ``provider=None`` and let raw
+    ``httpx`` exceptions through has been deleted. Callers MUST supply
+    ``provider=`` so the kernel can attribute health signals and emit
+    URL-redacted ProviderError exceptions.
     """
-    from meta_data_mcp import health
-
-    health.reset()
-    utils._response_cache.clear()
-    monkeypatch.setattr(utils.time, "sleep", lambda s: None)
-    # Pin the health clock so the time-decay between record_failure and the
-    # final score readback can't move the baseline; we want to assert the call
-    # itself made no change.
-    monkeypatch.setattr(health, "_clock", lambda: 1000.0)
-
-    health.record_failure("control-provider", status=500)
-    baseline = health.health_score("control-provider")
-    assert baseline < 1.0  # sanity: seeded failure actually degraded the score.
-
-    not_found = _response("nope", status_code=404)
-    mock_get = Mock(side_effect=[not_found])
-    monkeypatch.setattr(utils.httpx, "get", mock_get)
-
-    # No provider= → raw httpx.HTTPStatusError, no health side-effect.
-    with pytest.raises(httpx.HTTPStatusError):
-        utils.http_get("https://example.test/missing")
-
-    assert health.health_score("control-provider") == baseline
+    with pytest.raises(TypeError):
+        utils.http_get("https://example.test/api")  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        utils.http_post("https://example.test/api", json={})  # type: ignore[call-arg]

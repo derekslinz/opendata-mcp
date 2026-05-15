@@ -39,6 +39,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-opensky"
 BASE_URL = "https://opensky-network.org/api"
 
 # Registration Variables
@@ -88,7 +89,12 @@ def fetch_states_all(params: OpenSkyStatesAllParams) -> dict:
     if params.time is not None:
         query_params["time"] = params.time
 
-    response = http_get(f"{BASE_URL}/states/all", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/states/all",
+        params=query_params,
+        timeout=30.0,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -136,7 +142,12 @@ def fetch_states_by_aircraft(params: OpenSkyStatesByAircraftParams) -> dict:
     if params.time is not None:
         query_params["time"] = params.time
 
-    response = http_get(f"{BASE_URL}/states/all", params=query_params, timeout=30.0)
+    response = http_get(
+        f"{BASE_URL}/states/all",
+        params=query_params,
+        timeout=30.0,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -186,7 +197,10 @@ def fetch_flights_aircraft(params: OpenSkyFlightsAircraftParams) -> list:
         "end": params.end,
     }
     response = http_get(
-        f"{BASE_URL}/flights/aircraft", params=query_params, timeout=30.0
+        f"{BASE_URL}/flights/aircraft",
+        params=query_params,
+        timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -242,7 +256,10 @@ def fetch_flights_arrival(params: OpenSkyFlightsArrivalParams) -> list:
         "end": params.end,
     }
     response = http_get(
-        f"{BASE_URL}/flights/arrival", params=query_params, timeout=30.0
+        f"{BASE_URL}/flights/arrival",
+        params=query_params,
+        timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -298,7 +315,10 @@ def fetch_flights_departure(params: OpenSkyFlightsDepartureParams) -> list:
         "end": params.end,
     }
     response = http_get(
-        f"{BASE_URL}/flights/departure", params=query_params, timeout=30.0
+        f"{BASE_URL}/flights/departure",
+        params=query_params,
+        timeout=30.0,
+        provider=PROVIDER_ID,
     )
     return response.json()
 

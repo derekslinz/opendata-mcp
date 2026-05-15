@@ -39,6 +39,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-arxiv"
 BASE_URL = "https://export.arxiv.org/api"
 
 # arXiv responds with Atom XML; ask for it explicitly.
@@ -89,7 +90,12 @@ def fetch_arxiv_query(params: ArxivQueryParams) -> str:
         "sortBy": params.sortBy,
         "sortOrder": params.sortOrder,
     }
-    response = http_get(f"{BASE_URL}/query", params=query_params, headers=_ATOM_HEADERS)
+    response = http_get(
+        f"{BASE_URL}/query",
+        params=query_params,
+        headers=_ATOM_HEADERS,
+        provider=PROVIDER_ID,
+    )
     return response.text
 
 
@@ -136,7 +142,12 @@ def fetch_arxiv_search_by_title(params: ArxivSearchByTitleParams) -> str:
         "search_query": f'ti:"{params.title}"',
         "max_results": params.max_results,
     }
-    response = http_get(f"{BASE_URL}/query", params=query_params, headers=_ATOM_HEADERS)
+    response = http_get(
+        f"{BASE_URL}/query",
+        params=query_params,
+        headers=_ATOM_HEADERS,
+        provider=PROVIDER_ID,
+    )
     return response.text
 
 
@@ -185,7 +196,12 @@ def fetch_arxiv_search_by_author(params: ArxivSearchByAuthorParams) -> str:
         "sortBy": "submittedDate",
         "sortOrder": "descending",
     }
-    response = http_get(f"{BASE_URL}/query", params=query_params, headers=_ATOM_HEADERS)
+    response = http_get(
+        f"{BASE_URL}/query",
+        params=query_params,
+        headers=_ATOM_HEADERS,
+        provider=PROVIDER_ID,
+    )
     return response.text
 
 
@@ -236,7 +252,12 @@ def fetch_arxiv_search_by_category(params: ArxivSearchByCategoryParams) -> str:
         "sortBy": "submittedDate",
         "sortOrder": "descending",
     }
-    response = http_get(f"{BASE_URL}/query", params=query_params, headers=_ATOM_HEADERS)
+    response = http_get(
+        f"{BASE_URL}/query",
+        params=query_params,
+        headers=_ATOM_HEADERS,
+        provider=PROVIDER_ID,
+    )
     return response.text
 
 
@@ -281,7 +302,12 @@ class ArxivGetPaperParams(BaseModel):
 def fetch_arxiv_get_paper(params: ArxivGetPaperParams) -> str:
     """Look up a single arXiv paper by id_list."""
     query_params: dict[str, Any] = {"id_list": params.arxiv_id}
-    response = http_get(f"{BASE_URL}/query", params=query_params, headers=_ATOM_HEADERS)
+    response = http_get(
+        f"{BASE_URL}/query",
+        params=query_params,
+        headers=_ATOM_HEADERS,
+        provider=PROVIDER_ID,
+    )
     return response.text
 
 

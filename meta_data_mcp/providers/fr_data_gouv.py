@@ -41,6 +41,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "fr-data-gouv"
 BASE_URL = "https://www.data.gouv.fr/api/1"
 
 # Registration Variables
@@ -80,7 +81,9 @@ def fetch_fr_datagouv_search_datasets(params: FRDataGouvSearchDatasetsParams) ->
     }
     if params.q:
         query_params["q"] = params.q
-    response = http_get(f"{BASE_URL}/datasets/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/datasets/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -123,7 +126,7 @@ class FRDataGouvGetDatasetParams(BaseModel):
 
 def fetch_fr_datagouv_get_dataset(params: FRDataGouvGetDatasetParams) -> dict:
     """Call /datasets/{id}/ on data.gouv.fr."""
-    response = http_get(f"{BASE_URL}/datasets/{params.id}/")
+    response = http_get(f"{BASE_URL}/datasets/{params.id}/", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -174,7 +177,9 @@ def fetch_fr_datagouv_list_organizations(
         "page": params.page,
         "page_size": params.page_size,
     }
-    response = http_get(f"{BASE_URL}/organizations/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/organizations/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -221,7 +226,7 @@ def fetch_fr_datagouv_get_organization(
     params: FRDataGouvGetOrganizationParams,
 ) -> dict:
     """Call /organizations/{slug}/ on data.gouv.fr."""
-    response = http_get(f"{BASE_URL}/organizations/{params.id}/")
+    response = http_get(f"{BASE_URL}/organizations/{params.id}/", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -272,7 +277,9 @@ def fetch_fr_datagouv_search_reuses(params: FRDataGouvSearchReusesParams) -> dic
     query_params: dict[str, Any] = {"page_size": params.page_size}
     if params.q:
         query_params["q"] = params.q
-    response = http_get(f"{BASE_URL}/reuses/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/reuses/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -315,7 +322,9 @@ class FRDataGouvListTopicsParams(BaseModel):
 def fetch_fr_datagouv_list_topics(params: FRDataGouvListTopicsParams) -> dict:
     """Call /topics/ on data.gouv.fr."""
     query_params: dict[str, Any] = {"page_size": params.page_size}
-    response = http_get(f"{BASE_URL}/topics/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/topics/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -361,7 +370,9 @@ def fetch_fr_datagouv_list_tags(params: FRDataGouvListTagsParams) -> dict | list
     query_params: dict[str, Any] = {}
     if params.q:
         query_params["q"] = params.q
-    response = http_get(f"{BASE_URL}/tags/suggest/", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/tags/suggest/", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 

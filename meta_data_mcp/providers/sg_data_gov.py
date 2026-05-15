@@ -34,6 +34,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "sg-data-gov"
 BASE_URL = "https://api-production.data.gov.sg/v2/public/api"
 
 # Registration Variables
@@ -67,7 +68,9 @@ def fetch_sg_datagov_list_datasets(params: SGDataGovListDatasetsParams) -> dict:
         "page": params.page,
         "per_page": params.per_page,
     }
-    response = http_get(f"{BASE_URL}/datasets", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/datasets", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -110,7 +113,9 @@ class SGDataGovGetDatasetParams(BaseModel):
 
 def fetch_sg_datagov_get_dataset(params: SGDataGovGetDatasetParams) -> dict:
     """Call /datasets/{datasetId}/metadata on data.gov.sg v2."""
-    response = http_get(f"{BASE_URL}/datasets/{params.datasetId}/metadata")
+    response = http_get(
+        f"{BASE_URL}/datasets/{params.datasetId}/metadata", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -156,7 +161,9 @@ class SGDataGovListCollectionsParams(BaseModel):
 def fetch_sg_datagov_list_collections(params: SGDataGovListCollectionsParams) -> dict:
     """Call /collections on data.gov.sg v2."""
     query_params: dict[str, Any] = {"page": params.page}
-    response = http_get(f"{BASE_URL}/collections", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/collections", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -199,7 +206,9 @@ class SGDataGovGetCollectionParams(BaseModel):
 
 def fetch_sg_datagov_get_collection(params: SGDataGovGetCollectionParams) -> dict:
     """Call /collections/{collectionId}/metadata on data.gov.sg v2."""
-    response = http_get(f"{BASE_URL}/collections/{params.collectionId}/metadata")
+    response = http_get(
+        f"{BASE_URL}/collections/{params.collectionId}/metadata", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -249,7 +258,9 @@ class SGDataGovPollDownloadParams(BaseModel):
 
 def fetch_sg_datagov_poll_download(params: SGDataGovPollDownloadParams) -> dict:
     """Call /datasets/{datasetId}/poll-download on data.gov.sg v2."""
-    response = http_get(f"{BASE_URL}/datasets/{params.datasetId}/poll-download")
+    response = http_get(
+        f"{BASE_URL}/datasets/{params.datasetId}/poll-download", provider=PROVIDER_ID
+    )
     return response.json()
 
 

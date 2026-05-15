@@ -23,6 +23,7 @@ from meta_data_mcp.utils import (
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "us-nc-onemap"
 BASE_URL = "https://services.nconemap.gov/secure/rest/services"
 
 RESOURCES: List[Any] = []
@@ -51,7 +52,7 @@ def fetch_us_nc_onemap_list_services(params: UsNcOnemapListServicesParams) -> An
     query: dict = {}
     if params.f is not None:
         query["f"] = params.f
-    response = http_get(url, params=query or None)
+    response = http_get(url, params=query or None, provider=PROVIDER_ID)
     return response.json()
 
 

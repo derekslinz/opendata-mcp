@@ -40,6 +40,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-openalex"
 BASE_URL = "https://api.openalex.org"
 
 # Registration Variables
@@ -102,7 +103,9 @@ def fetch_openalex_search_works(params: OpenAlexSearchWorksParams) -> dict:
         query_params["filter"] = params.filter
     if params.sort:
         query_params["sort"] = params.sort
-    response = http_get(f"{BASE_URL}/works", params=_merge_params(query_params))
+    response = http_get(
+        f"{BASE_URL}/works", params=_merge_params(query_params), provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -148,7 +151,9 @@ class OpenAlexGetWorkParams(BaseModel):
 
 def fetch_openalex_get_work(params: OpenAlexGetWorkParams) -> dict:
     """Call /works/{id}."""
-    response = http_get(f"{BASE_URL}/works/{params.id}", params=_merge_params({}))
+    response = http_get(
+        f"{BASE_URL}/works/{params.id}", params=_merge_params({}), provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -207,7 +212,9 @@ def fetch_openalex_search_authors(params: OpenAlexSearchAuthorsParams) -> dict:
         query_params["search"] = params.search
     if params.filter:
         query_params["filter"] = params.filter
-    response = http_get(f"{BASE_URL}/authors", params=_merge_params(query_params))
+    response = http_get(
+        f"{BASE_URL}/authors", params=_merge_params(query_params), provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -253,7 +260,11 @@ class OpenAlexGetAuthorParams(BaseModel):
 
 def fetch_openalex_get_author(params: OpenAlexGetAuthorParams) -> dict:
     """Call /authors/{id}."""
-    response = http_get(f"{BASE_URL}/authors/{params.id}", params=_merge_params({}))
+    response = http_get(
+        f"{BASE_URL}/authors/{params.id}",
+        params=_merge_params({}),
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -307,7 +318,11 @@ def fetch_openalex_search_institutions(
         query_params["search"] = params.search
     if params.filter:
         query_params["filter"] = params.filter
-    response = http_get(f"{BASE_URL}/institutions", params=_merge_params(query_params))
+    response = http_get(
+        f"{BASE_URL}/institutions",
+        params=_merge_params(query_params),
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 
@@ -357,7 +372,9 @@ def fetch_openalex_search_sources(params: OpenAlexSearchSourcesParams) -> dict:
         query_params["search"] = params.search
     if params.filter:
         query_params["filter"] = params.filter
-    response = http_get(f"{BASE_URL}/sources", params=_merge_params(query_params))
+    response = http_get(
+        f"{BASE_URL}/sources", params=_merge_params(query_params), provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -401,7 +418,9 @@ def fetch_openalex_search_concepts(params: OpenAlexSearchConceptsParams) -> dict
     query_params: dict[str, Any] = {"per_page": params.per_page}
     if params.search:
         query_params["search"] = params.search
-    response = http_get(f"{BASE_URL}/concepts", params=_merge_params(query_params))
+    response = http_get(
+        f"{BASE_URL}/concepts", params=_merge_params(query_params), provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -445,7 +464,11 @@ def fetch_openalex_search_publishers(params: OpenAlexSearchPublishersParams) -> 
     query_params: dict[str, Any] = {"per_page": params.per_page}
     if params.search:
         query_params["search"] = params.search
-    response = http_get(f"{BASE_URL}/publishers", params=_merge_params(query_params))
+    response = http_get(
+        f"{BASE_URL}/publishers",
+        params=_merge_params(query_params),
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 

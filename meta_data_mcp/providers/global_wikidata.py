@@ -37,6 +37,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-wikidata"
 BASE_URL = "https://www.wikidata.org/w/api.php"
 SPARQL_URL = "https://query.wikidata.org/sparql"
 
@@ -74,7 +75,7 @@ def fetch_wikidata_entities(params: WikidataGetEntitiesParams) -> dict:
     }
     if params.languages:
         query_params["languages"] = params.languages
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -126,7 +127,7 @@ def fetch_wikidata_search_entities(params: WikidataSearchEntitiesParams) -> dict
         "limit": params.limit,
         "format": "json",
     }
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -179,7 +180,7 @@ def fetch_wikidata_claims(params: WikidataGetClaimsParams) -> dict:
     }
     if params.property:
         query_params["property"] = params.property
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -225,6 +226,7 @@ def fetch_wikidata_sparql(params: WikidataSPARQLParams) -> dict:
         SPARQL_URL,
         params={"query": params.query},
         headers={"Accept": "application/sparql-results+json"},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -277,7 +279,7 @@ def fetch_wikidata_list_properties(params: WikidataListPropertiesParams) -> dict
         "limit": params.limit,
         "format": "json",
     }
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -332,7 +334,7 @@ def fetch_wikidata_get_by_title(params: WikidataGetByTitleParams) -> dict:
         "titles": params.titles,
         "format": "json",
     }
-    response = http_get(BASE_URL, params=query_params)
+    response = http_get(BASE_URL, params=query_params, provider=PROVIDER_ID)
     return response.json()
 
 

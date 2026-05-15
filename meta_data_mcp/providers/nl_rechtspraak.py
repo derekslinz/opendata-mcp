@@ -23,6 +23,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "nl-rechtspraak"
 BASE_URL = "https://data.rechtspraak.nl/uitspraken"
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
@@ -58,7 +59,7 @@ def search_rechtspraak(params: RechtspraakSearchParams) -> List[dict]:
         query_params["date"] = params.date_from
     # Note: The API support for date ranges is specific, but simple 'date' filter is common.
 
-    response = http_get(f"{BASE_URL}/zoeken", params=query_params)
+    response = http_get(f"{BASE_URL}/zoeken", params=query_params, provider=PROVIDER_ID)
     root = ET.fromstring(response.content)
 
     results = []
@@ -115,7 +116,9 @@ class RechtspraakContentParams(BaseModel):
 def fetch_rechtspraak_content(params: RechtspraakContentParams) -> str:
     """Fetch the full content of a ruling from Rechtspraak."""
     query_params = {"id": params.ecli}
-    response = http_get(f"{BASE_URL}/content", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/content", params=query_params, provider=PROVIDER_ID
+    )
     # Return raw XML as it contains structured legal data
     return response.text
 

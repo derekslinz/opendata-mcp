@@ -23,6 +23,7 @@ from meta_data_mcp.utils import (
 
 log = logging.getLogger(__name__)
 
+PROVIDER_ID = "us-ncdeq-gis"
 BASE_URL = "https://data-ncdenr.opendata.arcgis.com"
 
 RESOURCES: List[Any] = []
@@ -58,7 +59,7 @@ def fetch_us_ncdeq_search_catalog(params: UsNcdeqSearchCatalogParams) -> Any:
         query["q"] = params.q
     if params.num is not None:
         query["num"] = params.num
-    response = http_get(url, params=query or None)
+    response = http_get(url, params=query or None, provider=PROVIDER_ID)
     return response.json()
 
 

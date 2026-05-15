@@ -35,6 +35,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-federal-register"
 BASE_URL = "https://www.federalregister.gov/api/v1"
 
 # Registration Variables
@@ -76,7 +77,9 @@ def fetch_fedreg_search_documents(params: FedRegSearchDocumentsParams) -> dict:
         query_params["conditions[term]"] = params.term
     if params.order:
         query_params["order"] = params.order
-    response = http_get(f"{BASE_URL}/documents.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/documents.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -119,7 +122,9 @@ class FedRegGetDocumentParams(BaseModel):
 
 def fetch_fedreg_get_document(params: FedRegGetDocumentParams) -> dict:
     """Call /documents/{document_number}.json."""
-    response = http_get(f"{BASE_URL}/documents/{params.document_number}.json")
+    response = http_get(
+        f"{BASE_URL}/documents/{params.document_number}.json", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -159,7 +164,7 @@ class FedRegListAgenciesParams(BaseModel):
 
 def fetch_fedreg_list_agencies(params: FedRegListAgenciesParams) -> Any:
     """Call /agencies.json. Returns a list of agency objects."""
-    response = http_get(f"{BASE_URL}/agencies.json")
+    response = http_get(f"{BASE_URL}/agencies.json", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -202,7 +207,7 @@ class FedRegGetAgencyParams(BaseModel):
 
 def fetch_fedreg_get_agency(params: FedRegGetAgencyParams) -> dict:
     """Call /agencies/{slug}.json."""
-    response = http_get(f"{BASE_URL}/agencies/{params.slug}.json")
+    response = http_get(f"{BASE_URL}/agencies/{params.slug}.json", provider=PROVIDER_ID)
     return response.json()
 
 
@@ -253,7 +258,9 @@ def fetch_fedreg_public_inspection(params: FedRegPublicInspectionParams) -> dict
     if params.available_on:
         query_params["conditions[available_on]"] = params.available_on
     response = http_get(
-        f"{BASE_URL}/public-inspection-documents.json", params=query_params
+        f"{BASE_URL}/public-inspection-documents.json",
+        params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -313,7 +320,9 @@ def fetch_fedreg_list_executive_orders(
     }
     if params.president:
         query_params["conditions[president]"] = params.president
-    response = http_get(f"{BASE_URL}/documents.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/documents.json", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -365,7 +374,11 @@ def fetch_fedreg_suggested_searches(params: FedRegSuggestedSearchesParams) -> An
         query_params["sections"] = params.sections
     if params.term:
         query_params["conditions[term]"] = params.term
-    response = http_get(f"{BASE_URL}/suggested_searches.json", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/suggested_searches.json",
+        params=query_params,
+        provider=PROVIDER_ID,
+    )
     return response.json()
 
 

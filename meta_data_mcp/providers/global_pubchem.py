@@ -22,6 +22,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-pubchem"
 BASE_URL = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
 
 # Registration Variables
@@ -47,7 +48,8 @@ class PubChemCompoundParams(BaseModel):
 def fetch_pubchem_compound(params: PubChemCompoundParams) -> Any:
     """Fetch compound data from PubChem."""
     response = http_get(
-        f"{BASE_URL}/compound/{params.namespace}/{params.identifier}/JSON"
+        f"{BASE_URL}/compound/{params.namespace}/{params.identifier}/JSON",
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -87,7 +89,9 @@ class PubChemSubstanceParams(BaseModel):
 
 def fetch_pubchem_substance(params: PubChemSubstanceParams) -> Any:
     """Fetch substance data from PubChem."""
-    response = http_get(f"{BASE_URL}/substance/sid/{params.sid}/JSON")
+    response = http_get(
+        f"{BASE_URL}/substance/sid/{params.sid}/JSON", provider=PROVIDER_ID
+    )
     return response.json()
 
 

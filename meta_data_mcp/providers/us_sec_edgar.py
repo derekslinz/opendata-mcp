@@ -38,6 +38,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-sec-edgar"
 BASE_URL = "https://data.sec.gov"
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
@@ -71,7 +72,9 @@ class EdgarCompanySubmissionsParams(BaseModel):
 def fetch_edgar_company_submissions(params: EdgarCompanySubmissionsParams) -> dict:
     """Call /submissions/CIK{padded}.json on EDGAR."""
     padded = _pad_cik(params.cik)
-    response = http_get(f"{BASE_URL}/submissions/CIK{padded}.json")
+    response = http_get(
+        f"{BASE_URL}/submissions/CIK{padded}.json", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -121,7 +124,7 @@ def fetch_edgar_company_concept(params: EdgarCompanyConceptParams) -> dict:
     url = (
         f"{BASE_URL}/api/xbrl/companyconcept/CIK{padded}/us-gaap/{params.concept}.json"
     )
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -164,7 +167,9 @@ class EdgarCompanyFactsParams(BaseModel):
 def fetch_edgar_company_facts(params: EdgarCompanyFactsParams) -> dict:
     """Call /api/xbrl/companyfacts/CIK{padded}.json on EDGAR."""
     padded = _pad_cik(params.cik)
-    response = http_get(f"{BASE_URL}/api/xbrl/companyfacts/CIK{padded}.json")
+    response = http_get(
+        f"{BASE_URL}/api/xbrl/companyfacts/CIK{padded}.json", provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -213,7 +218,7 @@ def fetch_edgar_frames(params: EdgarFramesParams) -> dict:
         f"{BASE_URL}/api/xbrl/frames/us-gaap/{params.concept}/{params.unit}/"
         f"CY{params.year}Q{params.quarter}I.json"
     )
-    response = http_get(url)
+    response = http_get(url, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -258,7 +263,7 @@ class EdgarListTickersParams(BaseModel):
 
 def fetch_edgar_list_tickers(params: EdgarListTickersParams) -> dict:
     """Fetch the full company_tickers.json mapping from www.sec.gov."""
-    response = http_get(TICKERS_URL)
+    response = http_get(TICKERS_URL, provider=PROVIDER_ID)
     return response.json()
 
 
@@ -298,7 +303,7 @@ class EdgarSearchByTickerParams(BaseModel):
 
 def fetch_edgar_search_by_ticker(params: EdgarSearchByTickerParams) -> Optional[dict]:
     """Fetch company_tickers.json and return the entry matching `ticker` (case-insensitive)."""
-    response = http_get(TICKERS_URL)
+    response = http_get(TICKERS_URL, provider=PROVIDER_ID)
     data = response.json()
     target = params.ticker.strip().upper()
     # company_tickers.json is a dict of indexed objects: {"0": {"cik_str": ..., "ticker": ..., "title": ...}, ...}
@@ -360,7 +365,7 @@ class EdgarSearchByNameParams(BaseModel):
 
 def fetch_edgar_search_by_name(params: EdgarSearchByNameParams) -> list:
     """Fetch company_tickers.json and return entries whose `title` contains `name` (case-insensitive)."""
-    response = http_get(TICKERS_URL)
+    response = http_get(TICKERS_URL, provider=PROVIDER_ID)
     data = response.json()
     target = params.name.strip().lower()
     matches = []

@@ -42,6 +42,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "us-courtlistener"
 BASE_URL = "https://www.courtlistener.com/api/rest/v4"
 
 # Registration Variables
@@ -95,7 +96,10 @@ def fetch_courtlistener_search(params: CourtListenerSearchParams) -> dict:
     if params.order_by:
         query_params["order_by"] = params.order_by
     response = http_get(
-        f"{BASE_URL}/search/", params=query_params, headers=_auth_headers()
+        f"{BASE_URL}/search/",
+        params=query_params,
+        headers=_auth_headers(),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -141,7 +145,10 @@ def fetch_courtlistener_list_courts(params: CourtListenerListCourtsParams) -> di
     """Call /courts/."""
     query_params: dict[str, Any] = {"page": params.page}
     response = http_get(
-        f"{BASE_URL}/courts/", params=query_params, headers=_auth_headers()
+        f"{BASE_URL}/courts/",
+        params=query_params,
+        headers=_auth_headers(),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -183,7 +190,9 @@ class CourtListenerGetOpinionParams(BaseModel):
 def fetch_courtlistener_get_opinion(params: CourtListenerGetOpinionParams) -> dict:
     """Call /opinions/{id}/."""
     response = http_get(
-        f"{BASE_URL}/opinions/{params.opinion_id}/", headers=_auth_headers()
+        f"{BASE_URL}/opinions/{params.opinion_id}/",
+        headers=_auth_headers(),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -229,7 +238,9 @@ class CourtListenerGetClusterParams(BaseModel):
 def fetch_courtlistener_get_cluster(params: CourtListenerGetClusterParams) -> dict:
     """Call /clusters/{id}/."""
     response = http_get(
-        f"{BASE_URL}/clusters/{params.cluster_id}/", headers=_auth_headers()
+        f"{BASE_URL}/clusters/{params.cluster_id}/",
+        headers=_auth_headers(),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -283,7 +294,10 @@ def fetch_courtlistener_list_judges(params: CourtListenerListJudgesParams) -> di
     if params.name_last:
         query_params["name_last"] = params.name_last
     response = http_get(
-        f"{BASE_URL}/people/", params=query_params, headers=_auth_headers()
+        f"{BASE_URL}/people/",
+        params=query_params,
+        headers=_auth_headers(),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -325,7 +339,9 @@ class CourtListenerGetJudgeParams(BaseModel):
 def fetch_courtlistener_get_judge(params: CourtListenerGetJudgeParams) -> dict:
     """Call /people/{id}/."""
     response = http_get(
-        f"{BASE_URL}/people/{params.person_id}/", headers=_auth_headers()
+        f"{BASE_URL}/people/{params.person_id}/",
+        headers=_auth_headers(),
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -380,7 +396,10 @@ def fetch_courtlistener_list_dockets(params: CourtListenerListDocketsParams) -> 
     if params.docket_number:
         query_params["docket_number"] = params.docket_number
     response = http_get(
-        f"{BASE_URL}/dockets/", params=query_params, headers=_auth_headers()
+        f"{BASE_URL}/dockets/",
+        params=query_params,
+        headers=_auth_headers(),
+        provider=PROVIDER_ID,
     )
     return response.json()
 

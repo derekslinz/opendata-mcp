@@ -31,6 +31,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "global-oecd"
 BASE_URL = "https://sdmx.oecd.org/public/rest"
 SDMX_DATA_ACCEPT = "application/vnd.sdmx.data+json;version=1.0.0"
 SDMX_STRUCT_ACCEPT = "application/vnd.sdmx.structure+json;version=1.0.0"
@@ -60,6 +61,7 @@ def fetch_list_dataflows(_params: OECDListDataflowsParams) -> dict:
         params={"format": "jsonobject"},
         timeout=60.0,
         headers={"Accept": SDMX_STRUCT_ACCEPT},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -108,6 +110,7 @@ def fetch_get_dataflow(params: OECDGetDataflowParams) -> dict:
         params={"format": "jsonobject"},
         timeout=60.0,
         headers={"Accept": SDMX_STRUCT_ACCEPT},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -156,6 +159,7 @@ def fetch_get_datastructure(params: OECDGetDataStructureParams) -> dict:
         params={"format": "jsonobject"},
         timeout=60.0,
         headers={"Accept": SDMX_STRUCT_ACCEPT},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -229,6 +233,7 @@ def fetch_get_data(params: OECDGetDataParams) -> dict:
         params=query_params,
         timeout=60.0,
         headers={"Accept": SDMX_DATA_ACCEPT},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -278,6 +283,7 @@ def fetch_list_codelist(params: OECDListCodelistParams) -> dict:
         params={"format": "jsonobject"},
         timeout=60.0,
         headers={"Accept": SDMX_STRUCT_ACCEPT},
+        provider=PROVIDER_ID,
     )
     return response.json()
 
@@ -331,6 +337,7 @@ def fetch_list_conceptscheme(params: OECDListConceptSchemeParams) -> dict:
         params={"format": "jsonobject"},
         timeout=60.0,
         headers={"Accept": SDMX_STRUCT_ACCEPT},
+        provider=PROVIDER_ID,
     )
     return response.json()
 

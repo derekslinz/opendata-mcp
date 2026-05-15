@@ -36,6 +36,7 @@ from meta_data_mcp.utils import http_get, serialize_for_llm
 log = logging.getLogger(__name__)
 
 # Constants
+PROVIDER_ID = "uk-gov"
 BASE_URL = "https://data.gov.uk/api/3/action"
 
 # Registration Variables
@@ -74,7 +75,9 @@ def fetch_uk_gov_search_datasets(params: UKGovSearchDatasetsParams) -> dict:
         "rows": params.rows,
         "start": params.start,
     }
-    response = http_get(f"{BASE_URL}/package_search", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/package_search", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -114,7 +117,9 @@ class UKGovGetDatasetParams(BaseModel):
 
 def fetch_uk_gov_get_dataset(params: UKGovGetDatasetParams) -> dict:
     """Call CKAN package_show on data.gov.uk."""
-    response = http_get(f"{BASE_URL}/package_show", params={"id": params.id})
+    response = http_get(
+        f"{BASE_URL}/package_show", params={"id": params.id}, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -163,7 +168,9 @@ def fetch_uk_gov_list_organizations(params: UKGovListOrganizationsParams) -> dic
         "all_fields": "true",
         "limit": params.limit,
     }
-    response = http_get(f"{BASE_URL}/organization_list", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/organization_list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -203,7 +210,9 @@ class UKGovGetOrganizationParams(BaseModel):
 
 def fetch_uk_gov_get_organization(params: UKGovGetOrganizationParams) -> dict:
     """Call CKAN organization_show on data.gov.uk."""
-    response = http_get(f"{BASE_URL}/organization_show", params={"id": params.id})
+    response = http_get(
+        f"{BASE_URL}/organization_show", params={"id": params.id}, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -251,7 +260,9 @@ def fetch_uk_gov_list_groups(params: UKGovListGroupsParams) -> dict:
     query_params: dict[str, Any] = {
         "all_fields": "true" if params.all_fields else "false",
     }
-    response = http_get(f"{BASE_URL}/group_list", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/group_list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -297,7 +308,9 @@ def fetch_uk_gov_list_tags(params: UKGovListTagsParams) -> dict:
     query_params: dict[str, Any] = {}
     if params.query:
         query_params["query"] = params.query
-    response = http_get(f"{BASE_URL}/tag_list", params=query_params)
+    response = http_get(
+        f"{BASE_URL}/tag_list", params=query_params, provider=PROVIDER_ID
+    )
     return response.json()
 
 
@@ -346,6 +359,7 @@ def fetch_uk_gov_list_recently_changed(
     response = http_get(
         f"{BASE_URL}/recently_changed_packages_activity_list",
         params=query_params,
+        provider=PROVIDER_ID,
     )
     return response.json()
 
