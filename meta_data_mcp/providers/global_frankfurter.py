@@ -211,16 +211,20 @@ def _frankfurter_time_series_to_shape_payload(data: dict) -> dict:
         if not isinstance(per_currency, dict):
             continue
         for currency, value in per_currency.items():
-            if not isinstance(value, (int, float)):
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
                 continue
             points.append({"date": date, "value": value, "series": currency})
-    return {
+    payload = {
         "points": points,
         "axes": {
             "x": "Date",
             "y": f"Rate (per 1 {base})" if base else "Rate",
         },
     }
+    for key in ("amount", "base", "start_date", "end_date"):
+        if key in data:
+            payload[key] = data[key]
+    return payload
 
 
 async def handle_frankfurter_time_series(

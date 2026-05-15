@@ -162,6 +162,10 @@ def test_adapter_flattens_rates_into_points_per_currency():
     }
     payload = _frankfurter_time_series_to_shape_payload(raw)
     assert payload["axes"] == {"x": "Date", "y": "Rate (per 1 USD)"}
+    assert payload["amount"] == 1.0
+    assert payload["base"] == "USD"
+    assert payload["start_date"] == "2024-01-01"
+    assert payload["end_date"] == "2024-01-03"
     # 2 dates × 2 currencies → 4 points, dates sorted ascending.
     assert len(payload["points"]) == 4
     assert payload["points"][0] == {
@@ -185,7 +189,10 @@ def test_adapter_falls_back_to_generic_y_label_when_base_missing():
 
 
 def test_adapter_skips_non_numeric_values_defensively():
-    raw = {"base": "USD", "rates": {"2024-01-02": {"EUR": "bad", "GBP": 0.78}}}
+    raw = {
+        "base": "USD",
+        "rates": {"2024-01-02": {"EUR": "bad", "GBP": 0.78, "CHF": True}},
+    }
     payload = _frankfurter_time_series_to_shape_payload(raw)
     assert len(payload["points"]) == 1
     assert payload["points"][0]["series"] == "GBP"
@@ -216,6 +223,8 @@ async def test_frankfurter_time_series_returns_shape_payload():
         mock_get.return_value.json.return_value = {
             "amount": 1.0,
             "base": "USD",
+            "start_date": "2024-01-01",
+            "end_date": "2024-01-03",
             "rates": {
                 "2024-01-02": {"EUR": 0.91},
                 "2024-01-03": {"EUR": 0.90},
@@ -233,3 +242,7 @@ async def test_frankfurter_time_series_returns_shape_payload():
             {"date": "2024-01-02", "value": 0.91, "series": "EUR"},
             {"date": "2024-01-03", "value": 0.90, "series": "EUR"},
         ]
+        assert body["amount"] == 1.0
+        assert body["base"] == "USD"
+        assert body["start_date"] == "2024-01-01"
+        assert body["end_date"] == "2024-01-03"
