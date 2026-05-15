@@ -187,10 +187,19 @@ if [ -z "$SOURCE_DIR" ]; then
 else
   [ -d "$SOURCE_DIR" ] || die "--source dir does not exist: $SOURCE_DIR"
   log "==> [3/6] using source checkout at $SOURCE_DIR (no PyPI install)"
+  # The service user needs read+write on the source dir (uv builds .venv
+  # there). Only chown when the checkout is not already owned by the
+  # service user, and route it through `run` so it is logged and respects
+  # --dry-run.
+  SOURCE_DIR_OWNER="$(stat -c '%U:%G' "$SOURCE_DIR")"
+  REQUIRED_SOURCE_DIR_OWNER="$SERVICE_USER:$SERVICE_USER"
+  if [ "$SOURCE_DIR_OWNER" != "$REQUIRED_SOURCE_DIR_OWNER" ]; then
+    log "    source checkout owned by $SOURCE_DIR_OWNER; updating recursively to $REQUIRED_SOURCE_DIR_OWNER"
+    run chown -R "$REQUIRED_SOURCE_DIR_OWNER" "$SOURCE_DIR"
+  else
+    log "    source checkout already owned by $REQUIRED_SOURCE_DIR_OWNER; skipping chown"
+  fi
   if [ "$DRY_RUN" -eq 0 ]; then
-    # The service user needs read+write on the source dir (uv builds .venv
-    # there). chown if it isn't already owned; harmless when it already is.
-    chown -R "$SERVICE_USER:$SERVICE_USER" "$SOURCE_DIR"
     log "    pre-building venv (uv sync --frozen --no-dev) as $SERVICE_USER"
     sudo -u "$SERVICE_USER" bash -lc "cd '$SOURCE_DIR' && uv sync --frozen --no-dev" >/dev/null
   fi
