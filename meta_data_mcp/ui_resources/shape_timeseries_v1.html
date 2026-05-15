@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>timeseries · ui://meta-data-mcp/shape/timeseries/v1</title>
+<!--
+  meta-data-mcp v2.0 — shape primitive: timeseries (v1)
+
+  Payload contract (posted in by the MCP host, or set on window.__app_data__,
+  or passed via ?data=<base64-encoded-JSON>):
+
+    {
+      "points":      [{"date": "ISO-8601 or YYYY-MM-DD", "value": <number>,
+                       "series": "<optional series name>"}, ...],
+      "axes":        {"x": "<x label>", "y": "<y label>"},
+      "annotations": [{"date": "...", "label": "...", "value": <optional>}, ...]
+    }
+
+  External dependency (Phase 4 adopters: configure tool _meta.ui.csp):
+    https://cdn.plot.ly/plotly-3.0.0.min.js
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: #1a1a1a;
+    --muted: #6a6a6a;
+    --panel-bg: #f6f7f9;
+    --panel-border: #e2e4e8;
+    --accent: #3b6ef0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg: #e8e8e8;
+      --muted: #a0a0a0;
+      --panel-bg: #1e1f23;
+      --panel-border: #2e2f34;
+      --accent: #6c92f5;
+    }
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    color: var(--fg);
+    background: transparent;
+  }
+  body {
+    padding: 12px;
+    box-sizing: border-box;
+  }
+  #profile {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  #profile .stat {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  #profile .label {
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  #profile .value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #chart {
+    width: 100%;
+    min-height: 360px;
+  }
+  #status {
+    color: var(--muted);
+    font-size: 12px;
+    padding: 6px 0;
+  }
+  #status.error {
+    color: #b3261e;
+  }
+</style>
+</head>
+<body>
+  <div id="profile" aria-label="Series profile"></div>
+  <div id="chart" role="img" aria-label="Time-series chart"></div>
+  <div id="status">Waiting for data...</div>
+
+  <!-- Plotly is loaded from a CDN. Phase 4 provider adopters must include
+       this origin in their tool's _meta.ui.csp so the iframe sandbox allows
+       the script: https://cdn.plot.ly -->
+  <script src="https://cdn.plot.ly/plotly-3.0.0.min.js" crossorigin="anonymous"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    var ROOT_CHART = "chart";
+    var ROOT_PROFILE = "profile";
+    var ROOT_STATUS = "status";
+
+    // ---------------------------------------------------------------
+    // Data ingress. Priority (highest first):
+    //   1. window.message events of shape {type: "tool_result", payload}
+    //      (best-guess from the MCP Apps spec — the host pushes the tool's
+    //      result into the iframe via postMessage).
+    //   2. ?data=<base64-encoded-JSON> URL parameter (dev/debug).
+    //   3. window.__app_data__ global (set before script load for local
+    //      file:// previews).
+    // ---------------------------------------------------------------
+
+    function readFromUrlParam() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var raw = params.get("data");
+        if (!raw) return null;
+        // URLSearchParams decodes '+' to ' ' (form-encoding semantics),
+        // which corrupts standard base64. Normalize spaces back to '+'
+        // and accept url-safe base64 variants ('-' / '_') too.
+        var s = raw.replace(/ /g, "+").replace(/-/g, "+").replace(/_/g, "/");
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join("=");
+        // atob returns a binary string; round through bytes +
+        // TextDecoder so non-ASCII payloads (emoji, non-Latin text)
+        // survive. The legacy decodeURIComponent(escape(...)) is
+        // deprecated and breaks on arbitrary UTF-8.
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder("utf-8").decode(bytes));
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function readFromGlobal() {
+      try {
+        return window.__app_data__ || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function attachPostMessageListener() {
+      window.addEventListener("message", function (event) {
+        // Only accept payloads from the embedding host (parent window).
+        // Other frames that can reach this iframe MUST NOT be able to
+        // trigger re-renders or feed arbitrary data.
+        if (event.source !== window.parent) return;
+        var data = event.data;
+        if (!data || typeof data !== "object") return;
+        // Best-guess envelope from the MCP Apps spec. If hosts settle on a
+        // different shape, extend this branch — keep the others working.
+        if (data.type === "tool_result" && data.payload) {
+          render(data.payload);
+        } else if (data.points || data.axes) {
+          // Hosts that push the raw payload without an envelope.
+          render(data);
+        }
+      });
+    }
+
+    // ---------------------------------------------------------------
+    // Profile statistics. Simple, defensive, no external deps.
+    // ---------------------------------------------------------------
+
+    function toTimestamp(d) {
+      var t = Date.parse(d);
+      return isNaN(t) ? null : t;
+    }
+
+    function computeStats(points) {
+      var values = [];
+      var stamps = [];
+      for (var i = 0; i < points.length; i++) {
+        var p = points[i];
+        if (p && typeof p.value === "number" && isFinite(p.value)) {
+          values.push(p.value);
+          var t = toTimestamp(p.date);
+          if (t !== null) stamps.push(t);
+        }
+      }
+      if (values.length === 0) {
+        return {
+          count: 0, min: null, max: null, mean: null, stddev: null, gaps: 0,
+        };
+      }
+      var min = values[0], max = values[0], sum = 0;
+      for (var j = 0; j < values.length; j++) {
+        if (values[j] < min) min = values[j];
+        if (values[j] > max) max = values[j];
+        sum += values[j];
+      }
+      var mean = sum / values.length;
+      var sqsum = 0;
+      for (var k = 0; k < values.length; k++) {
+        var dv = values[k] - mean;
+        sqsum += dv * dv;
+      }
+      var stddev = values.length > 1 ? Math.sqrt(sqsum / (values.length - 1)) : 0;
+
+      // Gap count: count consecutive date deltas that exceed 2 * median delta.
+      // Simple heuristic; "miss a month" intuition without forcing a calendar.
+      stamps.sort(function (a, b) { return a - b; });
+      var gaps = 0;
+      if (stamps.length > 2) {
+        var deltas = [];
+        for (var m = 1; m < stamps.length; m++) {
+          deltas.push(stamps[m] - stamps[m - 1]);
+        }
+        var sorted = deltas.slice().sort(function (a, b) { return a - b; });
+        var mid = Math.floor(sorted.length / 2);
+        var median = sorted.length % 2 === 0
+          ? (sorted[mid - 1] + sorted[mid]) / 2
+          : sorted[mid];
+        for (var n = 0; n < deltas.length; n++) {
+          if (deltas[n] > median * 2) gaps++;
+        }
+      }
+      return {
+        count: values.length,
+        min: min,
+        max: max,
+        mean: mean,
+        stddev: stddev,
+        gaps: gaps,
+      };
+    }
+
+    function fmt(n) {
+      if (n === null || n === undefined) return "—";
+      if (!isFinite(n)) return String(n);
+      var abs = Math.abs(n);
+      if (abs !== 0 && (abs < 1e-3 || abs >= 1e6)) {
+        return n.toExponential(3);
+      }
+      var s = n.toPrecision(4);
+      // Strip trailing zeros from the fractional part (but not on scientific
+      // form, which goes through toExponential above).
+      if (s.indexOf(".") !== -1 && s.indexOf("e") === -1) {
+        s = s.replace(/0+$/, "").replace(/\.$/, "");
+      }
+      return s;
+    }
+
+    function renderProfile(stats) {
+      // Build the profile panel with safe DOM methods only — every label
+      // and value is set via textContent, never assigned through innerHTML.
+      // Static container content (the labels) is also a textContent assign.
+      var rows = [
+        ["points",  stats.count],
+        ["min",     fmt(stats.min)],
+        ["max",     fmt(stats.max)],
+        ["mean",    fmt(stats.mean)],
+        ["stddev",  fmt(stats.stddev)],
+        ["gaps",    stats.gaps],
+      ];
+      var container = document.getElementById(ROOT_PROFILE);
+      // Wipe with replaceChildren — no innerHTML, no string parsing.
+      container.replaceChildren();
+      for (var i = 0; i < rows.length; i++) {
+        var stat = document.createElement("div");
+        stat.className = "stat";
+        var label = document.createElement("span");
+        label.className = "label";
+        label.textContent = String(rows[i][0]);
+        var value = document.createElement("span");
+        value.className = "value";
+        value.textContent = String(rows[i][1]);
+        stat.appendChild(label);
+        stat.appendChild(value);
+        container.appendChild(stat);
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Chart rendering.
+    // ---------------------------------------------------------------
+
+    function groupBySeries(points) {
+      var groups = Object.create(null);
+      var order = [];
+      for (var i = 0; i < points.length; i++) {
+        var p = points[i];
+        if (!p || typeof p.value !== "number" || !isFinite(p.value)) continue;
+        var key = p.series != null && p.series !== "" ? String(p.series) : "__default__";
+        if (!groups[key]) {
+          groups[key] = { x: [], y: [] };
+          order.push(key);
+        }
+        groups[key].x.push(p.date);
+        groups[key].y.push(p.value);
+      }
+      return { groups: groups, order: order };
+    }
+
+    function buildTraces(points) {
+      var g = groupBySeries(points);
+      var traces = [];
+      for (var i = 0; i < g.order.length; i++) {
+        var key = g.order[i];
+        var bucket = g.groups[key];
+        // Plotly receives data as JSON values, not HTML. The series-name
+        // string is passed through Plotly's text-rendering path which
+        // escapes by default; we don't build markup here.
+        traces.push({
+          x: bucket.x,
+          y: bucket.y,
+          mode: "lines+markers",
+          type: "scatter",
+          name: key === "__default__" ? "value" : key,
+          line: { width: 2 },
+          marker: { size: 4 },
+          hovertemplate: "%{x}<br>%{y}<extra>%{fullData.name}</extra>",
+        });
+      }
+      return traces;
+    }
+
+    function buildAnnotations(annotations) {
+      if (!annotations || !annotations.length) {
+        return { shapes: [], annotations: [] };
+      }
+      var shapes = [];
+      var notes = [];
+      for (var i = 0; i < annotations.length; i++) {
+        var a = annotations[i];
+        if (!a || !a.date) continue;
+        shapes.push({
+          type: "line",
+          xref: "x",
+          yref: "paper",
+          x0: a.date,
+          x1: a.date,
+          y0: 0,
+          y1: 1,
+          line: { color: "rgba(120,120,120,0.55)", width: 1, dash: "dot" },
+        });
+        notes.push({
+          x: a.date,
+          y: 1,
+          xref: "x",
+          yref: "paper",
+          text: a.label || "",
+          showarrow: false,
+          yanchor: "bottom",
+          font: { size: 11 },
+        });
+      }
+      return { shapes: shapes, annotations: notes };
+    }
+
+    function setStatus(message, isError) {
+      var el = document.getElementById(ROOT_STATUS);
+      if (!el) return;
+      el.textContent = message || "";
+      el.className = isError ? "error" : "";
+      el.style.display = message ? "" : "none";
+    }
+
+    function render(payload) {
+      if (!payload || typeof payload !== "object") {
+        setStatus("No payload received.", true);
+        return;
+      }
+      var points = Array.isArray(payload.points) ? payload.points : [];
+      var axes = payload.axes || {};
+      var annotations = Array.isArray(payload.annotations) ? payload.annotations : [];
+
+      if (points.length === 0) {
+        renderProfile(computeStats([]));
+        setStatus("Payload contains no points.", false);
+        return;
+      }
+
+      renderProfile(computeStats(points));
+
+      if (typeof Plotly === "undefined") {
+        setStatus(
+          "Plotly failed to load. Check the iframe CSP allows cdn.plot.ly.",
+          true,
+        );
+        return;
+      }
+
+      var traces = buildTraces(points);
+      var ann = buildAnnotations(annotations);
+      var layout = {
+        margin: { l: 50, r: 20, t: 30, b: 40 },
+        xaxis: { title: { text: axes.x || "" }, automargin: true },
+        yaxis: { title: { text: axes.y || "" }, automargin: true },
+        showlegend: traces.length > 1,
+        legend: { orientation: "h", y: -0.2 },
+        shapes: ann.shapes,
+        annotations: ann.annotations,
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(0,0,0,0)",
+      };
+      var config = {
+        displaylogo: false,
+        responsive: true,
+        modeBarButtonsToRemove: ["lasso2d", "select2d"],
+      };
+      try {
+        Plotly.newPlot(ROOT_CHART, traces, layout, config);
+        setStatus("", false);
+      } catch (e) {
+        setStatus("Chart render failed: " + (e && e.message ? e.message : e), true);
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Boot. Attach the postMessage listener first so we don't miss an
+    // early host push, then fall back to URL param / global for dev mode.
+    // ---------------------------------------------------------------
+
+    attachPostMessageListener();
+
+    var initial = readFromUrlParam();
+    if (initial == null) initial = readFromGlobal();
+    if (initial != null) {
+      render(initial);
+    }
+  })();
+  </script>
+</body>
+</html>

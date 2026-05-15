@@ -39,6 +39,7 @@ def register_shapes(
     ignored.
     """
     return {
+        "timeseries/v1": _register_timeseries(resources, resources_handlers),
         "geofeatures/v1": _register_geofeatures(resources, resources_handlers),
         "records/v1": _register_records(resources, resources_handlers),
     }
