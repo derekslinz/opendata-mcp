@@ -176,6 +176,20 @@ class SimpleSemanticScorer(Scorer):
         return intersection / union if union > 0 else 0.0
 
 
+class HealthScorer(Scorer):
+    """Score provider by recent reliability, from meta_data_mcp.health.
+
+    Returns 1.0 for providers with no recorded failures, scaling down toward
+    0.0 as recent failures accumulate. Decays back to 1.0 over time.
+    """
+
+    async def score(self, query: str | None, provider: ProviderEntry) -> float:
+        # Local import to avoid an import cycle at module load time.
+        from meta_data_mcp import health
+
+        return health.health_score(provider.id)
+
+
 class RoutingEngine:
     """Multi-criteria provider router with caching and explainability.
 
@@ -203,6 +217,10 @@ class RoutingEngine:
             "fuzzy": FuzzyScorer(),
             "metadata": MetadataScorer(),
             "semantic": SimpleSemanticScorer(),
+            # Health is wired in but defaults to weight 0.0, so existing
+            # behavior is unchanged. Callers can opt in by passing custom
+            # weights once translate_http_error feeds the registry.
+            "health": HealthScorer(),
         }
 
         self.weights = weights or {
@@ -210,6 +228,7 @@ class RoutingEngine:
             "fuzzy": 0.2,
             "metadata": 0.25,
             "semantic": 0.25,
+            "health": 0.0,
         }
 
         # Normalize weights
@@ -338,10 +357,13 @@ class RoutingEngine:
         combined = 0.0
 
         for strategy_name, scorer in self.scorers.items():
-            strategy_score = await scorer.score(query, provider)
             weight = self.weights.get(strategy_name, 0.0)
-            weighted = strategy_score * weight
-            combined += weighted
+            # Skip zero-weight scorers entirely: they don't affect the combined
+            # score and would add noise to the explain breakdown.
+            if weight == 0.0:
+                continue
+            strategy_score = await scorer.score(query, provider)
+            combined += strategy_score * weight
 
             if explain:
                 breakdown[strategy_name] = strategy_score
