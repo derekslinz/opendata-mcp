@@ -1,0 +1,31 @@
+id: global_opensanctions
+server_name: global-opensanctions
+title: OpenSanctions
+base_url: https://api.opensanctions.org
+description: "Database of persons and companies of political, criminal, or economic interest. Compiled from 200+ official sources: OFAC SDN, UN consolidated sanctions, EU consolidated list, UK HMT, national PEP lists, debarment registers, ICIJ disclosures."
+homepage: https://www.opensanctions.org
+domains:
+- security
+- government
+regions:
+- global
+keywords:
+- sanctions
+- pep
+- ofac
+- watchlist
+- compliance
+- kyc
+- aml
+- screening
+- opensanctions
+license_note: "Most data is CC-BY 4.0; cite 'OpenSanctions'. Commercial use requires a license."
+notes: |
+  Anonymous public-API tier works for low-volume research use. Set
+  OPENSANCTIONS_API_KEY env var for higher rate limits and the commercial
+  datasets — sent as Authorization: ApiKey <key>.
+tools:
+- name: opensanctions-search
+  description: Search persons, companies, vessels, or other entities with fuzzy / transliterated name matching.
+- name: opensanctions-get-entity
+  description: Fetch the full structured profile for a single OpenSanctions entity by id.

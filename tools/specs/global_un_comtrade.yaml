@@ -1,0 +1,30 @@
+id: global_un_comtrade
+server_name: global-un-comtrade
+title: UN Comtrade
+base_url: https://comtradeapi.un.org/data/v1
+description: "UN Comtrade — world's largest international trade statistics repository. Annual and monthly bilateral merchandise (HS/SITC/BEC) and services (EBOPS) trade reported by 200+ statistical authorities since 1962."
+homepage: https://comtradeplus.un.org/
+domains:
+- trade
+- economics
+- statistics
+regions:
+- global
+keywords:
+- comtrade
+- trade
+- imports
+- exports
+- hs
+- sitc
+- tariff
+- bilateral
+- un
+license_note: "UN Comtrade data is free for non-commercial use; cite 'UN Comtrade'."
+notes: |
+  Free anonymous tier (500 records/call, 100 calls/hour). Set
+  UN_COMTRADE_API_KEY env var for higher tiers — it is sent as the
+  Ocp-Apim-Subscription-Key header.
+tools:
+- name: comtrade-trade-data
+  description: "Query bilateral merchandise or services trade. Required: period, reporter_code (M49). Optional: partner_code, cmd_code, flow_code, type_code, freq_code, cl_code."

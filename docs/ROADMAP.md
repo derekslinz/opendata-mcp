@@ -58,6 +58,13 @@ They are dependencies for v1.3's reliability story and are partially active toda
   - `us_cisa_kev` — CISA Known Exploited Vulnerabilities catalog; authoritative US-CISA list of actively-exploited vulns under BOD 22-01. No auth.
   - `global_osv_dev` — Google's Open Source Vulnerabilities database; aggregated advisories across GHSA, PYSEC, RustSec, Go, npm, Maven, etc. No auth. First provider to use the new `http_post` helper.
   - All three pass `provider=` to `http_get` / `http_post`, so they feed the health registry and receive translated `ProviderError` exceptions out of the box.
+- ✅ **Coverage gap closure: 5 new providers across 5 verticals** (registry +5 → 74 total; DOMAINS +3 → 30)
+  - `global_openaq` — open global air-quality data (PM2.5, PM10, NO2, O3, etc.) from government monitors and low-cost sensors. Closes the *air-quality* vertical (no auth; optional `OPENAQ_API_KEY`).
+  - `global_gdelt` — GDELT 2.0 news/events monitoring; article search and tone/volume time-series across 100+ languages. Closes the *news* vertical (no auth; new `news` domain).
+  - `global_faostat` — UN FAO statistics: crop/livestock production, trade, food balances, prices, land use, fisheries, forestry, emissions since 1961. Closes the *agriculture* vertical (no auth; new `agriculture` domain).
+  - `global_un_comtrade` — UN Comtrade bilateral merchandise/services trade (HS/SITC/BEC/EBOPS) since 1962. Closes the *trade* vertical (free anonymous tier; optional `UN_COMTRADE_API_KEY`; new `trade` domain).
+  - `global_opensanctions` — sanctions/PEP/watchlist screening from 200+ official sources (OFAC SDN, UN, EU, UK HMT, national PEPs, ICIJ). Deepens the *security* vertical (no auth for low-volume; optional `OPENSANCTIONS_API_KEY`).
+  - All five pass `provider=` to `http_get`, raising kernel-feedback adoption to **9 / 74 providers**.
 
 ## v1.2: Hierarchical Discovery + Health Activation (Planned, in design)
 
@@ -358,11 +365,11 @@ async def handle_generate_provider(arguments) -> ProviderGenerationResult:
 |--------|------|------|------|
 | Query latency (p99) | <100ms | <150ms | <500ms |
 | Cache hit rate | >90% | >85% | >80% |
-| Provider coverage | 69 | 69+ | Dynamic |
-| `ProviderConfig` adoption | 1 / 69 | 69 / 69 | 69 / 69 |
-| `errors.py` adoption | 1 / 69 | 69 / 69 | 69 / 69 |
-| `fields.py` adoption | 4 / 69 | 69 / 69 | 69 / 69 |
-| `http_get(provider=)` adoption | 4 / 69 | 69 / 69 | 69 / 69 |
+| Provider coverage | 74 | 74+ | Dynamic |
+| `ProviderConfig` adoption | 1 / 74 | 74 / 74 | 74 / 74 |
+| `errors.py` adoption | 1 / 74 | 74 / 74 | 74 / 74 |
+| `fields.py` adoption | 4 / 74 | 74 / 74 | 74 / 74 |
+| `http_get(provider=)` adoption | 9 / 74 | 74 / 74 | 74 / 74 |
 | `HealthScorer` weight | 0.0 (feed live, weight gated) | >0 | >0 |
 | User satisfaction | TBD | >4/5 | >4.5/5 |
 

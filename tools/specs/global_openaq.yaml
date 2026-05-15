@@ -1,0 +1,34 @@
+id: global_openaq
+server_name: global-openaq
+title: OpenAQ
+base_url: https://api.openaq.org/v3
+description: "Open global air-quality data aggregated from government reference monitors and low-cost sensors. PM2.5, PM10, NO2, SO2, CO, O3, BC, plus relative humidity and temperature at thousands of stations worldwide."
+homepage: https://openaq.org
+domains:
+- environment
+- earth-science
+regions:
+- global
+keywords:
+- openaq
+- air-quality
+- pollution
+- pm25
+- pm10
+- no2
+- ozone
+- sensors
+- monitoring
+license_note: "Most OpenAQ sources are CC BY 4.0; per-location attribution available on each entity."
+notes: |
+  Anonymous access works at modest rate limits. Set OPENAQ_API_KEY env
+  var (free signup at https://explore.openaq.org/register) for higher
+  limits. The provider is hand-written to handle the path-parameter
+  /locations/{id}/latest endpoint.
+tools:
+- name: openaq-list-locations
+  description: List monitoring locations, filtered by coordinates+radius, ISO country, or parameter id.
+- name: openaq-location-latest
+  description: Fetch the most-recent measurement values for a single location.
+- name: openaq-list-parameters
+  description: List the parameters (pollutants and met. variables) tracked, with ids and units.
