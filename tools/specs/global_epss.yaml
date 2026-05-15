@@ -1,0 +1,55 @@
+id: global_epss
+server_name: global-epss
+title: FIRST.org EPSS
+base_url: https://api.first.org/data/v1
+description: "FIRST.org Exploit Prediction Scoring System (EPSS) — daily-updated 30-day exploitation probability and percentile rank for every scored CVE. Useful for prioritizing patching beyond raw CVSS severity."
+homepage: https://www.first.org/epss/
+domains:
+- security
+regions:
+- global
+keywords:
+- epss
+- exploit
+- prediction
+- vulnerability
+- cve
+- first
+- prioritization
+license_note: "EPSS data is published under CC BY 4.0; cite FIRST.org."
+tools:
+- name: epss-scores
+  description: "Query FIRST.org EPSS scores for one or more CVEs, or filter by probability / percentile / recency. Returns the daily-updated 30-day exploitation probability and percentile rank for each CVE."
+  endpoint: /epss
+  response_format: json
+  params:
+  - name: cve
+    type: str
+    required: false
+    description: "Comma-separated CVE id list (e.g. 'CVE-2021-44228,CVE-2024-3094')."
+  - name: days
+    type: int
+    required: false
+    description: Return scores updated in the last N days (1-30).
+  - name: epss-gt
+    type: float
+    required: false
+    description: Filter to scores strictly greater than this probability (0.0-1.0).
+  - name: percentile-gt
+    type: float
+    required: false
+    description: Filter to percentile rank strictly greater than this (0-100).
+  - name: order
+    type: str
+    required: false
+    description: "Sort field — use '!epss' for descending EPSS, '!percentile' for top percentile."
+  - name: limit
+    type: int
+    required: false
+    description: Maximum results to return (default 100, max 2000).
+    default: 100
+  - name: offset
+    type: int
+    required: false
+    description: Pagination offset (0-indexed).
+    default: 0
