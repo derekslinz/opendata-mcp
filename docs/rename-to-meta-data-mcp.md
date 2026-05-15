@@ -31,14 +31,12 @@ tests/providers/test_opendata_mcp_meta.py    →  test_meta_data_mcp.py
 
 ### CLI Integration
 ```bash
-# Old
+# Old (multi-server model, separate per-provider CLI)
 uv run opendata-mcp setup opendata_mcp_meta
 
-# New
-uv run opendata-mcp setup meta_data_mcp
-
-# Server key conversion (automatic)
-meta_data_mcp  →  opendata-mcp-meta-data-mcp  (in Claude Desktop config)
+# New (single unified server)
+uv run meta-data-mcp setup
+uv run meta-data-mcp run --transport stdio
 ```
 
 ### Python Imports
@@ -47,7 +45,7 @@ meta_data_mcp  →  opendata-mcp-meta-data-mcp  (in Claude Desktop config)
 from opendata_mcp.providers.opendata_mcp_meta import TOOLS
 
 # New
-from opendata_mcp.providers.meta_data_mcp import TOOLS
+from meta_data_mcp.providers.meta_data_mcp import TOOLS
 ```
 
 ### Documentation Updates
@@ -56,54 +54,10 @@ from opendata_mcp.providers.meta_data_mcp import TOOLS
 - Docstrings and comments
 - CLI help text
 
-## Backward Compatibility
-
-✅ **No breaking changes**
-- All existing APIs unchanged
-- Existing configurations can be migrated with `opendata-mcp cleanup`
-- CLI auto-migration support for legacy double-prefixed keys
-
-## Migration Path for Users
-
-### For Claude Desktop Users
-
-**Automatic via CLI:**
-```bash
-uv run opendata-mcp setup-all       # Installs meta-data-mcp + companion
-```
-
-**Manual Update:**
-1. Open `~/Library/Application\ Support/Claude/claude_desktop_config.json`
-2. Rename the server key:
-   ```json
-   {
-     "mcpServers": {
-       "opendata-mcp-meta-data-mcp": {
-         "command": "uv",
-         "args": ["run", "opendata-mcp", "run", "meta_data_mcp"]
-       }
-     }
-   }
-   ```
-3. Restart Claude Desktop
-
-### For Developers
-
-**If you import the provider directly:**
-```python
-# Update imports
-from opendata_mcp.providers.meta_data_mcp import TOOLS, TOOLS_HANDLERS
-```
-
-**If you use registry.find_providers():**
-- No change needed (registry is unaffected)
-- But consider using the new RoutingEngine for better results
-
 ## Version Numbering
 
 - **Current**: v1.1 (rename + routing engine)
 - **Previous**: v1.0 (original opendata_mcp_meta)
-- **Upgrade path**: v1.0 → v1.1 is seamless (auto-migration)
 
 ## Testing & Verification
 
@@ -132,18 +86,6 @@ All existing tests pass with the new name:
 
 ## FAQs
 
-**Q: Will my existing setup break?**  
-A: No. The CLI handles migration automatically. Your config will continue working.
-
-**Q: Do I need to manually update anything?**  
-A: For most users, no. Run `uv run opendata-mcp setup-all` to refresh. Manual update of config file is optional.
-
-**Q: What about the PyPI package?**  
-A: Still `opendata-mcp`. Only the internal provider module name changed.
-
-**Q: Can I use both the old and new names?**  
-A: The old name is no longer recognized. Use `meta_data_mcp` everywhere.
-
 **Q: How does this affect provider generation?**  
 A: Provider generation tools should reference `meta_data_mcp` as the meta provider going forward.
 
@@ -151,5 +93,4 @@ A: Provider generation tools should reference `meta_data_mcp` as the meta provid
 
 **Status**: Merged to main via PR #19  
 **Effective Date**: 2026-05-13  
-**Previous Name**: opendata_mcp_meta  
-**Migration Tool**: `uv run opendata-mcp cleanup`
+**Previous Name**: opendata_mcp_meta
