@@ -33,6 +33,9 @@ async def test_au_datagov_search_datasets_success():
 
         result = await handle_au_datagov_search_datasets({"q": "population"})
         assert "ABS Population Estimates" in result[0].text
+        mock_get.assert_called_once()
+        call_url = mock_get.call_args[0][0]
+        assert call_url == "https://data.gov.au/data/api/3/action/package_search"
 
 
 @pytest.mark.anyio

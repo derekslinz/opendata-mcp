@@ -35,6 +35,10 @@ class ProviderConfig:
     default_accept: str = "application/json"
     rate_limit_per_minute: int | None = None
 
+    def __post_init__(self) -> None:
+        """Normalize ``base_url`` by stripping any trailing slash."""
+        object.__setattr__(self, "base_url", self.base_url.rstrip("/"))
+
     def auth_headers(self) -> dict[str, str]:
         """Return an Authorization header dict if a token is available.
 
