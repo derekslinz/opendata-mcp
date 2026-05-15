@@ -1,7 +1,7 @@
 import httpx
 import pytest
 from pydantic import ValidationError
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from meta_data_mcp.providers.nl_rechtspraak import (
     RechtspraakContentParams,
@@ -78,7 +78,9 @@ async def test_handle_rechtspraak_search_returns_serialized_results():
     with patch("meta_data_mcp.providers.nl_rechtspraak.http_get") as mock_get:
         mock_get.return_value.content = ATOM_XML.encode("utf-8")
 
-        result = await handle_rechtspraak_search({"query": "arbeidsrecht", "max_results": 2})
+        result = await handle_rechtspraak_search(
+            {"query": "arbeidsrecht", "max_results": 2}
+        )
 
         assert len(result) == 1
         assert result[0].type == "text"
@@ -103,7 +105,9 @@ async def test_handle_rechtspraak_search_requires_query_argument():
 
 def test_fetch_rechtspraak_content_returns_raw_xml_text():
     with patch("meta_data_mcp.providers.nl_rechtspraak.http_get") as mock_get:
-        mock_get.return_value.text = "<uitspraak><inhoud>Volledige tekst</inhoud></uitspraak>"
+        mock_get.return_value.text = (
+            "<uitspraak><inhoud>Volledige tekst</inhoud></uitspraak>"
+        )
 
         xml = fetch_rechtspraak_content(
             RechtspraakContentParams(ecli="ECLI:NL:HR:2020:1234")
@@ -117,7 +121,9 @@ def test_fetch_rechtspraak_content_returns_raw_xml_text():
 @pytest.mark.anyio
 async def test_handle_rechtspraak_content_returns_text_payload():
     with patch("meta_data_mcp.providers.nl_rechtspraak.http_get") as mock_get:
-        mock_get.return_value.text = "<uitspraak><id>ECLI:NL:HR:2020:1234</id></uitspraak>"
+        mock_get.return_value.text = (
+            "<uitspraak><id>ECLI:NL:HR:2020:1234</id></uitspraak>"
+        )
 
         result = await handle_rechtspraak_content({"ecli": "ECLI:NL:HR:2020:1234"})
 
