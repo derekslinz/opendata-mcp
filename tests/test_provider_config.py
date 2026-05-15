@@ -54,7 +54,7 @@ def test_auth_headers_empty_when_env_var_set_to_empty_string(monkeypatch):
 
 
 def test_base_url_trailing_slash_is_stripped():
-    """A ``base_url`` supplied with a trailing slash must be normalised."""
+    """A ``base_url`` supplied with a trailing slash must be normalized."""
     cfg = ProviderConfig(base_url="https://example.test/api/")
     assert cfg.base_url == "https://example.test/api"
 
