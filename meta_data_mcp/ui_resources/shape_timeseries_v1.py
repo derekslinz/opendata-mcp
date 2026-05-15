@@ -18,7 +18,7 @@ See ``Plans/linear-swimming-pond.md`` §2a for the coverage matrix.
 from __future__ import annotations
 
 from importlib.resources import files
-from typing import Any, Callable
+from typing import Callable
 
 from mcp import types
 from pydantic import AnyUrl
@@ -44,7 +44,7 @@ _HTML: str = (
 
 def register(
     resources: list[types.Resource],
-    resources_handlers: dict[str, Callable[[AnyUrl], Any]],
+    resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]],
 ) -> str:
     """Append the timeseries shape resource to the server's catalog.
 

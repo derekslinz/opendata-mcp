@@ -15,7 +15,7 @@ own ``_register_<shape>`` call here.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 from mcp import types
 from pydantic import AnyUrl
@@ -27,7 +27,7 @@ __all__ = ["register_shapes"]
 
 def register_shapes(
     resources: list[types.Resource],
-    resources_handlers: dict[str, Callable[[AnyUrl], Any]],
+    resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]],
 ) -> None:
     """Register all v2 shape primitives on the given resource catalog.
 

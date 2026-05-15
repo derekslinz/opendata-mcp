@@ -19,7 +19,6 @@ These tests cover the kernel-side contract:
 from __future__ import annotations
 
 from importlib.resources import files
-from pathlib import Path
 
 import pytest
 from pydantic import AnyUrl
@@ -51,10 +50,11 @@ def test_register_shapes_registers_timeseries_at_expected_uri():
     assert TIMESERIES_URI in handlers
 
 
-def test_register_shapes_is_idempotent_per_state():
-    """Calling ``register_shapes`` twice on the same state would collide;
-    document that boot-time registration is once-per-process by checking
-    the underlying collision detection still fires."""
+def test_register_shapes_is_not_idempotent_collisions_raise():
+    """Boot-time registration is once-per-process — calling
+    ``register_shapes`` twice on the same state MUST raise instead of
+    silently dedup'ing. Silent dedup would mask real bugs (e.g. two
+    discovery providers booting against shared globals)."""
     resources, handlers = _fresh_state()
     register_shapes(resources, handlers)
     with pytest.raises(ValueError, match="already registered"):
@@ -112,8 +112,12 @@ def test_handler_returns_bytes_identical_to_file_on_disk():
     register_shapes(resources, handlers)
     served = handlers[TIMESERIES_URI](AnyUrl(TIMESERIES_URI))
 
-    file_path = files("meta_data_mcp.ui_resources") / "shape_timeseries_v1.html"
-    on_disk = Path(str(file_path)).read_text(encoding="utf-8")
+    # Use Traversable's read_text directly, not Path(str(...)), so the
+    # test exercises packaging/install scenarios (zipimport / wheels)
+    # not just filesystem-resident source checkouts.
+    on_disk = (
+        files("meta_data_mcp.ui_resources") / "shape_timeseries_v1.html"
+    ).read_text(encoding="utf-8")
     assert served == on_disk
 
 
@@ -121,8 +125,14 @@ def test_bundle_size_under_warn_threshold():
     """Plan gotcha G3: keep bundles small so they fit in a single MCP
     transport payload with room for the data. Plotly itself is CDN-loaded
     and doesn't count against this."""
-    file_path = files("meta_data_mcp.ui_resources") / "shape_timeseries_v1.html"
-    size_bytes = Path(str(file_path)).stat().st_size
+    # Read via the Traversable API instead of coercing to a filesystem
+    # Path (which would fail under zipimport). len(.encode("utf-8")) is
+    # the same as stat().st_size for text resources written without BOM.
+    size_bytes = len(
+        (files("meta_data_mcp.ui_resources") / "shape_timeseries_v1.html")
+        .read_text(encoding="utf-8")
+        .encode("utf-8")
+    )
     assert size_bytes < BUNDLE_SIZE_WARN_BYTES, (
         f"timeseries bundle is {size_bytes} bytes "
         f"(threshold {BUNDLE_SIZE_WARN_BYTES}). "

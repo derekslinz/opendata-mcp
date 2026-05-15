@@ -125,8 +125,20 @@
         var params = new URLSearchParams(window.location.search);
         var raw = params.get("data");
         if (!raw) return null;
-        var json = atob(raw);
-        return JSON.parse(json);
+        // URLSearchParams decodes '+' to ' ' (form-encoding semantics),
+        // which corrupts standard base64. Normalize spaces back to '+'
+        // and accept url-safe base64 variants ('-' / '_') too.
+        var s = raw.replace(/ /g, "+").replace(/-/g, "+").replace(/_/g, "/");
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join("=");
+        // atob returns a binary string; round through bytes +
+        // TextDecoder so non-ASCII payloads (emoji, non-Latin text)
+        // survive. The legacy decodeURIComponent(escape(...)) is
+        // deprecated and breaks on arbitrary UTF-8.
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder("utf-8").decode(bytes));
       } catch (e) {
         return null;
       }
@@ -142,7 +154,11 @@
 
     function attachPostMessageListener() {
       window.addEventListener("message", function (event) {
-        var data = event && event.data;
+        // Only accept payloads from the embedding host (parent window).
+        // Other frames that can reach this iframe MUST NOT be able to
+        // trigger re-renders or feed arbitrary data.
+        if (event.source !== window.parent) return;
+        var data = event.data;
         if (!data || typeof data !== "object") return;
         // Best-guess envelope from the MCP Apps spec. If hosts settle on a
         // different shape, extend this branch — keep the others working.
