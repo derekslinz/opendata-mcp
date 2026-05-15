@@ -24,8 +24,8 @@ postMessage):
 
 ``schema`` and ``default_facets`` are optional. When schema is absent,
 the bundle infers per-column types (date → number → boolean → string).
-When ``default_facets`` is absent, every string column with cardinality
-≤ 50 surfaces as a facet automatically.
+When ``default_facets`` is absent, every string or boolean column with
+cardinality ≤ 50 surfaces as a facet automatically.
 
 The bundle is contrasted with timeseries (Plotly via CDN) and geofeatures
 (Leaflet via CDN) on its zero-dependency stance — see

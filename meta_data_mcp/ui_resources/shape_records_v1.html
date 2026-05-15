@@ -117,7 +117,7 @@
     </aside>
     <main id="main">
       <div id="toolbar">
-        <input id="search" type="search" placeholder="Search all columns…" autocomplete="off">
+        <input id="search" type="search" placeholder="Search all columns…" autocomplete="off" aria-label="Search all columns">
         <span id="status"></span>
       </div>
       <div id="profile"></div>
@@ -138,6 +138,20 @@
     var PAGE_SIZE = 50;
     var FACET_AUTO_CARDINALITY_LIMIT = 50;
     var TOP_K_PROFILE = 3;
+    // Sentinel for null/undefined/missing values in filter state. We
+    // can't use '' because real empty-string row values are legitimate
+    // and must filter independently from null. The sentinel is wrapped
+    // in non-breaking spaces so it can't accidentally collide with a
+    // user-provided literal string "NULL" — NBSP-wrapped strings are
+    // vanishingly unlikely in real data payloads.
+    var NULL_SENTINEL = '  __NULL__  ';
+    var NULL_DISPLAY = '∅ null';
+    function _key(v) {
+      return v === null || v === undefined ? NULL_SENTINEL : String(v);
+    }
+    function _displayFromKey(k) {
+      return k === NULL_SENTINEL ? NULL_DISPLAY : k;
+    }
 
     var state = {
       rows: [],
@@ -309,13 +323,13 @@
     // ----- Filtering / sorting / pagination -----
 
     function passesFilters(row) {
-      // Faceted: AND across cols, OR within a col.
+      // Faceted: AND across cols, OR within a col. Use _key so null and
+      // empty-string are distinguishable (real empty strings filter
+      // independently from missing values).
       for (var col in state.filters) {
         var selected = state.filters[col];
         if (!selected || !selected.size) continue;
-        var v = row[col];
-        var s = v === null || v === undefined ? '' : String(v);
-        if (!selected.has(s)) return false;
+        if (!selected.has(_key(row[col]))) return false;
       }
       // Free-text search.
       if (state.search) {
@@ -386,17 +400,32 @@
       state.columns.forEach(function (col) {
         var ind = '';
         var cls = '';
+        var ariaSort = 'none';
         if (state.sortCol === col.name) {
           ind = state.sortDir === 1 ? '↑' : '↓';
           cls = state.sortDir === 1 ? 'sort-asc' : 'sort-desc';
+          ariaSort = state.sortDir === 1 ? 'ascending' : 'descending';
         }
+        // Make headers keyboard-operable: tabindex makes them focusable,
+        // role=button signals click-like behavior to assistive tech,
+        // aria-sort exposes the current sort state, and Enter/Space
+        // trigger the same sortBy callback as mouse click.
         var th = el('th', {
           class: cls,
+          tabindex: '0',
+          role: 'button',
+          'aria-sort': ariaSort,
           title: col.description || (col.type + ' · ' + col.name),
-          onclick: function () { sortBy(col.name); }
+          onclick: function () { sortBy(col.name); },
+          onkeydown: function (ev) {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              sortBy(col.name);
+            }
+          }
         }, [
           col.name,
-          el('span', { class: 'sort-ind', text: ind || '↕' })
+          el('span', { class: 'sort-ind', text: ind || '↕', 'aria-hidden': 'true' })
         ]);
         tr.appendChild(th);
       });
@@ -421,9 +450,8 @@
       facetCols.forEach(function (col) {
         var counts = Object.create(null);
         for (var i = 0; i < state.rows.length; i++) {
-          var v = state.rows[i][col.name];
-          var s = v === null || v === undefined ? '∅ null' : String(v);
-          counts[s] = (counts[s] || 0) + 1;
+          var k = _key(state.rows[i][col.name]);
+          counts[k] = (counts[k] || 0) + 1;
         }
         var entries = Object.keys(counts).map(function (k) { return [k, counts[k]]; });
         entries.sort(function (a, b) { return b[1] - a[1]; });
@@ -432,19 +460,23 @@
         var facet = el('div', { class: 'facet' });
         facet.appendChild(el('div', { class: 'facet-name', text: col.name }));
         entries.slice(0, 100).forEach(function (kv) {
-          var raw = kv[0] === '∅ null' ? '' : kv[0];
+          // kv[0] is the filter-state key (NULL_SENTINEL for missing
+          // values, the raw string otherwise). The checkbox's `value`
+          // attribute carries the key so the DOM and state stay in
+          // sync; the label text shows the human-friendly version.
+          var key = kv[0];
           var lbl = el('label', { class: 'facet-value' });
-          var cb = el('input', { type: 'checkbox', value: raw });
-          if (state.filters[col.name] && state.filters[col.name].has(raw)) cb.checked = true;
+          var cb = el('input', { type: 'checkbox', value: key });
+          if (state.filters[col.name] && state.filters[col.name].has(key)) cb.checked = true;
           cb.addEventListener('change', function () {
             if (!state.filters[col.name]) state.filters[col.name] = new Set();
-            if (cb.checked) state.filters[col.name].add(raw);
-            else state.filters[col.name].delete(raw);
+            if (cb.checked) state.filters[col.name].add(key);
+            else state.filters[col.name].delete(key);
             state.page = 0;
             renderTable();
           });
           lbl.appendChild(cb);
-          lbl.appendChild(document.createTextNode(kv[0]));
+          lbl.appendChild(document.createTextNode(_displayFromKey(key)));
           lbl.appendChild(el('span', { class: 'count', text: String(kv[1]) }));
           facet.appendChild(lbl);
         });
