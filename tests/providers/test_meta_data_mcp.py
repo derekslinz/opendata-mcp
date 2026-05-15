@@ -249,7 +249,7 @@ async def test_create_plugin_end_to_end(tmp_path, monkeypatch):
         TOOLS_HANDLERS as live_handlers,
     )
     from meta_data_mcp.registry import (
-        DYNAMIC_REGISTRY,
+        REGISTRY,
         get_provider,
     )
 
@@ -270,7 +270,7 @@ tools:
       - {{name: id, type: str, required: false, description: thing id}}
 """
 
-    saved_dynamic = list(DYNAMIC_REGISTRY)
+    saved_registry = REGISTRY.snapshot()
     saved_handlers = dict(live_handlers)
     saved_tools = list(srv.TOOLS)
     try:
@@ -294,7 +294,7 @@ tools:
         assert "autotest-fetch-thing" in live_handlers
     finally:
         # Tear down to keep other tests hermetic.
-        DYNAMIC_REGISTRY[:] = saved_dynamic
+        REGISTRY.restore(saved_registry)
         live_handlers.clear()
         live_handlers.update(saved_handlers)
         srv.TOOLS[:] = saved_tools
@@ -432,8 +432,10 @@ async def test_list_regions_exception_handling(caplog):
 @pytest.mark.anyio
 async def test_list_providers_exception_handling(caplog):
     """Test that exceptions in list_providers are logged and re-raised."""
+    # ``handle_list_providers`` materializes the registry with ``list(REGISTRY)``,
+    # which triggers ``__iter__``. Mock that path to fault-inject.
     with patch("meta_data_mcp.providers.meta_data_mcp.REGISTRY") as mock_registry:
-        mock_registry.__getitem__.side_effect = RuntimeError("Registry error")
+        mock_registry.__iter__.side_effect = RuntimeError("Registry error")
 
         with caplog.at_level("ERROR", logger="meta_data_mcp.providers.meta_data_mcp"):
             with pytest.raises(RuntimeError, match="Registry error"):

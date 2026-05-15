@@ -22,24 +22,14 @@ def anyio_backend():
 def _isolate_meta_state():
     """Snapshot and restore the meta server's mutable activation state.
 
-    The module-level ``_server`` reference is also snapshot/restored so that a
-    test which assigns a stub Server (to exercise the ``tools/list_changed``
-    notification path) cannot leak that stub into subsequent tests.
+    A single ``_state.snapshot()`` / ``restore()`` round-trip captures every
+    mutable field — tools, handlers, owner map, active set, and the running
+    Server reference. Adding a new field to ``ActivationState`` does not
+    require updating this fixture.
     """
-    saved_tools = list(srv.TOOLS)
-    saved_handlers = dict(srv.TOOLS_HANDLERS)
-    saved_owner = dict(srv._owner_by_tool)
-    saved_active = set(srv._active_providers)
-    saved_server = srv._server
+    snap = srv._state.snapshot()
     yield
-    srv.TOOLS[:] = saved_tools
-    srv.TOOLS_HANDLERS.clear()
-    srv.TOOLS_HANDLERS.update(saved_handlers)
-    srv._owner_by_tool.clear()
-    srv._owner_by_tool.update(saved_owner)
-    srv._active_providers.clear()
-    srv._active_providers.update(saved_active)
-    srv._server = saved_server
+    srv._state.restore(snap)
 
 
 def _payload(result) -> dict[str, Any]:

@@ -22,6 +22,7 @@ server.
 import importlib
 import logging
 import re
+from dataclasses import dataclass, field
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
@@ -42,11 +43,64 @@ log = logging.getLogger(__name__)
 # Module-level singleton — cache survives across tool calls within the same server process.
 _engine = RoutingEngine()
 
-# Registration Variables
+
+@dataclass
+class ActivationState:
+    """All mutable state owned by the meta-server's activation surface.
+
+    Previously this was five module-level globals (``TOOLS``, ``TOOLS_HANDLERS``,
+    ``_active_providers``, ``_owner_by_tool``, ``_server``). Bundling them into
+    one object means tests only have to snapshot/restore a single thing, and
+    adding a new mutable field doesn't require touching every isolation fixture.
+
+    ``tools`` and ``tools_handlers`` are deliberately the *same list and dict*
+    objects passed to ``create_mcp_server``; mutating them in place is the
+    mechanism by which ``activate_provider`` / ``deactivate_provider`` update
+    the running server's advertised tool catalog. Do not reassign them.
+    """
+
+    tools: list[types.Tool] = field(default_factory=list)
+    tools_handlers: dict[str, Any] = field(default_factory=dict)
+    active_providers: set[str] = field(default_factory=set)
+    # tool_name → provider id ("meta" for the meta server's own tools).
+    owner_by_tool: dict[str, str] = field(default_factory=dict)
+    # Set by main() once the Server is constructed; used to emit
+    # tools/list_changed notifications. Best-effort.
+    server: Any | None = None
+
+    def snapshot(self) -> tuple[Any, ...]:
+        """Capture the full state for restoration in tests."""
+        return (
+            list(self.tools),
+            dict(self.tools_handlers),
+            set(self.active_providers),
+            dict(self.owner_by_tool),
+            self.server,
+        )
+
+    def restore(self, snap: tuple[Any, ...]) -> None:
+        """Restore from a snapshot(). Mutates lists/dicts in place so any
+        references held by ``create_mcp_server`` closures stay valid."""
+        saved_tools, saved_handlers, saved_active, saved_owner, saved_server = snap
+        self.tools[:] = saved_tools
+        self.tools_handlers.clear()
+        self.tools_handlers.update(saved_handlers)
+        self.active_providers.clear()
+        self.active_providers.update(saved_active)
+        self.owner_by_tool.clear()
+        self.owner_by_tool.update(saved_owner)
+        self.server = saved_server
+
+
+_state = ActivationState()
+
+# Backwards-compatible module-level aliases. These point at the SAME list/dict
+# objects owned by ``_state``, so mutations made via either name are visible
+# everywhere. Don't reassign these names.
 RESOURCES: List[Any] = []
 RESOURCES_HANDLERS: dict[str, Any] = {}
-TOOLS: List[types.Tool] = []
-TOOLS_HANDLERS: dict[str, Any] = {}
+TOOLS: List[types.Tool] = _state.tools
+TOOLS_HANDLERS: dict[str, Any] = _state.tools_handlers
 
 
 ###################
@@ -1016,7 +1070,8 @@ async def handle_list_providers(
     """Handle the opendata-list-providers tool call."""
     try:
         params = ListProvidersParams(**(arguments or {}))
-        slice_ = REGISTRY[params.offset : params.offset + params.limit]
+        all_entries = list(REGISTRY)
+        slice_ = all_entries[params.offset : params.offset + params.limit]
         payload = {
             "total": len(REGISTRY),
             "offset": params.offset,
@@ -1321,16 +1376,12 @@ _NON_PLUGIN_MODULES: frozenset[str] = frozenset(
     }
 )
 
-# Module-level activation tracking. ``_owner_by_tool`` is the canonical
-# source of truth for "which provider owns this tool name" — used by
-# ``_deactivate_provider`` to find the tools to remove.
-_active_providers: set[str] = set()
-_owner_by_tool: dict[str, str] = {}
-
-# Reference to the running MCP server instance, set by ``main()``. Used
-# by the activation helpers to send ``tools/list_changed`` notifications
-# so clients refetch the catalog after a provider is added or removed.
-_server: Any | None = None
+# Backwards-compatible name aliases for the activation tracking state.
+# All live on ``_state`` — these names are kept for legacy access paths
+# (e.g. tests that still reach in by name). New code should prefer
+# ``_state.active_providers`` etc.
+_active_providers = _state.active_providers
+_owner_by_tool = _state.owner_by_tool
 
 
 def _merge_plugin(
@@ -1386,11 +1437,9 @@ def _resolve_provider_id(provider_id: str) -> str | None:
     hyphenated server-name form (``us-data-gov``). Returns the canonical
     id when found, or ``None`` when no match exists.
     """
-    from meta_data_mcp.registry import DYNAMIC_REGISTRY
-
     needle_underscore = provider_id.replace("-", "_")
     needle_hyphen = provider_id.replace("_", "-")
-    for entry in (*REGISTRY, *DYNAMIC_REGISTRY):
+    for entry in REGISTRY:
         if entry.id in (needle_underscore, provider_id):
             return entry.id
         if entry.server_name in (needle_hyphen, provider_id):
@@ -1405,10 +1454,10 @@ async def _notify_tools_changed() -> None:
     in our local state; failing to notify just means the client will see
     the new state on its next ``tools/list`` poll.
     """
-    if _server is None:
+    if _state.server is None:
         return
     try:
-        ctx = _server.request_context
+        ctx = _state.server.request_context
         await ctx.session.send_tool_list_changed()
     except Exception as exc:  # noqa: BLE001 — notification is best-effort
         log.debug("tools/list_changed notification skipped: %s", exc)
@@ -1425,7 +1474,7 @@ def _activate_provider(provider_id: str) -> dict[str, Any]:
         return {
             "status": "error",
             "provider_id": provider_id,
-            "error": "unknown provider id — not in REGISTRY or DYNAMIC_REGISTRY",
+            "error": "unknown provider id — not in registry",
         }
     if canonical in _active_providers:
         return {
@@ -1509,8 +1558,6 @@ def _load_all_plugins() -> tuple[int, int]:
     """
     import os
 
-    from meta_data_mcp.registry import DYNAMIC_REGISTRY
-
     raw = os.getenv("META_DATA_MCP_PRELOAD", "").strip()
     # Initialize the owner-map with the meta server's own tool names.
     for name in TOOLS_HANDLERS:
@@ -1520,11 +1567,7 @@ def _load_all_plugins() -> tuple[int, int]:
         return (0, 0)
 
     if raw == "*":
-        target_ids = [
-            e.id
-            for e in (*REGISTRY, *DYNAMIC_REGISTRY)
-            if e.id not in _NON_PLUGIN_MODULES
-        ]
+        target_ids = [e.id for e in REGISTRY if e.id not in _NON_PLUGIN_MODULES]
     else:
         target_ids = []
         for token in raw.split(","):
@@ -1561,8 +1604,6 @@ def _load_all_plugins() -> tuple[int, int]:
 async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
     from meta_data_mcp.utils import create_mcp_server, run_server
 
-    global _server
-
     plugins_loaded, plugin_tools_added = _load_all_plugins()
     log.info(
         "meta-data-mcp — %d plugins preloaded, %d plugin tools + %d discovery tools "
@@ -1570,19 +1611,19 @@ async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.
         "at runtime)",
         plugins_loaded,
         plugin_tools_added,
-        len(TOOLS) - plugin_tools_added,
+        len(_state.tools) - plugin_tools_added,
     )
 
     server = create_mcp_server(
         "meta-data-mcp",
         resources=RESOURCES,
         resources_handlers=RESOURCES_HANDLERS,
-        tools=TOOLS,
-        tools_handlers=TOOLS_HANDLERS,
+        tools=_state.tools,
+        tools_handlers=_state.tools_handlers,
         prompts=PROMPTS,
         prompts_handlers=PROMPTS_HANDLERS,
     )
-    _server = server
+    _state.server = server
 
     await run_server(server, transport, port, host)
 

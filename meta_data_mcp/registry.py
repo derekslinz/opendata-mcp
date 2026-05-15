@@ -18,8 +18,8 @@ faceted search works.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from typing import Any, Iterable
+from dataclasses import asdict, dataclass, field
+from typing import Any, Iterable, Iterator
 
 
 # Controlled vocabularies — keep these short.
@@ -90,8 +90,9 @@ class ProviderEntry:
         return asdict(self)
 
 
-# Registry entries. Order: alphabetical by id to match `pkgutil.iter_modules`.
-REGISTRY: tuple[ProviderEntry, ...] = (
+# Source-of-truth static entries. Order: alphabetical by id to match
+# `pkgutil.iter_modules`. Wrapped by the ``Registry`` instance below.
+_STATIC_ENTRIES: tuple[ProviderEntry, ...] = (
     ProviderEntry(
         id="au_data_gov",
         server_name="au-data-gov",
@@ -1103,10 +1104,104 @@ REGISTRY: tuple[ProviderEntry, ...] = (
 )
 
 
-# Plugins added at runtime by the autonomous-creation flow (or by tests).
-# Held separately from the static REGISTRY tuple so that the source-of-truth
-# tuple stays immutable and reloadable.
-DYNAMIC_REGISTRY: list[ProviderEntry] = []
+@dataclass
+class Registry:
+    """Unified provider registry.
+
+    Replaces the prior bimodal ``REGISTRY: tuple + DYNAMIC_REGISTRY: list``
+    surface with a single container that holds both static (compile-time)
+    and dynamic (runtime-registered) entries. ``add()`` is idempotent by
+    ``id``; ``find()`` is the single point of resolution; iteration yields
+    every entry in insertion order (statics first, dynamics in the order
+    they were registered).
+
+    The class is intentionally not frozen — ``add()`` and ``remove()`` are
+    the only sanctioned mutators; tests use ``snapshot()`` / ``restore()``
+    to isolate state. Internal storage is private.
+    """
+
+    _entries: list[ProviderEntry] = field(default_factory=list)
+    _by_id: dict[str, ProviderEntry] = field(default_factory=dict)
+    _static_count: int = 0
+
+    @classmethod
+    def from_static(cls, entries: Iterable[ProviderEntry]) -> "Registry":
+        """Seed a Registry from the compile-time entries."""
+        r = cls()
+        for e in entries:
+            r.add(e)
+        r._static_count = len(r._entries)
+        return r
+
+    def add(self, entry: ProviderEntry) -> bool:
+        """Add a provider. Idempotent by id.
+
+        Returns True if a new entry was added, False if the id was already
+        present (in which case the existing entry is unchanged).
+        """
+        if entry.id in self._by_id:
+            return False
+        self._entries.append(entry)
+        self._by_id[entry.id] = entry
+        return True
+
+    def remove(self, provider_id: str) -> bool:
+        """Remove a provider by id. Returns True if it was present.
+
+        Removing a static entry is supported but should be rare — it's
+        primarily here for tests.
+        """
+        entry = self._by_id.pop(provider_id, None)
+        if entry is None:
+            return False
+        self._entries.remove(entry)
+        return True
+
+    def find(self, provider_id: str) -> ProviderEntry | None:
+        """Resolve a provider id (case-insensitive) to its entry."""
+        entry = self._by_id.get(provider_id)
+        if entry is not None:
+            return entry
+        needle = provider_id.lower()
+        for e in self._entries:
+            if e.id.lower() == needle:
+                return e
+        return None
+
+    def dynamic(self) -> list[ProviderEntry]:
+        """Return the runtime-added entries (i.e. everything past the static seed).
+
+        Intended for tests and for the autonomous-creation flow which needs
+        to know which entries it materialized. Returns a *new* list each call.
+        """
+        return list(self._entries[self._static_count :])
+
+    def snapshot(self) -> tuple[list[ProviderEntry], dict[str, ProviderEntry], int]:
+        """Snapshot for restoration in tests."""
+        return (list(self._entries), dict(self._by_id), self._static_count)
+
+    def restore(
+        self,
+        snap: tuple[list[ProviderEntry], dict[str, ProviderEntry], int],
+    ) -> None:
+        """Restore from a snapshot()."""
+        self._entries = list(snap[0])
+        self._by_id = dict(snap[1])
+        self._static_count = snap[2]
+
+    def __iter__(self) -> Iterator[ProviderEntry]:
+        return iter(self._entries)
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def __contains__(self, provider_id: object) -> bool:
+        return isinstance(provider_id, str) and provider_id in self._by_id
+
+
+# The canonical Registry instance. Tests, providers, routing, and the
+# meta-server all share this single object.
+REGISTRY: Registry = Registry.from_static(_STATIC_ENTRIES)
 
 
 def register_plugin(entry: ProviderEntry) -> None:
@@ -1115,21 +1210,14 @@ def register_plugin(entry: ProviderEntry) -> None:
     Used by the autonomous-creation flow after `generate_provider.py` has
     materialized a new plugin module. Subsequent calls to `find_providers`,
     `get_provider`, `all_ids`, `list_domains`, and `list_regions` will
-    include the new entry.
-
-    Idempotent — re-registering the same id is a no-op.
+    include the new entry. Idempotent — re-registering the same id is a no-op.
     """
-    if any(e.id == entry.id for e in REGISTRY):
-        return
-    if any(e.id == entry.id for e in DYNAMIC_REGISTRY):
-        return
-    DYNAMIC_REGISTRY.append(entry)
+    REGISTRY.add(entry)
 
 
 def iter_registry() -> Iterable[ProviderEntry]:
-    """Iterate over the static + dynamically-registered plugin entries."""
+    """Iterate over every registered entry (static + dynamic)."""
     yield from REGISTRY
-    yield from DYNAMIC_REGISTRY
 
 
 def _normalize(text: str) -> str:
@@ -1194,11 +1282,7 @@ def find_providers(
 
 def get_provider(provider_id: str) -> ProviderEntry | None:
     """Return the registry entry for `provider_id`, or None if not present."""
-    needle = _normalize(provider_id)
-    for entry in iter_registry():
-        if entry.id.lower() == needle:
-            return entry
-    return None
+    return REGISTRY.find(_normalize(provider_id))
 
 
 def list_domains() -> list[str]:
