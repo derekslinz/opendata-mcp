@@ -1,47 +1,44 @@
-"""v2.0 shape primitive bundles served under ``ui://meta-data-mcp/shape/*/v1``.
+"""MCP Apps shape primitives (v2.0 Phase 2).
 
-This package is the home of the MCP Apps presentation-plane shape
-primitives. Each primitive is a self-contained HTML + JS bundle that
-the host renders in a sandboxed iframe per the MCP Apps spec
-(https://modelcontextprotocol.io/docs/extensions/apps). Provider tools
-opt into a primitive by setting ``_meta={"ui": {"resourceUri": <URI>}}``
-on their ``types.Tool`` registration (see ``tests/test_ui_resource.py``
-for the constructor footgun this avoids).
+Each shape primitive is a self-contained HTML+JS bundle served as a
+``ui://meta-data-mcp/shape/<name>/<version>`` resource. The MCP Apps
+extension (https://modelcontextprotocol.io/docs/extensions/apps) lets
+the host render the bundle in a sandboxed iframe alongside a tool's
+result; providers bind to a primitive by declaring
+``_meta={"ui": {"resourceUri": <URI>}}`` on the Tool.
 
-``register_shapes()`` is the single integration point the discovery
-provider calls at server boot. Adding a new primitive means:
-
-1. Drop ``shape_<name>_v<n>.html`` + ``shape_<name>_v<n>.py`` here.
-2. Import the module's ``register`` callable below.
-3. Call it from ``register_shapes`` so the resource lands in the
-   server's catalog.
-
-Versioning is baked into the URI (``/v1``, ``/v2``, ...) per Gotcha G13
-of the v2.0 plan — once a primitive has provider adopters, the bundle
-shape is frozen and breaking changes ship as ``v2``.
+The single public entry point is :func:`register_shapes`, called once
+from the discovery provider during server boot. It registers every
+shape primitive against the server's ``RESOURCES`` / ``RESOURCES_HANDLERS``.
 """
 
+from __future__ import annotations
+
+from typing import Callable
+
+from mcp import types
+from pydantic import AnyUrl
+
+from .shape_geofeatures_v1 import register as _register_geofeatures
 from .shape_records_v1 import register as _register_records
 
+__all__ = ["register_shapes"]
 
-def register_shapes(resources, resources_handlers):
-    """Register all v2 shape primitives. Called from the discovery provider.
 
-    The discovery provider (``meta_data_mcp/providers/meta_data_mcp.py``)
-    invokes this once at module import so every ``ui://meta-data-mcp/shape/*``
-    URI is in the catalog before any tool's ``_meta.ui.resourceUri`` can
-    reference it. Calling twice on the same ``(resources, handlers)`` pair
-    raises ``ValueError`` from ``register_ui_resource`` — boot-time
-    registration is once-per-process; silent dedup would mask real bugs.
+def register_shapes(
+    resources: list[types.Resource],
+    resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]],
+) -> dict[str, str]:
+    """Register all v2 shape primitives on the given server state.
 
-    Args:
-        resources: The server's ``RESOURCES`` list. Mutated in place.
-        resources_handlers: The server's ``RESOURCES_HANDLERS`` dict.
-            Mutated in place.
+    Called once from the discovery provider (``providers/meta_data_mcp.py``)
+    at module import time.
+
+    Returns a dict mapping shape name → URI for callers that want to
+    log or surface the wiring; the return value is advisory and may be
+    ignored.
     """
-    _register_records(resources, resources_handlers)
-    # NOTE to reviewers of parallel Phase 2 PRs: this function is the
-    # merge point. Timeseries (PR #61) and geofeatures (PR #62) each add
-    # their own ``_register`` import + call here. When this PR merges
-    # after either of those, resolve the conflict by keeping all three
-    # registrations.
+    return {
+        "geofeatures/v1": _register_geofeatures(resources, resources_handlers),
+        "records/v1": _register_records(resources, resources_handlers),
+    }
