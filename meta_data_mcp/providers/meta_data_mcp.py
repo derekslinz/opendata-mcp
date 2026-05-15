@@ -1124,6 +1124,15 @@ def handle_read_all_providers(uri: AnyUrl) -> str:
 
 RESOURCES_HANDLERS["registry://all-providers"] = handle_read_all_providers
 
+
+# v2.0 shape primitives — register all ui://meta-data-mcp/shape/*/v1 bundles
+# at server boot so any tool can bind via _meta.ui.resourceUri without
+# ordering constraints. See meta_data_mcp/ui_resources/__init__.py.
+from meta_data_mcp.ui_resources import register_shapes  # noqa: E402
+
+register_shapes(RESOURCES, RESOURCES_HANDLERS)
+
+
 ###################
 # Prompts
 ###################
