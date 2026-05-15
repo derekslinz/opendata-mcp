@@ -29,14 +29,14 @@ They are dependencies for v1.3's reliability story and are partially active toda
 
 - ✅ **HTTP retry + auth-aware response cache** (`meta_data_mcp/utils.py`, PR #40)
   - Exponential backoff with `Retry-After` header parsing (RFC 7231 HTTP-date + delta-seconds)
-  - Case-insensitive auth header detection; TTL response cache partitioned by auth identity
+  - Case-insensitive auth header detection; TTL response cache keyed by a `has_auth` boolean so anonymous and authenticated responses don't collide (note: not partitioned per-token — different tokens still share an entry)
 - ✅ **`ProviderConfig` dataclass scaffold** (`meta_data_mcp/provider_config.py`, PR #41)
   - Consolidates `base_url`, `auth_env_var`, `contact_required`, `default_accept`, `rate_limit_per_minute`
   - **Adoption: 1 / 66 providers** (`au_data_gov`). Migrating the rest is tracked under v1.2 below.
 - ✅ **Provider health registry + `HealthScorer`** (`meta_data_mcp/health.py`, `routing.py:179`, PR #42)
   - Thread-safe failure/success tracking with time-decay back to 1.0
   - Wired into `RoutingEngine.scorers` but **default weight = 0.0** (dormant)
-  - Activation blocked on: `translate_http_error` calling `record_failure`/`record_success` from `utils.py`. Tracked under v1.2 below.
+  - Activation blocked on: an HTTP error-translation hook (provisionally named `translate_http_error`, not yet implemented in `utils.py`) that classifies responses and calls `record_failure` / `record_success`. Tracked under v1.2 below.
 
 ## v1.2: Hierarchical Discovery + Health Activation (Planned, in design)
 
@@ -49,7 +49,7 @@ is no longer realistic — design has not produced code. Re-baseline below.
 
 ### Carry-over work from v1.1.x
 
-- [ ] Wire `record_failure` / `record_success` into `utils.translate_http_error` so `HealthScorer` produces non-trivial signal
+- [ ] Add an HTTP error-translation hook in `utils.py` (provisionally `translate_http_error`) that inspects responses/exceptions in `http_get`'s error path and calls `record_failure` / `record_success`, so `HealthScorer` produces non-trivial signal
 - [ ] Raise the default `health` weight in `RoutingEngine.weights` once feed exists (currently 0.0)
 - [ ] Migrate the remaining 65 providers to `ProviderConfig`
 - [ ] Have `http_get` consume `ProviderConfig` directly instead of accepting `base_url`/auth per-call (noted as "future work" in `provider_config.py:6`)
