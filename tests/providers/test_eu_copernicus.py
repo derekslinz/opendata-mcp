@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.eu_copernicus import (
+    TOOLS,
+    _copernicus_search_results_to_shape_payload,
     list_copernicus_collections,
     ListCollectionsParams,
     handle_list_collections,
@@ -13,6 +17,7 @@ from meta_data_mcp.providers.eu_copernicus import (
     ProductMetadataParams,
     handle_get_product_metadata,
 )
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 
 
 @pytest.fixture
@@ -153,3 +158,81 @@ async def test_handle_get_product_metadata_error():
         mock_get.side_effect = httpx.HTTPError("OData timeout")
         with pytest.raises(httpx.HTTPError):
             await handle_get_product_metadata({"product_id": "uuid-1234"})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for copernicus-search-products.
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_collapses_bbox_to_centroid():
+    raw = {
+        "features": [
+            {
+                "id": "S2A_MSIL2A_20230101",
+                "bbox": [0.0, 10.0, 2.0, 14.0],
+                "properties": {
+                    "datetime": "2023-01-01T12:00:00Z",
+                    "eo:cloud_cover": 10.5,
+                },
+            }
+        ]
+    }
+    payload = _copernicus_search_results_to_shape_payload(raw)
+    assert len(payload["features"]) == 1
+    feature = payload["features"][0]
+    # Centroid of bbox = ((0+2)/2, (10+14)/2)
+    assert feature["lon"] == 1.0
+    assert feature["lat"] == 12.0
+    assert feature["attrs"]["id"] == "S2A_MSIL2A_20230101"
+    assert feature["attrs"]["bbox"] == [0.0, 10.0, 2.0, 14.0]
+    assert feature["attrs"]["cloud_cover"] == 10.5
+    assert feature["attrs"]["datetime"] == "2023-01-01T12:00:00Z"
+
+
+def test_adapter_handles_empty_features():
+    payload = _copernicus_search_results_to_shape_payload({"features": []})
+    assert payload == {"features": []}
+
+
+def test_adapter_handles_missing_structure():
+    assert _copernicus_search_results_to_shape_payload({}) == {"features": []}
+    assert _copernicus_search_results_to_shape_payload("err") == {"features": []}
+
+
+def test_adapter_skips_features_without_valid_bbox():
+    raw = {
+        "features": [
+            {"id": "no-bbox", "properties": {}},
+            {"id": "short-bbox", "bbox": [0, 0]},
+            {"id": "bad-bbox", "bbox": ["x", 0, 1, 1]},
+            {"id": "out-of-range", "bbox": [0, 200, 1, 300]},
+            {"id": "ok", "bbox": [0.0, 0.0, 1.0, 1.0]},
+        ]
+    }
+    payload = _copernicus_search_results_to_shape_payload(raw)
+    assert len(payload["features"]) == 1
+    assert payload["features"][0]["attrs"]["id"] == "ok"
+
+
+def test_search_products_tool_binds_to_geofeatures_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "copernicus-search-products")
+    assert tool.meta == {"ui": {"resourceUri": GEOFEATURES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == GEOFEATURES_URI
+
+
+@pytest.mark.anyio
+async def test_handle_search_products_returns_shape_payload(
+    mock_stac_search_results,
+):
+    with patch("httpx.post") as mock_post:
+        mock_post.return_value.json.return_value = mock_stac_search_results
+        mock_post.return_value.raise_for_status = Mock()
+
+        result = await handle_search_products({"collection": "sentinel-2a-l2a"})
+        body = json.loads(result[0].text)
+        assert body["features"][0]["lat"] == 0.5
+        assert body["features"][0]["lon"] == 0.5
+        assert body["features"][0]["attrs"]["id"] == "S2A_MSIL2A_20230101"
+        assert body["features"][0]["attrs"]["cloud_cover"] == 10.5

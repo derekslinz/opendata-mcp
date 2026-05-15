@@ -19,11 +19,13 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 from meta_data_mcp.utils import (
     create_mcp_server,
     http_get,
     run_server,
     serialize_for_llm,
+    to_geofeatures_text,
 )
 
 log = logging.getLogger(__name__)
@@ -103,13 +105,50 @@ def fetch_openaq_list_locations(params: OpenAqListLocationsParams) -> Any:
     return response.json()
 
 
+def _openaq_locations_to_shape_payload(data: Any) -> dict:
+    """Adapt OpenAQ v3 ``/locations`` to the geofeatures payload contract.
+
+    Each location carries a ``coordinates`` block with ``latitude`` and
+    ``longitude``. Records without usable coordinates (e.g. mobile
+    sensors with deferred geocoding) are dropped silently.
+    """
+    features: list[dict] = []
+    if not isinstance(data, dict):
+        return {"features": features}
+    results = data.get("results")
+    if not isinstance(results, list):
+        return {"features": features}
+    for loc in results:
+        if not isinstance(loc, dict):
+            continue
+        coords = loc.get("coordinates")
+        if not isinstance(coords, dict):
+            continue
+        try:
+            lat = float(coords["latitude"])
+            lon = float(coords["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        attrs = {k: v for k, v in loc.items() if k != "coordinates"}
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_openaq_list_locations(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the openaq-list-locations tool call."""
+    """Handle the openaq-list-locations tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     params = OpenAqListLocationsParams(**(arguments or {}))
     data = fetch_openaq_list_locations(params)
-    return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    payload = _openaq_locations_to_shape_payload(data)
+    return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
 
 
 TOOLS.append(
@@ -121,6 +160,10 @@ TOOLS.append(
             "station metadata including which pollutants are measured."
         ),
         inputSchema=OpenAqListLocationsParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["openaq-list-locations"] = handle_openaq_list_locations

@@ -32,7 +32,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -75,16 +76,48 @@ def fetch_search(params: NominatimSearchParams) -> Any:
     return response.json()
 
 
+def _nominatim_search_results_to_shape_payload(data: Any) -> dict:
+    """Adapt Nominatim's ``[{lat, lon, display_name, ...}, ...]`` result
+    list to the geofeatures payload contract.
+
+    Nominatim returns ``lat``/``lon`` as strings, so they are coerced to
+    floats here. Records with missing or unparseable coordinates are
+    skipped silently; out-of-range values are dropped.
+    """
+    features: list[dict] = []
+    if not isinstance(data, list):
+        return {"features": features}
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        try:
+            lat = float(item["lat"])
+            lon = float(item["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        attrs = {k: v for k, v in item.items() if k not in ("lat", "lon")}
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_search(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the nominatim-search tool call."""
+    """Handle the nominatim-search tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     try:
         if not arguments or "q" not in arguments:
             raise ValueError("q is required")
         params = NominatimSearchParams(**arguments)
         data = fetch_search(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _nominatim_search_results_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
     except Exception as e:
         log.error(f"Error in Nominatim search: {e}")
         raise
@@ -98,6 +131,10 @@ TOOLS.append(
             "Respect Nominatim's 1 req/s usage policy."
         ),
         inputSchema=NominatimSearchParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["nominatim-search"] = handle_search

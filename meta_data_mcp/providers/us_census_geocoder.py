@@ -29,7 +29,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -144,16 +145,55 @@ def fetch_census_geocode_address(params: CensusGeocodeAddressParams) -> dict:
     return response.json()
 
 
+def _census_address_matches_to_shape_payload(data: Any) -> dict:
+    """Adapt the Census Geocoder ``{result: {addressMatches: [...]}}``
+    response to the geofeatures shape payload.
+
+    Each matched address with ``coordinates.x`` (longitude) and
+    ``coordinates.y`` (latitude) becomes one feature. The original match
+    object (minus the coords block) goes into ``attrs`` so the bundle
+    can render the matched address and tigerLine metadata.
+    """
+    features: list[dict] = []
+    if not isinstance(data, dict):
+        return {"features": features}
+    matches = data.get("result", {}).get("addressMatches")
+    if not isinstance(matches, list):
+        return {"features": features}
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        coords = match.get("coordinates")
+        if not isinstance(coords, dict):
+            continue
+        try:
+            lon = float(coords["x"])
+            lat = float(coords["y"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        attrs = {k: v for k, v in match.items() if k != "coordinates"}
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_census_geocode_address(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the census-geocode-address tool call."""
+    """Handle the census-geocode-address tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     try:
         if not arguments or "street" not in arguments:
             raise ValueError("street is required")
         params = CensusGeocodeAddressParams(**arguments)
         data = fetch_census_geocode_address(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _census_address_matches_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
     except Exception as e:
         log.error(f"Error geocoding structured address via Census: {e}")
         raise
@@ -164,6 +204,10 @@ TOOLS.append(
         name="census-geocode-address",
         description="Forward-geocode a structured US address (street/city/state/zip) using the Census Geocoder.",
         inputSchema=CensusGeocodeAddressParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["census-geocode-address"] = handle_census_geocode_address

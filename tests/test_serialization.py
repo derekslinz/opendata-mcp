@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from meta_data_mcp.utils import to_json_text
+from meta_data_mcp.utils import MAX_RESPONSE_CHARS, to_geofeatures_text, to_json_text
 
 
 def test_to_json_text_serializes_datetime():
@@ -44,3 +44,49 @@ def test_to_json_text_truncation_remains_valid_json():
 def test_to_json_text_rejects_too_small_max_chars():
     with pytest.raises(ValueError, match="max_chars must be >= 2"):
         to_json_text({"value": "abcdef"}, max_chars=1)
+
+
+def test_to_geofeatures_text_trims_feature_list_to_valid_json():
+    payload = {
+        "features": [
+            {
+                "lat": 1.0,
+                "lon": 2.0,
+                "attrs": {"name": f"feature-{i}", "blob": "x" * 150},
+            }
+            for i in range(200)
+        ]
+    }
+
+    text = to_geofeatures_text(payload, max_chars=MAX_RESPONSE_CHARS)
+
+    assert len(text) <= MAX_RESPONSE_CHARS
+    bounded = json.loads(text)
+    assert isinstance(bounded["features"], list)
+    assert 0 < len(bounded["features"]) < len(payload["features"])
+
+
+def test_to_geofeatures_text_trims_geojson_feature_collection_to_valid_json():
+    payload = {
+        "features": {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "id": f"feature-{i}",
+                    "geometry": {"type": "Point", "coordinates": [i, i]},
+                    "properties": {"blob": "y" * 400},
+                }
+                for i in range(200)
+            ],
+        }
+    }
+
+    text = to_geofeatures_text(payload, max_chars=MAX_RESPONSE_CHARS)
+
+    assert len(text) <= MAX_RESPONSE_CHARS
+    bounded = json.loads(text)
+    assert bounded["features"]["type"] == "FeatureCollection"
+    assert (
+        0 < len(bounded["features"]["features"]) < len(payload["features"]["features"])
+    )

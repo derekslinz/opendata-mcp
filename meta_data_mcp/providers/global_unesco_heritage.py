@@ -26,7 +26,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
 
 log = logging.getLogger(__name__)
 
@@ -103,14 +104,50 @@ def fetch_unesco_heritage_list_sites(
     return response.json()
 
 
+def _unesco_sites_to_shape_payload(data: Any) -> dict:
+    """Adapt the UNESCO WHC ``/sites`` response to the geofeatures
+    payload contract.
+
+    Each site carries ``latitude`` / ``longitude`` (as strings) in the
+    JSON feed. Sites lacking usable coordinates (e.g. when the list
+    endpoint is filtered to summary fields only) are dropped silently.
+    """
+    features: list[dict] = []
+    if not isinstance(data, list):
+        return {"features": features}
+    for site in data:
+        if not isinstance(site, dict):
+            continue
+        lat_raw = site.get("latitude")
+        lon_raw = site.get("longitude")
+        try:
+            lat = float(lat_raw) if lat_raw not in (None, "") else None
+            lon = float(lon_raw) if lon_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            continue
+        if lat is None or lon is None:
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        attrs = {k: v for k, v in site.items() if k not in ("latitude", "longitude")}
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 async def handle_unesco_heritage_list_sites(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the unesco-heritage-list-sites tool call."""
+    """Handle the unesco-heritage-list-sites tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     try:
         params = UNESCOHeritageListSitesParams(**(arguments or {}))
         data = fetch_unesco_heritage_list_sites(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _unesco_sites_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
     except Exception as e:
         log.error(f"Error listing UNESCO Heritage sites: {e}")
         raise
@@ -124,6 +161,10 @@ TOOLS.append(
             "category (Cultural/Natural/Mixed), or danger status."
         ),
         inputSchema=UNESCOHeritageListSitesParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["unesco-heritage-list-sites"] = handle_unesco_heritage_list_sites

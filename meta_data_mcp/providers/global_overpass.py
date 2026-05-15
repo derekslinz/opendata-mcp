@@ -37,7 +37,8 @@ import mcp.types as types
 from pydantic import BaseModel, Field
 
 from meta_data_mcp.fields import NonEmptyStr
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -263,15 +264,67 @@ def fetch_bbox_feature(params: OverpassBboxFeatureParams) -> Any:
         f'node["{params.key}"="{params.value}"]({params.s},{params.w},{params.n},{params.e});'
         f'way["{params.key}"="{params.value}"]({params.s},{params.w},{params.n},{params.e});'
         f");"
-        f"out body;"
+        f"out body center;"
     )
     return _run_overpass_query(query)
+
+
+def _overpass_elements_to_shape_payload(data: Any) -> dict:
+    """Adapt Overpass ``{elements: [...]}`` to the geofeatures shape payload.
+
+    Each OSM element with a usable lat/lon (nodes carry coordinates
+    directly; ways/relations may carry a ``center`` block depending on
+    the OverpassQL ``out center`` directive) becomes one feature with
+    ``{lat, lon, attrs}``. Non-coordinate metadata (type, id, tags) goes
+    into ``attrs`` for the bundle to render in marker popups.
+
+    Defensive coercion:
+    - Non-dict payloads (e.g. plain text) -> empty features.
+    - Elements without lat/lon (or with invalid ranges) are skipped
+      silently.
+    - String coords are coerced to float when possible.
+    """
+    features: list[dict] = []
+    if not isinstance(data, dict):
+        return {"features": features}
+    elements = data.get("elements")
+    if not isinstance(elements, list):
+        return {"features": features}
+    for el in elements:
+        if not isinstance(el, dict):
+            continue
+        lat = el.get("lat")
+        lon = el.get("lon")
+        # Ways/relations with `out center` carry coords under `center`.
+        if (lat is None or lon is None) and isinstance(el.get("center"), dict):
+            lat = el["center"].get("lat")
+            lon = el["center"].get("lon")
+        try:
+            lat_f = float(lat) if lat is not None else None
+            lon_f = float(lon) if lon is not None else None
+        except (TypeError, ValueError):
+            continue
+        if lat_f is None or lon_f is None:
+            continue
+        if not (-90.0 <= lat_f <= 90.0) or not (-180.0 <= lon_f <= 180.0):
+            continue
+        attrs: dict[str, Any] = {}
+        for key in ("type", "id", "tags"):
+            if key in el:
+                attrs[key] = el[key]
+        features.append({"lat": lat_f, "lon": lon_f, "attrs": attrs})
+    return {"features": features}
 
 
 async def handle_bbox_feature(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the overpass-bbox-feature tool call."""
+    """Handle the overpass-bbox-feature tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     try:
         if (
             not arguments
@@ -285,7 +338,8 @@ async def handle_bbox_feature(
             raise ValueError("key, value, s, w, n, and e are required")
         params = OverpassBboxFeatureParams(**arguments)
         data = fetch_bbox_feature(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _overpass_elements_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
     except Exception as e:
         log.error(f"Error running Overpass bbox-feature query: {e}")
         raise
@@ -299,6 +353,10 @@ TOOLS.append(
             "bounding box (south, west, north, east)."
         ),
         inputSchema=OverpassBboxFeatureParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Pass via the alias keyword (`_meta`), not `meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["overpass-bbox-feature"] = handle_bbox_feature

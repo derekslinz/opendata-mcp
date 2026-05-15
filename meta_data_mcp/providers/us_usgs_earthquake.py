@@ -28,7 +28,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -104,14 +105,36 @@ def fetch_usgs_eq_query(params: USGSEqQueryParams) -> dict:
     return response.json()
 
 
+def _usgs_geojson_to_shape_payload(data: Any) -> dict:
+    """Adapt the USGS FDSN GeoJSON FeatureCollection to the geofeatures
+    payload contract by wrapping it in ``{features: <FeatureCollection>}``.
+
+    USGS already returns proper GeoJSON, so option A (native pass-through)
+    is the cleanest route — Leaflet inside the bundle consumes
+    FeatureCollections directly.
+
+    Non-dict or non-GeoJSON responses degrade to an empty
+    FeatureCollection so the bundle never has to handle invalid shapes.
+    """
+    if isinstance(data, dict) and data.get("type") == "FeatureCollection":
+        return {"features": data}
+    return {"features": {"type": "FeatureCollection", "features": []}}
+
+
 async def handle_usgs_eq_query(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the usgs-eq-query tool call."""
+    """Handle the usgs-eq-query tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format. USGS already returns a GeoJSON FeatureCollection,
+    so it is wrapped natively under ``features`` (option A).
+    """
     try:
         params = USGSEqQueryParams(**(arguments or {}))
         data = fetch_usgs_eq_query(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _usgs_geojson_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_geofeatures_text(payload))]
     except Exception as e:
         log.error(f"Error querying USGS earthquake catalog: {e}")
         raise
@@ -122,6 +145,10 @@ TOOLS.append(
         name="usgs-eq-query",
         description="Query the USGS FDSN earthquake catalog (GeoJSON). Supports time, magnitude, and bounding-box filters.",
         inputSchema=USGSEqQueryParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["usgs-eq-query"] = handle_usgs_eq_query

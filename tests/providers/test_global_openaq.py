@@ -1,19 +1,23 @@
 """Tests for the global-openaq provider."""
 
+import json
 from unittest.mock import Mock, patch
 
 import httpx
 import pytest
 
 from meta_data_mcp.providers.global_openaq import (
+    TOOLS,
     OpenAqListLocationsParams,
     OpenAqListParametersParams,
     OpenAqLocationLatestParams,
+    _openaq_locations_to_shape_payload,
     fetch_openaq_list_locations,
     fetch_openaq_list_parameters,
     fetch_openaq_location_latest,
     handle_openaq_list_locations,
 )
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 
 
 @pytest.fixture
@@ -83,7 +87,17 @@ def test_auth_header_sent_when_env_set(monkeypatch):
 
 @pytest.mark.anyio
 async def test_handle_list_locations():
-    payload = {"results": [{"id": 1, "name": "Test Station"}]}
+    """Now returns the geofeatures shape payload — only locations with
+    usable coordinates make it through."""
+    payload = {
+        "results": [
+            {
+                "id": 1,
+                "name": "Test Station",
+                "coordinates": {"latitude": 52.37, "longitude": 4.9},
+            }
+        ]
+    }
     with patch("httpx.get") as mock_get:
         mock_get.return_value = _ok_response(payload)
         result = await handle_openaq_list_locations({"iso": "NL"})
@@ -106,3 +120,96 @@ async def test_handle_translates_404_via_provider_kwarg():
         with pytest.raises(NotFoundError) as exc_info:
             await handle_openaq_list_locations({"iso": "ZZ"})
         assert exc_info.value.provider == "global-openaq"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for openaq-list-locations.
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_maps_locations_to_features():
+    raw = {
+        "results": [
+            {
+                "id": 1,
+                "name": "Berlin Station",
+                "coordinates": {"latitude": 52.52, "longitude": 13.41},
+                "country": {"id": 50, "code": "DE", "name": "Germany"},
+            },
+            {
+                "id": 2,
+                "name": "Paris Station",
+                "coordinates": {"latitude": 48.86, "longitude": 2.35},
+            },
+        ]
+    }
+    payload = _openaq_locations_to_shape_payload(raw)
+    assert len(payload["features"]) == 2
+    assert payload["features"][0]["lat"] == 52.52
+    assert payload["features"][0]["lon"] == 13.41
+    assert payload["features"][0]["attrs"]["name"] == "Berlin Station"
+    # coordinates is stripped (already promoted)
+    assert "coordinates" not in payload["features"][0]["attrs"]
+
+
+def test_adapter_handles_empty_results():
+    assert _openaq_locations_to_shape_payload({"results": []}) == {"features": []}
+
+
+def test_adapter_handles_non_dict_response():
+    assert _openaq_locations_to_shape_payload([]) == {"features": []}
+    assert _openaq_locations_to_shape_payload("err") == {"features": []}
+
+
+def test_adapter_skips_locations_without_coords():
+    raw = {
+        "results": [
+            {"id": 1, "name": "no coords"},
+            {"id": 2, "name": "bad shape", "coordinates": "not a dict"},
+            {
+                "id": 3,
+                "name": "bad value",
+                "coordinates": {"latitude": "x", "longitude": 1.0},
+            },
+            {
+                "id": 4,
+                "name": "out of range",
+                "coordinates": {"latitude": 200.0, "longitude": 1.0},
+            },
+            {
+                "id": 5,
+                "name": "ok",
+                "coordinates": {"latitude": 52.5, "longitude": 13.4},
+            },
+        ]
+    }
+    payload = _openaq_locations_to_shape_payload(raw)
+    assert len(payload["features"]) == 1
+    assert payload["features"][0]["attrs"]["id"] == 5
+
+
+def test_list_locations_tool_binds_to_geofeatures_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "openaq-list-locations")
+    assert tool.meta == {"ui": {"resourceUri": GEOFEATURES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == GEOFEATURES_URI
+
+
+@pytest.mark.anyio
+async def test_handle_list_locations_returns_shape_payload():
+    payload = {
+        "results": [
+            {
+                "id": 1,
+                "name": "Berlin Station",
+                "coordinates": {"latitude": 52.52, "longitude": 13.41},
+            }
+        ]
+    }
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value = _ok_response(payload)
+        result = await handle_openaq_list_locations({"iso": "DE"})
+        body = json.loads(result[0].text)
+        assert body["features"][0]["lat"] == 52.52
+        assert body["features"][0]["lon"] == 13.41
+        assert body["features"][0]["attrs"]["name"] == "Berlin Station"

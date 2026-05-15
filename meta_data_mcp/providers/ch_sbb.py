@@ -22,6 +22,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 from meta_data_mcp.utils import http_get, to_json_text
 
 log = logging.getLogger(__name__)
@@ -276,19 +277,57 @@ def fetch_railway_lines(params: RailwayLineParams) -> RailwayLineResponse:
     return RailwayLineResponse(**response.json())
 
 
+def _railway_lines_to_shape_payload(data: dict) -> dict:
+    """Adapt the SBB railway-lines response to the geofeatures payload.
+
+    SBB returns each line with a ``geo_point_2d: {lon, lat}`` summary
+    point (centroid of the line). That single point is the most
+    useful representation for an inline map: the full LineString
+    geometry would dwarf the marker cluster the bundle is built for.
+
+    Records missing or with invalid ``geo_point_2d`` are dropped
+    silently. Non-coordinate fields go into ``attrs``.
+    """
+    features: list[dict] = []
+    if not isinstance(data, dict):
+        return {"features": features}
+    results = data.get("results")
+    if not isinstance(results, list):
+        return {"features": features}
+    for line in results:
+        if not isinstance(line, dict):
+            continue
+        point = line.get("geo_point_2d")
+        if not isinstance(point, dict):
+            continue
+        try:
+            lat = float(point["lat"])
+            lon = float(point["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+            continue
+        attrs = {k: v for k, v in line.items() if k != "geo_point_2d"}
+        features.append({"lat": lat, "lon": lon, "attrs": attrs})
+    return {"features": features}
+
+
 # 3. register the function to run when the tool is called
 async def handle_railway_lines(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    """Handle the railway-lines tool call.
+
+    The response is in the ``ui://meta-data-mcp/shape/geofeatures/v1``
+    payload format so the MCP Apps host can render the result inline
+    via the bound shape primitive.
+    """
     try:
         railway_lines_response = fetch_railway_lines(
             RailwayLineParams(**(arguments or {}))
         )
-        return [
-            types.TextContent(
-                type="text", text=to_json_text(railway_lines_response.model_dump())
-            )
-        ]
+        payload = _railway_lines_to_shape_payload(railway_lines_response.model_dump())
+        return [types.TextContent(type="text", text=to_json_text(payload))]
     except Exception as e:
         log.error(f"Error fetching railway lines: {e}")
         raise
@@ -300,6 +339,10 @@ TOOLS.append(
         name="railway-lines",
         description="Fetch railway line information",
         inputSchema=RailwayLineParams.model_json_schema(),
+        # MCP Apps binding: render via the shared geofeatures shape primitive.
+        # Use the alias keyword `_meta=` — see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": GEOFEATURES_URI}},
     )
 )
 TOOLS_HANDLERS["railway-lines"] = handle_railway_lines

@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.global_ripe_stat import (
+    TOOLS,
+    _ripestat_geoloc_to_shape_payload,
     handle_ripestat_network_info,
     handle_ripestat_bgp_state,
     handle_ripestat_prefix_overview,
@@ -12,6 +16,7 @@ from meta_data_mcp.providers.global_ripe_stat import (
     handle_ripestat_asn_neighbours,
     handle_ripestat_asn_neighbours_history,
 )
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 
 
 @pytest.fixture
@@ -233,3 +238,104 @@ async def test_ripestat_asn_neighbours_history_with_params():
 async def test_ripestat_asn_neighbours_history_missing_param():
     with pytest.raises(ValueError):
         await handle_ripestat_asn_neighbours_history({})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for ripestat-geoloc.
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_maps_locations_to_features():
+    raw = {
+        "status": "ok",
+        "data": {
+            "resource": "193.0.0.1",
+            "locations": [
+                {
+                    "country": "NL",
+                    "city": "Amsterdam",
+                    "latitude": 52.37,
+                    "longitude": 4.9,
+                    "resources": ["193.0.0.1"],
+                },
+                {
+                    "country": "DE",
+                    "city": "Frankfurt",
+                    "latitude": 50.11,
+                    "longitude": 8.68,
+                    "resources": ["193.0.0.2"],
+                },
+            ],
+        },
+    }
+    payload = _ripestat_geoloc_to_shape_payload(raw)
+    assert len(payload["features"]) == 2
+    assert payload["features"][0]["lat"] == 52.37
+    assert payload["features"][0]["lon"] == 4.9
+    assert payload["features"][0]["attrs"]["city"] == "Amsterdam"
+    assert payload["features"][0]["attrs"]["country"] == "NL"
+    # Coordinate keys stripped from attrs (already promoted)
+    assert "latitude" not in payload["features"][0]["attrs"]
+
+
+def test_adapter_handles_empty_locations():
+    raw = {"data": {"resource": "x", "locations": []}}
+    assert _ripestat_geoloc_to_shape_payload(raw) == {"features": []}
+
+
+def test_adapter_handles_missing_structure():
+    """Empty data block or missing locations key must not crash."""
+    assert _ripestat_geoloc_to_shape_payload({}) == {"features": []}
+    assert _ripestat_geoloc_to_shape_payload({"data": {}}) == {"features": []}
+    assert _ripestat_geoloc_to_shape_payload("err") == {"features": []}
+
+
+def test_adapter_skips_locations_without_coords():
+    raw = {
+        "data": {
+            "locations": [
+                {"country": "NL", "city": "no coords"},
+                {"latitude": "bad", "longitude": 4.9, "city": "bad lat"},
+                {"latitude": 200.0, "longitude": 4.9, "city": "out of range"},
+                {"latitude": 52.37, "longitude": 4.9, "city": "ok"},
+            ]
+        }
+    }
+    payload = _ripestat_geoloc_to_shape_payload(raw)
+    assert len(payload["features"]) == 1
+    assert payload["features"][0]["attrs"]["city"] == "ok"
+
+
+def test_geoloc_tool_binds_to_geofeatures_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "ripestat-geoloc")
+    assert tool.meta == {"ui": {"resourceUri": GEOFEATURES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == GEOFEATURES_URI
+
+
+@pytest.mark.anyio
+async def test_ripestat_geoloc_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "status": "ok",
+            "data": {
+                "resource": "193.0.0.1",
+                "locations": [
+                    {
+                        "country": "NL",
+                        "city": "Amsterdam",
+                        "latitude": 52.37,
+                        "longitude": 4.9,
+                        "resources": ["193.0.0.1"],
+                    }
+                ],
+            },
+        }
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_ripestat_geoloc({"resource": "193.0.0.1"})
+        body = json.loads(result[0].text)
+        assert body["features"][0]["lat"] == 52.37
+        assert body["features"][0]["lon"] == 4.9
+        assert body["features"][0]["attrs"]["city"] == "Amsterdam"
+        assert body["features"][0]["attrs"]["country"] == "NL"

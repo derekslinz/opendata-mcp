@@ -1,7 +1,11 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 
 from meta_data_mcp.providers.ch_sbb import (
+    TOOLS,
+    _railway_lines_to_shape_payload,
     fetch_rail_traffic_info,
     TrafficInfoParams,
     handle_rail_traffic_info,
@@ -12,6 +16,7 @@ from meta_data_mcp.providers.ch_sbb import (
     RollingStockParams,
     handle_rolling_stock,
 )
+from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
 
 
 @pytest.fixture
@@ -221,3 +226,83 @@ async def test_handle_rolling_stock(mock_rolling_stock_response):
         assert result[0].type == "text"
         assert "Re 460" in result[0].text
         assert "IC 2000" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for railway-lines.
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_maps_railway_lines_to_features():
+    raw = {
+        "results": [
+            {
+                "linie": 100,
+                "linienname": "Zürich HB - Bern",
+                "geo_point_2d": {"lon": 7.989657, "lat": 47.163630},
+            },
+            {
+                "linie": 200,
+                "linienname": "Basel - Luzern",
+                "geo_point_2d": {"lon": 7.950031, "lat": 47.298676},
+            },
+        ]
+    }
+    payload = _railway_lines_to_shape_payload(raw)
+    assert len(payload["features"]) == 2
+    assert payload["features"][0]["lat"] == 47.163630
+    assert payload["features"][0]["lon"] == 7.989657
+    assert payload["features"][0]["attrs"]["linienname"] == "Zürich HB - Bern"
+    # geo_point_2d is stripped from attrs (already promoted)
+    assert "geo_point_2d" not in payload["features"][0]["attrs"]
+
+
+def test_adapter_handles_empty_results():
+    payload = _railway_lines_to_shape_payload({"results": []})
+    assert payload == {"features": []}
+
+
+def test_adapter_handles_missing_structure():
+    assert _railway_lines_to_shape_payload({}) == {"features": []}
+    assert _railway_lines_to_shape_payload("error") == {"features": []}
+
+
+def test_adapter_skips_lines_without_geo_point():
+    """Lines without a geo_point_2d block (or with invalid coords) are
+    dropped silently so the bundle never has to render bad pins."""
+    raw = {
+        "results": [
+            {"linie": 1, "linienname": "no point"},
+            {"linie": 2, "geo_point_2d": "not a dict"},
+            {"linie": 3, "geo_point_2d": {"lon": "bad", "lat": 1.0}},
+            {"linie": 4, "geo_point_2d": {"lon": 200.0, "lat": 1.0}},  # range
+            {"linie": 5, "geo_point_2d": {"lon": 7.0, "lat": 47.0}},
+        ]
+    }
+    payload = _railway_lines_to_shape_payload(raw)
+    assert len(payload["features"]) == 1
+    assert payload["features"][0]["attrs"]["linie"] == 5
+
+
+def test_railway_lines_tool_binds_to_geofeatures_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "railway-lines")
+    assert tool.meta == {"ui": {"resourceUri": GEOFEATURES_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == GEOFEATURES_URI
+
+
+@pytest.mark.anyio
+async def test_handle_railway_lines_returns_shape_payload(
+    mock_railway_line_response,
+):
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = mock_railway_line_response
+        mock_get.return_value.raise_for_status = Mock()
+
+        result = await handle_railway_lines({"limit": 2})
+        body = json.loads(result[0].text)
+        assert "features" in body
+        assert len(body["features"]) == 2
+        assert body["features"][0]["lat"] == 47.16363
+        assert body["features"][0]["lon"] == 7.989657
+        assert body["features"][0]["attrs"]["linienname"] == "Zürich HB - Bern"

@@ -492,6 +492,74 @@ def to_json_text(payload: Any, max_chars: int | None = None) -> str:
     raise ValueError("max_chars is too small for a valid JSON object fallback")
 
 
+def _max_prefix_json_text(
+    items: Sequence[Any],
+    build_payload: Callable[[Sequence[Any]], Any],
+    max_chars: int,
+) -> str | None:
+    """Return the largest prefix payload that still fits within ``max_chars``."""
+    low = 0
+    high = len(items)
+    best_text: str | None = None
+    while low <= high:
+        mid = (low + high) // 2
+        candidate_text = _json_dumps(build_payload(items[:mid]))
+        if len(candidate_text) <= max_chars:
+            best_text = candidate_text
+            low = mid + 1
+        else:
+            high = mid - 1
+    return best_text
+
+
+def to_geofeatures_text(payload: Any, max_chars: int = MAX_RESPONSE_CHARS) -> str:
+    """Serialize a geofeatures payload while preserving valid shape JSON.
+
+    If the payload exceeds ``max_chars``, this trims the feature list to the
+    largest prefix that still fits while keeping the geofeatures contract
+    intact. Supports both option B payloads
+    (``{"features": [{lat, lon, attrs}, ...]}``) and option A native GeoJSON
+    payloads (``{"features": {"type": "FeatureCollection", "features": [...]}}``).
+    Falls back to ``to_json_text`` only when the payload is not recognized as a
+    geofeatures envelope.
+    """
+    text = _json_dumps(payload)
+    if len(text) <= max_chars:
+        return text
+    if not isinstance(payload, dict):
+        return to_json_text(payload, max_chars=max_chars)
+
+    features = payload.get("features")
+    if isinstance(features, list):
+        bounded_text = _max_prefix_json_text(
+            features,
+            lambda bounded_features: {**payload, "features": list(bounded_features)},
+            max_chars,
+        )
+        if bounded_text is not None:
+            return bounded_text
+        return to_json_text(payload, max_chars=max_chars)
+
+    if (
+        isinstance(features, dict)
+        and features.get("type") == "FeatureCollection"
+        and isinstance(features.get("features"), list)
+    ):
+        collection_features = features["features"]
+        bounded_text = _max_prefix_json_text(
+            collection_features,
+            lambda bounded_features: {
+                **payload,
+                "features": {**features, "features": list(bounded_features)},
+            },
+            max_chars,
+        )
+        if bounded_text is not None:
+            return bounded_text
+
+    return to_json_text(payload, max_chars=max_chars)
+
+
 # ---------------------------------------------------------------------------
 # MCP Apps (`ui://`) resource helper
 # ---------------------------------------------------------------------------
