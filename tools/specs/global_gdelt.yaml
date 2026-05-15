@@ -1,0 +1,31 @@
+id: global_gdelt
+server_name: global-gdelt
+title: GDELT 2.0
+base_url: https://api.gdeltproject.org/api/v2/doc/doc
+description: "GDELT 2.0 — The Global Database of Events, Language and Tone. Monitors broadcast, print and web news from every country in 100+ languages, codifying events, themes, persons and tone."
+homepage: https://www.gdeltproject.org/
+domains:
+- news
+- knowledge
+regions:
+- global
+keywords:
+- gdelt
+- news
+- events
+- media
+- tone
+- sentiment
+- global
+- monitoring
+license_note: "GDELT data is in the public domain; credit 'GDELT Project' when redistributing."
+notes: |
+  GDELT 2.0's DOC API uses a single endpoint with a `mode` parameter that
+  switches between article-list and several time-series shapes. The
+  provider exposes article search (ArtList) and the timeline modes
+  (TimelineVol / TimelineVolRaw / TimelineTone / TimelineLang).
+tools:
+- name: gdelt-article-search
+  description: Search news articles matching a GDELT query with operator-rich filters.
+- name: gdelt-volume-timeline
+  description: Fetch a time-series for a query — volume share, raw counts, average tone, or per-language volume.

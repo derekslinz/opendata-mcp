@@ -1,0 +1,31 @@
+id: global_faostat
+server_name: global-faostat
+title: FAOSTAT
+base_url: https://faostatservices.fao.org/api/v1/en
+description: "UN Food and Agriculture Organization statistics — crop and livestock production, trade, food balances, prices, land use, fertilizers and pesticides, forestry, fisheries, food security indicators, emissions, population. 245 countries since 1961."
+homepage: https://www.fao.org/faostat/en/
+domains:
+- agriculture
+- statistics
+- environment
+regions:
+- global
+keywords:
+- fao
+- faostat
+- agriculture
+- food
+- crops
+- livestock
+- fisheries
+- forestry
+- production
+- yield
+license_note: "Most FAOSTAT datasets are CC BY 4.0; cite FAOSTAT with the dataset domain code."
+tools:
+- name: faostat-list-domains
+  description: List all FAOSTAT data domains with code and group.
+- name: faostat-list-items
+  description: List items (commodities) tracked within a given domain.
+- name: faostat-data
+  description: Query a FAOSTAT data domain with optional area / item / element / year filters.
