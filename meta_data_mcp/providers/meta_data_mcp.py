@@ -23,13 +23,38 @@ import importlib
 import logging
 import re
 import time
-from dataclasses import dataclass, field
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
 from pydantic import AnyUrl, BaseModel, Field
 
 from meta_data_mcp import health
+
+# Re-export the activation state + loader plumbing. Architecture review §H2
+# moved these into meta_data_mcp.discovery.{state,loader} but the surface
+# stays importable from this module so existing call sites and the ~30
+# tests that patch by full dotted path keep working without code changes.
+# Names with ``noqa: F401`` are not referenced inside this file but are
+# imported solely to keep their old import path live.
+from meta_data_mcp.discovery.loader import (
+    _NON_PLUGIN_MODULES,  # noqa: F401
+    _activate_provider,
+    _deactivate_provider,  # noqa: F401
+    _load_all_plugins,
+    _merge_plugin,  # noqa: F401
+    _notify_tools_changed,  # noqa: F401
+    _resolve_provider_id,  # noqa: F401
+)
+from meta_data_mcp.discovery.state import (
+    RESOURCES,
+    RESOURCES_HANDLERS,
+    TOOLS,
+    TOOLS_HANDLERS,
+    ActivationState,  # noqa: F401
+    _active_providers,  # noqa: F401
+    _owner_by_tool,  # noqa: F401
+    _state,
+)
 from meta_data_mcp.utils import serialize_for_llm
 
 from meta_data_mcp.registry import (
@@ -63,64 +88,10 @@ DISCOVERY_TOOL_NAMES: tuple[str, ...] = (
 # Module-level singleton — cache survives across tool calls within the same server process.
 _engine = RoutingEngine()
 
-
-@dataclass
-class ActivationState:
-    """All mutable state owned by the meta-server's activation surface.
-
-    Previously this was five module-level globals (``TOOLS``, ``TOOLS_HANDLERS``,
-    ``_active_providers``, ``_owner_by_tool``, ``_server``). Bundling them into
-    one object means tests only have to snapshot/restore a single thing, and
-    adding a new mutable field doesn't require touching every isolation fixture.
-
-    ``tools`` and ``tools_handlers`` are deliberately the *same list and dict*
-    objects passed to ``create_mcp_server``; mutating them in place is the
-    mechanism by which ``activate_provider`` / ``deactivate_provider`` update
-    the running server's advertised tool catalog. Do not reassign them.
-    """
-
-    tools: list[types.Tool] = field(default_factory=list)
-    tools_handlers: dict[str, Any] = field(default_factory=dict)
-    active_providers: set[str] = field(default_factory=set)
-    # tool_name → provider id ("meta" for the meta server's own tools).
-    owner_by_tool: dict[str, str] = field(default_factory=dict)
-    # Set by main() once the Server is constructed; used to emit
-    # tools/list_changed notifications. Best-effort.
-    server: Any | None = None
-
-    def snapshot(self) -> tuple[Any, ...]:
-        """Capture the full state for restoration in tests."""
-        return (
-            list(self.tools),
-            dict(self.tools_handlers),
-            set(self.active_providers),
-            dict(self.owner_by_tool),
-            self.server,
-        )
-
-    def restore(self, snap: tuple[Any, ...]) -> None:
-        """Restore from a snapshot(). Mutates lists/dicts in place so any
-        references held by ``create_mcp_server`` closures stay valid."""
-        saved_tools, saved_handlers, saved_active, saved_owner, saved_server = snap
-        self.tools[:] = saved_tools
-        self.tools_handlers.clear()
-        self.tools_handlers.update(saved_handlers)
-        self.active_providers.clear()
-        self.active_providers.update(saved_active)
-        self.owner_by_tool.clear()
-        self.owner_by_tool.update(saved_owner)
-        self.server = saved_server
-
-
-_state = ActivationState()
-
-# Backwards-compatible module-level aliases. These point at the SAME list/dict
-# objects owned by ``_state``, so mutations made via either name are visible
-# everywhere. Don't reassign these names.
-RESOURCES: List[Any] = []
-RESOURCES_HANDLERS: dict[str, Any] = {}
-TOOLS: List[types.Tool] = _state.tools
-TOOLS_HANDLERS: dict[str, Any] = _state.tools_handlers
+# ActivationState, _state, RESOURCES, RESOURCES_HANDLERS, TOOLS, TOOLS_HANDLERS,
+# _active_providers, _owner_by_tool now live in meta_data_mcp.discovery.state
+# and are re-exported via the imports at the top of this module. See
+# architecture review §H2 (v2.1 hygiene pass).
 
 
 ###################
@@ -1531,239 +1502,12 @@ TOOLS_HANDLERS["opendata-health-snapshot"] = handle_health_snapshot
 #
 # Set ``META_DATA_MCP_PRELOAD=*`` to restore the legacy behavior of
 # loading every registered plugin at startup.
-
-# Module names that should never be loaded as data plugins.
-_NON_PLUGIN_MODULES: frozenset[str] = frozenset(
-    {
-        "__template__",
-        "meta_data_mcp",  # this file
-        "meta_data_mcp_all",  # legacy aggregator (removed but defensively skipped)
-    }
-)
-
-# Backwards-compatible name aliases for the activation tracking state.
-# All live on ``_state`` — these names are kept for legacy access paths
-# (e.g. tests that still reach in by name). New code should prefer
-# ``_state.active_providers`` etc.
-_active_providers = _state.active_providers
-_owner_by_tool = _state.owner_by_tool
-
-
-def _merge_plugin(
-    module: Any,
-    plugin_id: str,
-    owner_by_tool: dict[str, str] | None = None,
-) -> int:
-    """Merge a plugin module's TOOLS/TOOLS_HANDLERS into the server.
-
-    ``owner_by_tool`` defaults to the module-level tracker. Callers that
-    want collision detection only (without committing to the global
-    tracker) can supply their own dict.
-
-    Returns the number of tools actually added (after collision filtering).
-    """
-    if owner_by_tool is None:
-        owner_by_tool = _owner_by_tool
-
-    plugin_tools = getattr(module, "TOOLS", None) or []
-    plugin_handlers = getattr(module, "TOOLS_HANDLERS", None) or {}
-
-    added = 0
-    for tool in plugin_tools:
-        name = tool.name
-        if name in owner_by_tool:
-            log.warning(
-                "Tool name collision: '%s' already registered by '%s'; "
-                "skipping duplicate from '%s'.",
-                name,
-                owner_by_tool[name],
-                plugin_id,
-            )
-            continue
-        handler = plugin_handlers.get(name)
-        if handler is None:
-            log.warning(
-                "Plugin '%s' lists tool '%s' but has no handler; skipping.",
-                plugin_id,
-                name,
-            )
-            continue
-        TOOLS.append(tool)
-        TOOLS_HANDLERS[name] = handler
-        owner_by_tool[name] = plugin_id
-        added += 1
-    return added
-
-
-def _resolve_provider_id(provider_id: str) -> str | None:
-    """Find a provider id in the static or dynamic registry.
-
-    Accepts the canonical underscore form (``us_data_gov``) or the
-    hyphenated server-name form (``us-data-gov``). Returns the canonical
-    id when found, or ``None`` when no match exists.
-    """
-    needle_underscore = provider_id.replace("-", "_")
-    needle_hyphen = provider_id.replace("_", "-")
-    for entry in REGISTRY:
-        if entry.id in (needle_underscore, provider_id):
-            return entry.id
-        if entry.server_name in (needle_hyphen, provider_id):
-            return entry.id
-    return None
-
-
-async def _notify_tools_changed() -> None:
-    """Best-effort: ask the running session to refresh its tool list.
-
-    Silent on any failure — the activation/deactivation already happened
-    in our local state; failing to notify just means the client will see
-    the new state on its next ``tools/list`` poll.
-    """
-    if _state.server is None:
-        return
-    try:
-        ctx = _state.server.request_context
-        await ctx.session.send_tool_list_changed()
-    except Exception as exc:  # noqa: BLE001 — notification is best-effort
-        log.debug("tools/list_changed notification skipped: %s", exc)
-
-
-def _activate_provider(provider_id: str) -> dict[str, Any]:
-    """Import a plugin module and merge its tools into the running server.
-
-    Returns a status report dict. Idempotent — repeated activation of an
-    already-active provider returns ``status: already_active``.
-    """
-    canonical = _resolve_provider_id(provider_id)
-    if canonical is None:
-        return {
-            "status": "error",
-            "provider_id": provider_id,
-            "error": "unknown provider id — not in registry",
-        }
-    if canonical in _active_providers:
-        return {
-            "status": "already_active",
-            "provider_id": canonical,
-            "tools": sorted(
-                name for name, owner in _owner_by_tool.items() if owner == canonical
-            ),
-        }
-    if canonical in _NON_PLUGIN_MODULES:
-        return {
-            "status": "error",
-            "provider_id": canonical,
-            "error": "this id is not a data plugin",
-        }
-    try:
-        module = importlib.import_module(f"meta_data_mcp.providers.{canonical}")
-    except Exception as exc:  # noqa: BLE001 — surface any import error
-        return {
-            "status": "error",
-            "provider_id": canonical,
-            "error": f"plugin failed to import: {exc}",
-        }
-    added = _merge_plugin(module, canonical)
-    if added == 0 and not any(o == canonical for o in _owner_by_tool.values()):
-        return {
-            "status": "error",
-            "provider_id": canonical,
-            "error": "plugin imported but exposed no usable tools",
-        }
-    _active_providers.add(canonical)
-    return {
-        "status": "activated",
-        "provider_id": canonical,
-        "tools_added": added,
-        "tools": sorted(
-            name for name, owner in _owner_by_tool.items() if owner == canonical
-        ),
-    }
-
-
-def _deactivate_provider(provider_id: str) -> dict[str, Any]:
-    """Remove a plugin's tools from the running server's advertised list.
-
-    The Python module remains imported (Python caches modules in
-    ``sys.modules``); this only removes the tools from ``TOOLS`` and
-    ``TOOLS_HANDLERS`` so they no longer show up in ``tools/list``.
-    """
-    canonical = _resolve_provider_id(provider_id) or provider_id
-    if canonical not in _active_providers:
-        return {
-            "status": "not_active",
-            "provider_id": canonical,
-        }
-    removed = sorted(
-        name for name, owner in list(_owner_by_tool.items()) if owner == canonical
-    )
-    for name in removed:
-        _owner_by_tool.pop(name, None)
-        TOOLS_HANDLERS.pop(name, None)
-    TOOLS[:] = [t for t in TOOLS if t.name not in set(removed)]
-    _active_providers.discard(canonical)
-    return {
-        "status": "deactivated",
-        "provider_id": canonical,
-        "tools_removed": len(removed),
-        "tools": removed,
-    }
-
-
-def _load_all_plugins() -> tuple[int, int]:
-    """Import the plugins selected by ``META_DATA_MCP_PRELOAD`` at startup.
-
-    Reads the comma-separated env var. Default (unset or empty) loads no
-    plugins — only meta tools are advertised. Special value ``*`` loads
-    every plugin (legacy behavior, useful when the client can handle a
-    large tool catalog). Individual ids may be either underscore or
-    hyphen form.
-
-    Returns (plugins_loaded, tools_added).
-    """
-    import os
-
-    raw = os.getenv("META_DATA_MCP_PRELOAD", "").strip()
-    # Initialize the owner-map with the meta server's own tool names.
-    for name in TOOLS_HANDLERS:
-        _owner_by_tool.setdefault(name, "meta")
-
-    if not raw:
-        return (0, 0)
-
-    if raw == "*":
-        target_ids = [e.id for e in REGISTRY if e.id not in _NON_PLUGIN_MODULES]
-    else:
-        target_ids = []
-        for token in raw.split(","):
-            token = token.strip()
-            if not token:
-                continue
-            canonical = _resolve_provider_id(token)
-            if canonical is None:
-                log.warning("META_DATA_MCP_PRELOAD: unknown plugin id '%s'", token)
-                continue
-            if canonical in _NON_PLUGIN_MODULES:
-                continue
-            target_ids.append(canonical)
-
-    loaded = 0
-    added = 0
-    for pid in target_ids:
-        try:
-            module = importlib.import_module(f"meta_data_mcp.providers.{pid}")
-        except ImportError as exc:
-            log.warning("Plugin '%s' could not be imported: %s", pid, exc)
-            continue
-        except Exception as exc:  # noqa: BLE001 — one broken plugin must not block the rest
-            log.warning("Plugin '%s' raised during import: %s", pid, exc)
-            continue
-        before = len(TOOLS)
-        added += _merge_plugin(module, pid)
-        if len(TOOLS) > before:
-            _active_providers.add(pid)
-            loaded += 1
-    return loaded, added
+#
+# The implementation lives in meta_data_mcp.discovery.loader (extracted in
+# the v2.1 hygiene pass, architecture review §H2). The names below are
+# re-exported via the top-of-module import block so existing call sites
+# (and the ~30 tests that patch them by full dotted path) keep working
+# unchanged.
 
 
 async def main(transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"):
