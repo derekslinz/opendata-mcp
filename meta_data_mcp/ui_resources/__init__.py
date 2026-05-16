@@ -25,19 +25,57 @@ from typing import Callable
 from mcp import types
 from pydantic import AnyUrl
 
+from .app_discovery_v1 import URI as _APP_DISCOVERY_URI
 from .app_discovery_v1 import register as _register_discovery_app
+from .app_entity_graph_v1 import URI as _APP_ENTITY_GRAPH_URI
 from .app_entity_graph_v1 import register as _register_entity_graph_app
+from .app_molecular_v1 import URI as _APP_MOLECULAR_URI
 from .app_molecular_v1 import register as _register_molecular_app
+from .app_museum_v1 import URI as _APP_MUSEUM_URI
 from .app_museum_v1 import register as _register_museum_app
+from .app_network_topology_v1 import URI as _APP_NETWORK_TOPOLOGY_URI
 from .app_network_topology_v1 import register as _register_network_topology_app
+from .app_news_tone_v1 import URI as _APP_NEWS_TONE_URI
 from .app_news_tone_v1 import register as _register_news_tone_app
+from .app_trade_flows_v1 import URI as _APP_TRADE_FLOWS_URI
 from .app_trade_flows_v1 import register as _register_trade_flows_app
+from .app_vulnerability_v1 import URI as _APP_VULNERABILITY_URI
 from .app_vulnerability_v1 import register as _register_vulnerability_app
+from .shape_geofeatures_v1 import URI as _SHAPE_GEOFEATURES_URI
 from .shape_geofeatures_v1 import register as _register_geofeatures
+from .shape_records_v1 import URI as _SHAPE_RECORDS_URI
 from .shape_records_v1 import register as _register_records
+from .shape_timeseries_v1 import URI as _SHAPE_TIMESERIES_URI
 from .shape_timeseries_v1 import register as _register_timeseries
 
-__all__ = ["register_apps", "register_shapes"]
+__all__ = ["URIS", "register_apps", "register_shapes"]
+
+
+# Canonical catalog of every ui:// resource this package ships. Surfaced as
+# a flat mapping so callers that need to introspect the full set (tests,
+# bundle-budget checks, future tooling like an MCP-Apps lint pass) don't
+# have to re-walk every submodule. Architecture review §M1 (v2.1 hygiene
+# pass).
+#
+# Keys are stable identifiers — "<class>/<name>/<version>" — chosen to
+# match the dict keys returned by ``register_shapes`` and ``register_apps``
+# so the three surfaces stay aligned. Adding a new shape or app means
+# adding to BOTH this mapping AND the corresponding register_* function.
+# tests/test_ui_resources_catalog.py pins the alignment so a half-wired
+# addition fails CI.
+URIS: dict[str, str] = {
+    "shape/timeseries/v1": _SHAPE_TIMESERIES_URI,
+    "shape/geofeatures/v1": _SHAPE_GEOFEATURES_URI,
+    "shape/records/v1": _SHAPE_RECORDS_URI,
+    "app/discovery/v1": _APP_DISCOVERY_URI,
+    "app/trade-flows/v1": _APP_TRADE_FLOWS_URI,
+    "app/vulnerability/v1": _APP_VULNERABILITY_URI,
+    "app/entity-graph/v1": _APP_ENTITY_GRAPH_URI,
+    "app/museum/v1": _APP_MUSEUM_URI,
+    "app/molecular/v1": _APP_MOLECULAR_URI,
+    "app/news-tone/v1": _APP_NEWS_TONE_URI,
+    "app/network-topology/v1": _APP_NETWORK_TOPOLOGY_URI,
+}
 
 
 def register_shapes(
