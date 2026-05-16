@@ -12,6 +12,7 @@ from typing import Any, Callable, Sequence
 import httpx
 from mcp import types
 from mcp.server import Server
+from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
 
 from meta_data_mcp import __version__
@@ -747,17 +748,49 @@ def create_mcp_server(
     async def handle_list_resources() -> list[types.Resource]:
         return _resources
 
-    # register resources handlers
-    # TODO: handle better the resource handler we probably dont want to have a handler per URI...
+    # Build a fast (URI → mimeType) lookup once so the read handler can
+    # propagate the registered MIME without rescanning ``_resources`` on
+    # every call. Falls back to ``text/plain`` only when a resource was
+    # registered without a ``mimeType`` (defensive — every codepath in
+    # this repo sets one explicitly).
+    _mime_by_uri: dict[str, str] = {
+        str(r.uri): (r.mimeType or "text/plain") for r in _resources
+    }
+
     @server.read_resource()
-    async def handle_read_resource(resource_uri: AnyUrl) -> str | bytes:
+    async def handle_read_resource(
+        resource_uri: AnyUrl,
+    ) -> list[ReadResourceContents]:
+        """Return resource contents with the registered MIME type attached.
+
+        The MCP SDK's ``read_resource`` decorator wraps a bare ``str`` /
+        ``bytes`` return into a content envelope, but it defaults the
+        envelope's ``mimeType`` to ``text/plain`` (or
+        ``application/octet-stream`` for bytes) — completely independent
+        of whatever the registered ``Resource.mimeType`` declares. The
+        host reads the envelope's ``mimeType``, not the catalog entry's,
+        when deciding how to render. An HTML ``ui://`` resource
+        registered as ``text/html`` was therefore being served as
+        ``text/plain`` on read, and the host refused to mount it.
+
+        Returning ``Iterable[ReadResourceContents]`` lets us pin the
+        correct MIME and also silences the SDK's deprecation warning
+        about returning bare strings.
+
+        See:
+        - ``register_ui_resource`` for where each resource declares its MIME
+        - the SDK ``read_resource`` decorator (``mcp.server.lowlevel``)
+        - tests/test_ui_resource.py::test_read_resource_returns_text_html_mime
+        """
         resource_key = str(resource_uri)
 
         if resource_key not in _resources_handlers:
             log.error(f"Resource {resource_uri} not found")
             raise AttributeError(f"Resource {resource_uri} not found")
 
-        return _resources_handlers[resource_key](resource_uri)
+        payload = _resources_handlers[resource_key](resource_uri)
+        mime = _mime_by_uri.get(resource_key, "text/plain")
+        return [ReadResourceContents(content=payload, mime_type=mime)]
 
     # register resource templates
     @server.list_resource_templates()

@@ -356,3 +356,104 @@ def test_discovery_provider_module_imports_without_crashing():
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+# ---------------------------------------------------------------------------
+# Regression: ``read_resource`` MUST propagate the registered Resource's
+# mimeType to the wire-level content envelope.
+#
+# The MCP SDK's ``@server.read_resource()`` decorator wraps a bare ``str`` /
+# ``bytes`` return into a ``TextResourceContents`` / ``BlobResourceContents``
+# envelope, but it defaults the envelope's ``mimeType`` to ``"text/plain"`` /
+# ``"application/octet-stream"`` — *independent* of whatever ``Resource``
+# was declared in the catalog. A host reads the envelope's mimeType (not
+# the catalog entry's) when deciding how to render. Phase 5 surfaced this
+# in the wild: ``ui://`` resources catalogued as ``text/html`` were being
+# served as ``text/plain``, and the host refused to mount them as iframes.
+#
+# ``create_mcp_server`` now returns ``Iterable[ReadResourceContents]`` with
+# the per-resource ``mime_type`` plumbed through. This test pins that.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_read_resource_returns_text_html_mime_for_ui_resource():
+    """A ``ui://`` resource registered with ``mimeType='text/html'`` MUST
+    serve as ``text/html`` on the wire. If this drifts back to
+    ``text/plain``, MCP Apps hosts silently refuse to render the bundle."""
+    import asyncio  # noqa: F401 — anyio_backend uses asyncio
+
+    resources, handlers = [], {}
+    uri = register_ui_resource(
+        name="phase5/regression",
+        html="<!doctype html><body>regression</body>",
+        description="x",
+        resources=resources,
+        resources_handlers=handlers,
+    )
+    server = create_mcp_server(
+        "test-mime-regression",
+        resources=resources,
+        resources_handlers=handlers,
+        tools=[],
+        tools_handlers={},
+    )
+
+    req_type = types.ReadResourceRequest
+    handler = server.request_handlers[req_type]
+    req = req_type(
+        method="resources/read",
+        params=types.ReadResourceRequestParams(uri=AnyUrl(uri)),
+    )
+    server_result = await handler(req)
+
+    # server_result is wrapped in ServerResult — peel one layer.
+    inner = server_result.root
+    assert isinstance(inner, types.ReadResourceResult)
+    assert len(inner.contents) == 1, (
+        f"expected exactly one content envelope, got {len(inner.contents)}"
+    )
+
+    content = inner.contents[0]
+    assert isinstance(content, types.TextResourceContents)
+    assert content.mimeType == "text/html", (
+        f"ui:// resource served as {content.mimeType!r}, expected 'text/html'. "
+        "The MCP Apps host reads this MIME (not the catalog entry's) when "
+        "deciding whether to mount the bundle in an iframe."
+    )
+    assert content.text == "<!doctype html><body>regression</body>"
+
+
+@pytest.mark.anyio
+async def test_read_resource_propagates_explicit_non_html_mime():
+    """A resource registered with a non-default MIME (e.g. application/json
+    for the registry resource) is served with that MIME, not silently
+    downgraded to text/plain. Counterpart to the text/html regression —
+    ensures the fix didn't hardwire text/html for all UI resources."""
+    resources, handlers = [], {}
+    json_uri = "registry://test/all"
+    resources.append(
+        types.Resource(
+            uri=AnyUrl(json_uri),
+            name="all",
+            description="json catalog",
+            mimeType="application/json",
+        )
+    )
+    handlers[json_uri] = lambda _u: '{"hello": "world"}'
+
+    server = create_mcp_server(
+        "test-non-html-mime",
+        resources=resources,
+        resources_handlers=handlers,
+        tools=[],
+        tools_handlers={},
+    )
+    handler = server.request_handlers[types.ReadResourceRequest]
+    req = types.ReadResourceRequest(
+        method="resources/read",
+        params=types.ReadResourceRequestParams(uri=AnyUrl(json_uri)),
+    )
+    server_result = await handler(req)
+    content = server_result.root.contents[0]
+    assert content.mimeType == "application/json"
