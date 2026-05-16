@@ -629,17 +629,10 @@ async def test_main_function_creates_server():
 # ---------------------------------------------------------------------------
 
 
-from meta_data_mcp.ui_resources.app_discovery_v1 import URI as _DISCOVERY_URI  # noqa: E402
-
-
-_DISCOVERY_BOUND_TOOLS = (
-    "opendata-find-providers",
-    "opendata-list-domains",
-    "opendata-list-regions",
-    "opendata-list-active-providers",
-    "opendata-activate-provider",
-    "opendata-health-snapshot",
+from meta_data_mcp.providers.meta_data_mcp import (  # noqa: E402
+    DISCOVERY_TOOL_NAMES as _DISCOVERY_BOUND_TOOLS,
 )
+from meta_data_mcp.ui_resources.app_discovery_v1 import URI as _DISCOVERY_URI  # noqa: E402
 
 
 @pytest.mark.parametrize("tool_name", _DISCOVERY_BOUND_TOOLS)
@@ -678,7 +671,14 @@ async def test_health_snapshot_default_returns_full_registry():
     result = await handle_health_snapshot({})
     payload = json.loads(result[0].text)
     assert "snapshot" in payload
+    # Two clock fields are intentional: ``generated_at`` is wall-clock for
+    # display, ``generated_at_monotonic`` is the reference clock for
+    # ``last_update_ts`` (also monotonic) so consumers can compute staleness
+    # without mixing clock domains. See handle_health_snapshot's docstring.
     assert "generated_at" in payload
+    assert "generated_at_monotonic" in payload
+    assert isinstance(payload["generated_at"], float)
+    assert isinstance(payload["generated_at_monotonic"], float)
     snap = payload["snapshot"]
     # The registry has tens of providers; the snapshot must cover them all.
     registry_ids = {p.id for p in iter_registry()}
@@ -738,6 +738,26 @@ async def test_find_providers_includes_breakdowns_per_provider():
         assert non_health, (
             "expected at least one non-health scorer to appear in breakdown"
         )
+
+
+@pytest.mark.anyio
+async def test_find_providers_omits_breakdowns_when_no_query():
+    """Phase 3 refinement: when the caller doesn't supply a query, every
+    passing provider is assigned a flat 1.0 score with no per-strategy
+    contribution. Returning an all-zero breakdown would lie ("every
+    scorer rated this provider 0%"), so the handler omits ``breakdowns``
+    entirely. The discovery app's row renderer treats absence as 'no
+    per-strategy data' rather than drawing zero-height bars."""
+    result = await handle_find_providers({"limit": 3})
+    payload = json.loads(result[0].text)
+    assert "breakdowns" not in payload, (
+        "breakdowns must be absent when no query was supplied; got "
+        f"{payload.get('breakdowns')!r}"
+    )
+    # Empty string query / whitespace-only query should be treated the same.
+    result_blank = await handle_find_providers({"query": "   ", "limit": 3})
+    payload_blank = json.loads(result_blank.__getitem__(0).text)
+    assert "breakdowns" not in payload_blank
 
 
 def test_discovery_app_resource_registered_at_boot():

@@ -30,12 +30,21 @@ from meta_data_mcp.utils import register_ui_resource
 
 URI: str = "ui://meta-data-mcp/app/discovery/v1"
 
+# Surfaced in the host's resource catalog. Documents the bidirectional
+# postMessage protocol so a host integrator can wire app↔host without
+# reading the bundle source. The MCP Apps spec hasn't ratified an
+# app→host envelope yet; this string is the contract Phase 5 apps will
+# inherit.
 _DESCRIPTION = (
     "Discovery app: faceted filter, ranked provider list with score "
     "breakdown and live health badges, click-to-activate. Wraps "
     "opendata-find-providers / list-domains / list-regions / "
     "list-active-providers / activate-provider / health-snapshot. "
-    "Dependency-free vanilla JS."
+    "Dependency-free vanilla JS. "
+    "postMessage protocol — "
+    "host→app: {type: 'tool_result'|'render', id?, tool?, payload}; "
+    "app→host: {type: 'tool_call', id, name, arguments} (Phase 3 invention; "
+    "the spec hasn't ratified an app→host shape yet)."
 )
 
 _HTML: str = (files("meta_data_mcp.ui_resources") / "app_discovery_v1.html").read_text(

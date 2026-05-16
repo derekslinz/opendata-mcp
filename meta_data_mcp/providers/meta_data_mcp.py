@@ -44,6 +44,22 @@ from meta_data_mcp.ui_resources.app_discovery_v1 import URI as DISCOVERY_APP_URI
 
 log = logging.getLogger(__name__)
 
+# The set of meta tools bound to the discovery app. Surfaced as a module
+# constant so both the production wiring (each ``TOOLS.append`` below sets
+# ``_meta`` against ``DISCOVERY_APP_URI``) and the test that pins the
+# binding read from a single source of truth. Adding a 7th discovery tool
+# means adding to this list AND adding the ``_meta=`` kwarg — the test
+# (tests/providers/test_meta_data_mcp.py::test_discovery_tool_binds_to_discovery_app)
+# enforces consistency.
+DISCOVERY_TOOL_NAMES: tuple[str, ...] = (
+    "opendata-find-providers",
+    "opendata-list-domains",
+    "opendata-list-regions",
+    "opendata-list-active-providers",
+    "opendata-activate-provider",
+    "opendata-health-snapshot",
+)
+
 # Module-level singleton — cache survives across tool calls within the same server process.
 _engine = RoutingEngine()
 
@@ -154,34 +170,47 @@ async def handle_find_providers(
     Uses sophisticated multi-criteria routing for intelligent provider ranking.
     Falls back to original token-based search if needed.
 
-    Phase 3: routes with ``explain=True`` and surfaces a ``breakdowns`` field
-    in the payload (``{provider_id: {strategy: score}}``) so the discovery
-    app can render the per-strategy bars in each row. LLM consumers may
-    ignore the extra field.
+    Phase 3: when the caller supplies a query, routes with ``explain=True``
+    and surfaces a ``breakdowns`` field in the payload
+    (``{provider_id: {strategy: score}}``) so the discovery app can render
+    the per-strategy bars in each row. LLM consumers may ignore the extra
+    field.
+
+    When there is no query, the engine assigns every passing provider a
+    flat 1.0 score and the breakdown would be all-zeros for every
+    strategy — a misleading "every scorer rated this provider 0%" reading
+    that contradicts the actual baseline-healthy semantics. In that case
+    we omit ``breakdowns`` entirely; the discovery app's row renderer
+    treats missing breakdowns as "no per-strategy data" rather than
+    drawing zero-height bars.
     """
     try:
         params = FindProvidersParams(**(arguments or {}))
 
+        has_query = bool(params.query and params.query.strip())
         scored_results = await _engine.route(
             query=params.query,
             domain=params.domain,
             region=params.region,
             limit=params.limit,
-            explain=True,
+            explain=has_query,
         )
 
         # Extract entries for compatibility
         matches = [result.entry for result in scored_results]
-        breakdowns: dict[str, dict[str, float]] = {}
-        for result in scored_results:
-            if result.breakdown:
-                breakdowns[result.entry.id] = dict(result.breakdown)
 
         payload: dict[str, Any] = {
             "count": len(matches),
             "providers": [entry.to_dict() for entry in matches],
-            "breakdowns": breakdowns,
         }
+        # Only attach breakdowns when there was a query to explain. See the
+        # docstring above for the rationale.
+        if has_query:
+            breakdowns: dict[str, dict[str, float]] = {}
+            for result in scored_results:
+                if result.breakdown:
+                    breakdowns[result.entry.id] = dict(result.breakdown)
+            payload["breakdowns"] = breakdowns
 
         # When the user supplied a query but nothing matched, hand the LLM
         # the next move: it can autonomously create a new plugin for this
@@ -1425,17 +1454,28 @@ async def handle_health_snapshot(
             "<provider_id>": {
               "score": <float in [0.0, 1.0]>,
               "failure_mass": <float>,
-              "last_update_ts": <float | null>
+              "last_update_ts": <monotonic seconds | null>
             },
             ...
           },
-          "generated_at": <unix epoch seconds>
+          "generated_at":           <wall-clock unix epoch seconds>,
+          "generated_at_monotonic": <monotonic seconds>
         }
 
     The ``score`` field is what :class:`HealthScorer` would return for
     that provider at the same instant — so the UI badge and the routing
     score never disagree. See ``health.snapshot()`` for the underlying
     helper.
+
+    Two clock fields are exposed because they live in different domains.
+    ``last_update_ts`` is in the monotonic clock the health module uses
+    internally (never decreases, no wall-clock meaning); ``generated_at``
+    is wall-clock seconds suitable for display ("snapshot taken at X");
+    ``generated_at_monotonic`` is the matching reference clock so a
+    consumer that wants to compute staleness ("how long ago was this
+    provider's last update?") can subtract ``last_update_ts`` from it
+    correctly. Mixing wall-clock and monotonic would produce nonsense
+    durations.
     """
     try:
         params = HealthSnapshotParams(**(arguments or {}))
@@ -1450,6 +1490,7 @@ async def handle_health_snapshot(
         payload = {
             "snapshot": snap,
             "generated_at": time.time(),
+            "generated_at_monotonic": time.monotonic(),
         }
         return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
