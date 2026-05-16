@@ -62,9 +62,13 @@ def test_http_get_cache_hit_and_expiry(monkeypatch):
 
 
 def test_http_get_custom_ttl_does_not_change_default_ttl(monkeypatch):
+    # _CACHE_DEFAULT_TTL lives on the transport module after the v2.1
+    # utils split; patch it where ``http_get`` reads it.
+    from meta_data_mcp import transport
+
     now = 200.0
     monkeypatch.setattr(utils.time, "monotonic", lambda: now)
-    monkeypatch.setattr(utils, "_CACHE_DEFAULT_TTL", 5.0)
+    monkeypatch.setattr(transport, "_CACHE_DEFAULT_TTL", 5.0)
     utils._response_cache.clear()
 
     resp_a1 = _response("a1")
