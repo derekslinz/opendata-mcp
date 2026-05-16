@@ -49,7 +49,57 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          pytest tests/ --ignore=tests/live
+          pytest tests/ --ignore=tests/live --ignore=tests/smoke
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-smoke-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-smoke-
+
+      # Playwright caches its browser binaries here. Restoring the cache
+      # turns the ~30s chromium download into a ~2s tar extract on cache hit.
+      # Key on the playwright lockfile pin so a version bump busts it.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies (smoke group)
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv sync --locked --group smoke
+
+      - name: Install Chromium for Playwright
+        run: |
+          source .venv/bin/activate
+          playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        run: |
+          source .venv/bin/activate
+          pytest -m smoke tests/smoke/ -v
 
   lint:
     runs-on: ubuntu-latest
@@ -110,7 +160,7 @@ jobs:
         run: uv lock --check
 
   build:
-    needs: [test, lint, lockfile]
+    needs: [test, lint, lockfile, smoke]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
