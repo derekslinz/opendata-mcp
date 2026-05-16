@@ -627,7 +627,7 @@ def register_ui_resource(
     resources: list[types.Resource],
     resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]],
     server_name: str = "meta-data-mcp",
-    mime: str = "text/html",
+    mime: str = "text/html;profile=mcp-app",
 ) -> str:
     """Register a ``ui://<server_name>/<name>`` resource backed by static HTML.
 
@@ -661,7 +661,13 @@ def register_ui_resource(
         server_name: Authority component of the URI. Defaults to
             ``"meta-data-mcp"``; override per server if reusing this helper
             from outside the meta server.
-        mime: Content-Type of the resource. Defaults to ``"text/html"``.
+        mime: Content-Type of the resource. Defaults to
+            ``"text/html;profile=mcp-app"`` — the MCP Apps standard MIME
+            type. Hosts use the ``;profile=mcp-app`` parameter to
+            distinguish renderable MCP-UI bundles from arbitrary HTML;
+            without it they reject the resource with
+            ``"Unsupported UI resource content format"``. See
+            https://mcpui.dev/guide/protocol-details.html.
 
     Returns:
         The fully-qualified ``ui://`` URI as a string, suitable for passing

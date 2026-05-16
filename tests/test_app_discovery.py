@@ -44,7 +44,11 @@ def test_register_apps_registers_canonical_resource_metadata():
     resources, handlers = _fresh_state()
     register_apps(resources, handlers)
     res = next(r for r in resources if str(r.uri) == DISCOVERY_URI)
-    assert res.mimeType == "text/html"
+    # MCP Apps requires the ``;profile=mcp-app`` parameter — without it
+    # hosts reject the resource as "Unsupported UI resource content
+    # format". See tests/test_ui_resource.py for the regression that
+    # pins this end-to-end through the read_resource envelope.
+    assert res.mimeType == "text/html;profile=mcp-app"
     assert res.name == "app/discovery/v1"
     # Description should signal that this is a discovery/search panel.
     assert "discovery" in res.description.lower()

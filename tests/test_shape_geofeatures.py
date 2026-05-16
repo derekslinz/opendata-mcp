@@ -43,7 +43,9 @@ def test_register_shapes_registers_canonical_resource_metadata():
     resources, handlers = _fresh_state()
     register_shapes(resources, handlers)
     res = next(r for r in resources if str(r.uri) == GEOFEATURES_URI)
-    assert res.mimeType == "text/html"
+    # MCP Apps requires the ``;profile=mcp-app`` parameter. See
+    # tests/test_ui_resource.py for the end-to-end regression.
+    assert res.mimeType == "text/html;profile=mcp-app"
     assert res.name == "shape/geofeatures/v1"
     # The description is what surfaces in a host's resource catalog;
     # make sure it conveys what the bundle is.
