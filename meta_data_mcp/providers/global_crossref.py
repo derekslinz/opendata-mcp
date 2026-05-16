@@ -32,7 +32,12 @@ from pydantic import BaseModel, Field
 
 from meta_data_mcp.ui_resources.app_entity_graph_v1 import URI as ENTITY_GRAPH_URI
 from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
-from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
+from meta_data_mcp.utils import (
+    http_get,
+    serialize_for_llm,
+    to_entity_graph_text,
+    to_records_text,
+)
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -434,7 +439,7 @@ async def handle_crossref_works_by_author(
         params = CrossrefWorksByAuthorParams(**arguments)
         data = fetch_crossref_works_by_author(params)
         payload = _crossref_works_by_author_to_entity_graph_payload(data, params.author)
-        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+        return [types.TextContent(type="text", text=to_entity_graph_text(payload))]
     except Exception as e:
         log.error(f"Error searching Crossref works by author: {e}")
         raise

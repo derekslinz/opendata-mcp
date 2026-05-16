@@ -5,6 +5,7 @@ import pytest
 
 from meta_data_mcp.utils import (
     MAX_RESPONSE_CHARS,
+    to_entity_graph_text,
     to_geofeatures_text,
     to_json_text,
     to_records_text,
@@ -150,5 +151,52 @@ def test_to_records_text_falls_back_to_json_text_for_non_dict_payload():
     the generic truncator rather than crashing."""
     text = to_records_text([1, 2, 3] * 1000, max_chars=50)
     assert len(text) <= 50
+    parsed = json.loads(text)
+    assert parsed["truncated"] is True
+
+
+def test_to_entity_graph_text_passes_through_small_payloads_unchanged():
+    payload = {
+        "nodes": [
+            {"id": "a", "label": "A", "type": "author"},
+            {"id": "b", "label": "B", "type": "author"},
+        ],
+        "edges": [{"source": "a", "target": "b", "label": "coauthor"}],
+    }
+    parsed = json.loads(to_entity_graph_text(payload))
+    assert parsed["nodes"] == payload["nodes"]
+    assert parsed["edges"] == payload["edges"]
+
+
+def test_to_entity_graph_text_trims_nodes_and_filters_orphan_edges():
+    """Large entity-graph payloads must trim ``nodes`` to a prefix and
+    drop any ``edges`` referencing dropped nodes — otherwise the bundle
+    would draw edges into thin air."""
+    payload = {
+        "nodes": [
+            {"id": f"n{i}", "label": f"node-{i}", "type": "author", "attrs": {"x": "y" * 50}}
+            for i in range(500)
+        ],
+        "edges": [{"source": f"n{i}", "target": f"n{i + 1}"} for i in range(499)],
+    }
+
+    text = to_entity_graph_text(payload, max_chars=MAX_RESPONSE_CHARS)
+
+    assert len(text) <= MAX_RESPONSE_CHARS
+    bounded = json.loads(text)
+    assert isinstance(bounded["nodes"], list)
+    assert 0 < len(bounded["nodes"]) < len(payload["nodes"])
+    kept_ids = {n["id"] for n in bounded["nodes"]}
+    # Every surviving edge must reference only surviving nodes.
+    for edge in bounded["edges"]:
+        assert edge["source"] in kept_ids
+        assert edge["target"] in kept_ids
+
+
+def test_to_entity_graph_text_falls_back_to_json_text_when_no_nodes_list():
+    """If ``nodes`` is missing or not a list, defer to the generic
+    truncator rather than crashing."""
+    text = to_entity_graph_text({"something": "x" * 50000}, max_chars=200)
+    assert len(text) <= 200
     parsed = json.loads(text)
     assert parsed["truncated"] is True

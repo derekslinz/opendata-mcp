@@ -35,7 +35,7 @@ import mcp.types as types
 from pydantic import BaseModel, Field
 
 from meta_data_mcp.ui_resources.app_entity_graph_v1 import URI as ENTITY_GRAPH_URI
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_entity_graph_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -250,7 +250,7 @@ async def handle_openalex_search_works(
         params = OpenAlexSearchWorksParams(**(arguments or {}))
         data = fetch_openalex_search_works(params)
         payload = _openalex_works_to_entity_graph_payload(data)
-        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+        return [types.TextContent(type="text", text=to_entity_graph_text(payload))]
     except Exception as e:
         log.error(f"Error searching OpenAlex works: {e}")
         raise

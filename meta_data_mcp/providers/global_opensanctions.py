@@ -27,6 +27,7 @@ from meta_data_mcp.utils import (
     http_get,
     run_server,
     serialize_for_llm,
+    to_entity_graph_text,
 )
 
 log = logging.getLogger(__name__)
@@ -243,7 +244,7 @@ async def handle_opensanctions_search(
     params = OpenSanctionsSearchParams.model_validate(arguments or {})
     data = fetch_opensanctions_search(params)
     payload = _opensanctions_search_to_entity_graph_payload(data)
-    return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+    return [types.TextContent(type="text", text=to_entity_graph_text(payload))]
 
 
 TOOLS.append(
