@@ -78,7 +78,7 @@ def _socrata_views_to_shape_payload(data: Any) -> dict:
             continue
         owner = view.get("owner") or {}
         owner_name = (
-            owner.get("displayName") or owner.get("screenName")
+            (owner.get("displayName") or owner.get("screenName"))
             if isinstance(owner, dict)
             else None
         )

@@ -92,7 +92,7 @@ def _datagov_search_to_shape_payload(result: dict) -> dict:
             continue
         org = pkg.get("organization") or {}
         org_name = (
-            org.get("name") or org.get("title") if isinstance(org, dict) else None
+            (org.get("name") or org.get("title")) if isinstance(org, dict) else None
         )
         desc = pkg.get("description") or ""
         if isinstance(desc, str) and len(desc) > _MAX_DESC_CHARS:

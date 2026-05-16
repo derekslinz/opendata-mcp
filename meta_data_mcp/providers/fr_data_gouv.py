@@ -105,7 +105,7 @@ def _udata_search_to_shape_payload(data: dict) -> dict:
             continue
         org = ds.get("organization") or {}
         org_name = (
-            org.get("name") or org.get("acronym") if isinstance(org, dict) else None
+            (org.get("name") or org.get("acronym")) if isinstance(org, dict) else None
         )
         tags = ds.get("tags") or []
         if isinstance(tags, list):
