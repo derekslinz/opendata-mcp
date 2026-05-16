@@ -16,6 +16,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_molecular_v1 import URI as MOLECULAR_APP_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -72,6 +73,13 @@ TOOLS.append(
         name="pubchem-compound",
         description="Fetch chemical compound data from PubChem by name, CID, etc.",
         inputSchema=PubChemCompoundParams.model_json_schema(),
+        # MCP Apps binding: render via the molecular structure app. The
+        # compound endpoint returns CID + properties; the app derives a
+        # /cid/<CID>/SDF?record_type=3d URL for the actual 3D coordinates.
+        # pubchem-substance is intentionally NOT bound: substances are
+        # depositor-supplied records that often lack 3D coordinates, and
+        # the viewer would render an empty canvas.
+        _meta={"ui": {"resourceUri": MOLECULAR_APP_URI}},
     )
 )
 TOOLS_HANDLERS["pubchem-compound"] = handle_pubchem_compound

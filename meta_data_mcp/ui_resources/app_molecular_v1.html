@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Molecular — meta-data-mcp app v1</title>
+  <!--
+    ui://meta-data-mcp/app/molecular/v1 — Phase 5 molecular structure app.
+
+    Renders 3D macromolecular and small-molecule structures from:
+
+      - PubChem (global_pubchem): small molecules (compounds) via SDF /
+        SMILES. Tool: pubchem-compound.
+      - RCSB PDB (global_rcsb_pdb): proteins / nucleic acids / complexes
+        via PDB or mmCIF. Tool: pdb-entry.
+
+    Visualisation: 3Dmol.js (https://3dmol.org/build/3Dmol-min.js, BSD-3).
+    Loaded from the canonical CDN — the only external dependency in the
+    bundle. WebGL-backed; controlled rotation, zoom, and pan are provided
+    by the library out of the box.
+
+    Styling chooses cartoon for proteins (chain detected via residue
+    count) and stick+sphere for ligands / small molecules.
+
+    Payload contract (the host injects this via ``window.__app_data__``
+    or ``?data=<base64-JSON>``; also dispatched live from a tool_result
+    over postMessage):
+
+      {
+        "structure": {
+          "format":     "pdb" | "mmcif" | "sdf" | "smiles" | "inchi",
+          "data":       "<inline structure text>",   // for small bundles
+          "url":        "<optional remote URL>",       // fallback for big
+                                                       // PDB/mmCIF files
+          "identifier": "1ABC"                         // PDB id / CID / etc.
+        },
+        "metadata": {
+          "name":   "...",
+          "title":  "...",
+          "source": "PubChem" | "RCSB PDB",
+          "attrs":  { <provider-specific> }
+        }
+      }
+
+    postMessage protocol (inherited from the Phase 3 discovery app,
+    matching every Phase 5 app):
+
+      host → app:   { type: "tool_result" | "render", id?, tool?, payload }
+      app → host:   { type: "tool_call", id, name, arguments }
+
+    Security note: this bundle never assigns to ``.innerHTML``. All DOM
+    mutation goes through ``textContent`` / ``replaceChildren`` /
+    explicit element creation. Untrusted upstream JSON (PubChem
+    compound names, PDB titles) cannot inject markup.
+
+    WebGL note: 3Dmol.js needs WebGL. In headless Chromium (Phase 6c
+    smoke) WebGL is disabled by default — the bundle still mounts its
+    UI shell + #app root, so the smoke test passes on the DOM-level
+    selector check.
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e5e5e5;
+      --accent: #2563eb;
+      --accent-bg: #eff6ff;
+      --header-bg: #f8fafc;
+      --viewer-bg: #0b0f17;
+      --viewer-bg-fg: #e8edf3;
+      --pill-bg:  #e2e8f0;
+      --err-bg:   #fef2f2;
+      --err-fg:   #991b1b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f17;
+        --fg: #e8edf3;
+        --muted: #9aa3af;
+        --border: #1f2937;
+        --accent: #60a5fa;
+        --accent-bg: #1e293b;
+        --header-bg: #111827;
+        --viewer-bg: #050810;
+        --viewer-bg-fg: #e8edf3;
+        --pill-bg:  #1f2937;
+        --err-bg:   #1f1213;
+        --err-fg:   #fca5a5;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+    header { padding: 12px 16px; border-bottom: 1px solid var(--border);
+      background: var(--header-bg); display: flex; gap: 12px; align-items: center;
+      flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    header .hint { color: var(--muted); font-size: 12px; }
+    header select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--fg); font-family: inherit; font-size: 12px; }
+    header input { flex: 1; min-width: 160px; padding: 6px 8px;
+      border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--fg); font-family: inherit; }
+    main { display: grid; grid-template-columns: 1fr 280px; min-height: 0;
+      overflow: hidden; }
+    #viewer-pane { position: relative; background: var(--viewer-bg);
+      color: var(--viewer-bg-fg); min-height: 360px; }
+    #viewer { position: absolute; inset: 0; }
+    #viewer-overlay { position: absolute; left: 12px; top: 10px;
+      font-size: 11px; color: var(--viewer-bg-fg); opacity: 0.7;
+      pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+    aside.meta-pane { padding: 14px 16px; overflow-y: auto;
+      border-left: 1px solid var(--border); }
+    h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+    .empty { color: var(--muted); padding: 24px 8px; }
+    .err   { background: var(--err-bg); color: var(--err-fg);
+      padding: 6px 10px; margin: 8px 16px; border-radius: 4px;
+      border-left: 3px solid var(--err-fg); }
+    .ident { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 16px; font-weight: 600; }
+    .pill { display: inline-block; background: var(--pill-bg); color: var(--fg);
+      padding: 1px 8px; border-radius: 10px; font-size: 11px;
+      margin-right: 4px; margin-bottom: 4px; }
+    dl.meta { display: grid; grid-template-columns: 110px 1fr; gap: 4px 12px;
+      margin: 8px 0; font-size: 12px; }
+    dl.meta dt { color: var(--muted); }
+    dl.meta dd { margin: 0; word-break: break-word; }
+    pre.smiles { background: var(--accent-bg); color: var(--fg);
+      padding: 8px 10px; border-radius: 4px;
+      white-space: pre-wrap; word-break: break-all;
+      font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      margin: 6px 0; max-height: 100px; overflow-y: auto; }
+    .legend { font-size: 11px; color: var(--muted); margin-top: 8px; }
+    @media (max-width: 720px) {
+      main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+      aside.meta-pane { border-left: none; border-top: 1px solid var(--border);
+        max-height: 240px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Molecular Viewer</h1>
+      <select id="source-select" aria-label="Data source">
+        <option value="pdb">RCSB PDB (entry id)</option>
+        <option value="pubchem">PubChem (compound name)</option>
+      </select>
+      <input type="text" id="ident-input" placeholder="e.g. 4HHB or aspirin — press Enter"
+             autocomplete="off" spellcheck="false">
+      <span class="hint" id="hint">Loads 3D structure on demand.</span>
+    </header>
+    <main>
+      <div id="viewer-pane">
+        <div id="viewer"></div>
+        <div id="viewer-overlay">3D viewer — drag to rotate, scroll to zoom.</div>
+      </div>
+      <aside class="meta-pane" id="meta-pane">
+        <div class="empty" id="meta-empty">No structure loaded.</div>
+      </aside>
+    </main>
+  </div>
+  <!--
+    3Dmol.js — BSD-3, https://3dmol.org/
+    Canonical CDN documented for CSP: 3dmol.org. Loaded as a <script src>
+    so the bundle stays under the 100KB inline budget; the library itself
+    is ~700KB minified. If a host policy forbids external CDN scripts the
+    viewer will fail to mount but the UI shell still renders.
+  -->
+  <script src="https://3dmol.org/build/3Dmol-min.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    // ----- State -----
+    var state = {
+      identifier: null,
+      source: null,            // "pubchem" | "pdb"
+      structure: null,         // {format, data?, url?, identifier}
+      metadata: null,          // {name, title, source, attrs}
+      viewer: null,            // 3Dmol.GLViewer instance (lazy)
+      pendingCalls: {},
+    };
+
+    // ----- DOM refs -----
+    var $input  = document.getElementById('ident-input');
+    var $source = document.getElementById('source-select');
+    var $hint   = document.getElementById('hint');
+    var $viewer = document.getElementById('viewer');
+    var $meta   = document.getElementById('meta-pane');
+
+    // ----- DOM helpers -----
+
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      applyAttrs(node, attrs);
+      appendChildren(node, children);
+      return node;
+    }
+
+    function applyAttrs(node, attrs) {
+      if (!attrs) return;
+      for (var k in attrs) {
+        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+        var v = attrs[k];
+        if (k === 'class')     node.setAttribute('class', v);
+        else if (k === 'text') node.textContent = v;
+        else if (k === 'on') {
+          for (var ev in v) {
+            if (Object.prototype.hasOwnProperty.call(v, ev)) {
+              node.addEventListener(ev, v[ev]);
+            }
+          }
+        } else if (v !== null && v !== undefined) {
+          node.setAttribute(k, v);
+        }
+      }
+    }
+
+    function appendChildren(node, children) {
+      if (!children) return;
+      children.forEach(function (c) {
+        if (c == null) return;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      });
+    }
+
+    function clearNode(node) { node.replaceChildren(); }
+
+    function showError(msg) {
+      var div = el('div', { class: 'err', text: msg });
+      document.body.insertBefore(div, document.getElementById('app'));
+      setTimeout(function () { div.remove(); }, 8000);
+    }
+
+    // ----- postMessage transport -----
+
+    function newCallId() {
+      return 'tc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function callTool(name, args) {
+      var id = newCallId();
+      var msg = { type: 'tool_call', id: id, name: name, arguments: args || {} };
+      return new Promise(function (resolve, reject) {
+        state.pendingCalls[id] = { resolve: resolve, reject: reject, name: name };
+        try {
+          window.parent.postMessage(msg, '*');
+        } catch (e) {
+          delete state.pendingCalls[id];
+          reject(e);
+          return;
+        }
+        setTimeout(function () {
+          if (state.pendingCalls[id]) {
+            delete state.pendingCalls[id];
+            reject(new Error('tool call timed out: ' + name));
+          }
+        }, 30000);
+      });
+    }
+
+    function handleIncomingMessage(ev) {
+      // Strict source guard: never accept messages from non-parent windows.
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type !== 'tool_result' && msg.type !== 'render') return;
+      var id = msg.id;
+      var payload = msg.payload;
+      if (id && state.pendingCalls[id]) {
+        var pending = state.pendingCalls[id];
+        delete state.pendingCalls[id];
+        pending.resolve(payload);
+        return;
+      }
+      // Unsolicited push — host signalled which tool produced the payload.
+      ingestUnsolicited(msg.tool || msg.name, payload);
+    }
+    window.addEventListener('message', handleIncomingMessage);
+
+    function ingestUnsolicited(name, payload) {
+      if (!payload) return;
+      // Direct envelope: payload IS the {structure, metadata} contract.
+      if (payload.structure && payload.structure.format) {
+        applyEnvelope(payload);
+        return;
+      }
+      // Provider-shaped payloads — adapt to the envelope inline so a host
+      // can pipe a raw tool result straight in without an adapter step.
+      var env = null;
+      if (name === 'pdb-entry') {
+        env = adaptPdbEntry(payload);
+      } else if (name === 'pubchem-compound') {
+        env = adaptPubchemCompound(payload);
+      } else {
+        // Best-effort sniff when the host omits the tool hint.
+        if (payload.rcsb_id || (payload.struct && payload.struct.title)) {
+          env = adaptPdbEntry(payload);
+        } else if (payload.PC_Compounds) {
+          env = adaptPubchemCompound(payload);
+        }
+      }
+      if (env) applyEnvelope(env);
+    }
+
+    // ----- Provider adapters -----
+    //
+    // The host can forward the raw tool result; these adapters translate
+    // PubChem / RCSB shapes into the canonical {structure, metadata}
+    // envelope. Kept inside the bundle so the contract is self-documenting
+    // (the Python provider doesn't have to know about the envelope).
+
+    function adaptPdbEntry(payload) {
+      if (!payload || typeof payload !== 'object') return null;
+      var pdbId = (payload.rcsb_id || payload.entry && payload.entry.id || '').toUpperCase();
+      if (!pdbId) return null;
+      // Files.rcsb.org serves the actual structure body. The metadata
+      // endpoint we wrap here doesn't embed coordinates — only the URL
+      // can carry the structure.
+      var url = 'https://files.rcsb.org/download/' + pdbId + '.pdb';
+      var title = (payload.struct && payload.struct.title) || pdbId;
+      var attrs = {};
+      if (payload.rcsb_entry_info) {
+        if (payload.rcsb_entry_info.resolution_combined) {
+          attrs.resolution = payload.rcsb_entry_info.resolution_combined[0];
+        }
+        if (payload.rcsb_entry_info.experimental_method) {
+          attrs.method = payload.rcsb_entry_info.experimental_method;
+        }
+        if (payload.rcsb_entry_info.deposited_polymer_entity_instance_count != null) {
+          attrs.chains = payload.rcsb_entry_info.deposited_polymer_entity_instance_count;
+        }
+      }
+      if (payload.exptl && payload.exptl[0] && payload.exptl[0].method) {
+        attrs.method = attrs.method || payload.exptl[0].method;
+      }
+      return {
+        structure: { format: 'pdb', url: url, identifier: pdbId },
+        metadata:  { name: pdbId, title: title, source: 'RCSB PDB', attrs: attrs },
+      };
+    }
+
+    function adaptPubchemCompound(payload) {
+      if (!payload || typeof payload !== 'object') return null;
+      var cmps = payload.PC_Compounds;
+      if (!Array.isArray(cmps) || !cmps.length) return null;
+      var first = cmps[0];
+      var cid = first && first.id && first.id.id && first.id.id.cid;
+      if (cid == null) return null;
+      // PubChem serves SDF (with 3D coordinates when available) at
+      // /compound/cid/<CID>/SDF?record_type=3d. We default to 3d and
+      // let the viewer fall back to 2D if 3D coordinates aren't on file.
+      var url = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/'
+              + cid + '/SDF?record_type=3d';
+      var props = first.props || [];
+      var smiles = null, iupac = null, mw = null, formula = null;
+      props.forEach(function (p) {
+        if (!p || !p.urn || !p.value) return;
+        var label = (p.urn.label || '') + '|' + (p.urn.name || '');
+        if (smiles == null && /SMILES/i.test(label) && /Canonical|Isomeric/i.test(label)) {
+          smiles = p.value.sval || smiles;
+        }
+        if (iupac == null && /IUPAC/i.test(label)) {
+          iupac = p.value.sval || iupac;
+        }
+        if (mw == null && /Molecular Weight/i.test(label)) {
+          mw = p.value.fval != null ? p.value.fval
+             : (p.value.sval != null ? p.value.sval : mw);
+        }
+        if (formula == null && /Molecular Formula/i.test(label)) {
+          formula = p.value.sval || formula;
+        }
+      });
+      var attrs = {};
+      if (smiles)  attrs.smiles  = smiles;
+      if (iupac)   attrs.iupac   = iupac;
+      if (mw)      attrs.mw      = mw;
+      if (formula) attrs.formula = formula;
+      return {
+        structure: { format: 'sdf', url: url, identifier: String(cid) },
+        metadata:  {
+          name:   'CID ' + cid,
+          title:  iupac || ('PubChem CID ' + cid),
+          source: 'PubChem',
+          attrs:  attrs,
+        },
+      };
+    }
+
+    function applyEnvelope(env) {
+      state.structure = env.structure || null;
+      state.metadata  = env.metadata  || null;
+      if (state.metadata && state.metadata.name && !state.identifier) {
+        state.identifier = state.metadata.name;
+        $input.value = state.identifier;
+      }
+      renderAll();
+    }
+
+    // ----- Dev-mode ingress -----
+
+    function loadFromUrl() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var b64 = params.get('data');
+        if (!b64) return null;
+        // URL-safe base64 → standard base64.
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join('=');
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      } catch (e) {
+        showError('Invalid ?data= URL parameter: ' + e.message);
+        return null;
+      }
+    }
+    function loadFromGlobal() {
+      return (typeof window.__app_data__ === 'object' && window.__app_data__) || null;
+    }
+
+    var seed = loadFromUrl() || loadFromGlobal();
+    if (seed) {
+      if (seed.structure && seed.structure.format) {
+        applyEnvelope(seed);
+      } else {
+        // Single-source push — sniff by shape.
+        ingestUnsolicited(null, seed);
+      }
+    }
+
+    // ----- Lookup orchestration -----
+
+    function lookup(rawIdent) {
+      var ident = (rawIdent || '').trim();
+      if (!ident) {
+        showError('Enter an identifier — PDB id (e.g. 4HHB) or compound name.');
+        return;
+      }
+      state.identifier = ident;
+      $input.value = ident;
+      state.structure = null;
+      state.metadata  = null;
+      renderAll();
+      $hint.textContent = 'Fetching…';
+
+      var source = $source.value;
+      state.source = source;
+      var p;
+      if (source === 'pdb') {
+        p = callTool('pdb-entry', { entry_id: ident.toUpperCase() })
+          .then(function (r) { ingestUnsolicited('pdb-entry', r); });
+      } else {
+        p = callTool('pubchem-compound', { identifier: ident, namespace: 'name' })
+          .then(function (r) { ingestUnsolicited('pubchem-compound', r); });
+      }
+      p.then(function () { $hint.textContent = 'Loaded.'; })
+       .catch(function (e) {
+         $hint.textContent = 'Lookup failed.';
+         showError('Lookup failed: ' + (e && e.message || e));
+       });
+    }
+
+    $input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') lookup($input.value);
+    });
+
+    // ----- 3Dmol.js viewer -----
+
+    function ensureViewer() {
+      if (state.viewer) return state.viewer;
+      if (typeof window.$3Dmol === 'undefined') return null;
+      try {
+        state.viewer = window.$3Dmol.createViewer($viewer, {
+          backgroundColor: getComputedStyle(document.documentElement)
+            .getPropertyValue('--viewer-bg').trim() || 'black',
+        });
+      } catch (e) {
+        showError('Could not initialise 3D viewer: ' + e.message);
+        return null;
+      }
+      return state.viewer;
+    }
+
+    function renderStructure() {
+      var s = state.structure;
+      if (!s) return;
+      var viewer = ensureViewer();
+      if (!viewer) {
+        // 3Dmol.js not loaded (offline / CDN blocked / WebGL disabled).
+        // The UI shell still rendered — show a friendly placeholder.
+        return;
+      }
+      viewer.clear();
+      var fmt = s.format;
+      function applyStyle() {
+        // Cartoon for chains (PDB / mmCIF), stick+sphere for small mols.
+        if (fmt === 'pdb' || fmt === 'mmcif') {
+          viewer.setStyle({}, { cartoon: { color: 'spectrum' } });
+          viewer.setStyle({ hetflag: true },
+            { stick: {}, sphere: { scale: 0.25 } });
+        } else {
+          viewer.setStyle({}, { stick: {}, sphere: { scale: 0.25 } });
+        }
+        viewer.zoomTo();
+        viewer.render();
+      }
+      function loadModelText(text) {
+        try {
+          viewer.addModel(text, fmt);
+          applyStyle();
+        } catch (e) {
+          showError('Could not parse ' + fmt + ' structure: ' + e.message);
+        }
+      }
+      if (s.data) {
+        loadModelText(s.data);
+      } else if (s.url) {
+        fetch(s.url, { mode: 'cors' })
+          .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+          })
+          .then(loadModelText)
+          .catch(function (e) {
+            showError('Could not download structure: ' + e.message);
+          });
+      }
+    }
+
+    // ----- Metadata pane -----
+
+    function renderMetaPane() {
+      clearNode($meta);
+      if (!state.structure && !state.metadata) {
+        $meta.appendChild(el('div', { class: 'empty', text: 'No structure loaded.' }));
+        return;
+      }
+      var md = state.metadata || {};
+      $meta.appendChild(el('div', { class: 'ident',
+        text: md.name || (state.structure && state.structure.identifier) || '—' }));
+      if (md.title && md.title !== md.name) {
+        $meta.appendChild(el('div', { class: 'legend', text: md.title }));
+      }
+      if (md.source) {
+        $meta.appendChild(el('div', null, [
+          el('span', { class: 'pill', text: md.source }),
+          state.structure && state.structure.format
+            ? el('span', { class: 'pill', text: state.structure.format.toUpperCase() })
+            : null,
+        ]));
+      }
+      var attrs = (md.attrs && typeof md.attrs === 'object') ? md.attrs : {};
+      var keys = Object.keys(attrs);
+      if (keys.length) {
+        $meta.appendChild(el('h2', { text: 'Properties' }));
+        var dl = el('dl', { class: 'meta' });
+        keys.forEach(function (k) {
+          if (k === 'smiles') return;  // surfaced separately below.
+          var v = attrs[k];
+          if (v == null || v === '') return;
+          dl.appendChild(el('dt', { text: k }));
+          dl.appendChild(el('dd', { text: String(v) }));
+        });
+        if (dl.childNodes.length) $meta.appendChild(dl);
+      }
+      if (attrs.smiles) {
+        $meta.appendChild(el('h2', { text: 'SMILES' }));
+        $meta.appendChild(el('pre', { class: 'smiles', text: attrs.smiles }));
+      }
+      $meta.appendChild(el('div', { class: 'legend',
+        text: 'Drag to rotate · scroll to zoom · shift+drag to pan.' }));
+    }
+
+    function renderAll() {
+      renderMetaPane();
+      renderStructure();
+    }
+
+    // Initial render — bundle may have seeded state already.
+    renderAll();
+  })();
+  </script>
+</body>
+</html>

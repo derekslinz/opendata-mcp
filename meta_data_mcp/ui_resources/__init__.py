@@ -9,8 +9,8 @@ Two flavors of UI resource live here:
 - ``ui://meta-data-mcp/app/<name>/<version>`` — *apps*: interactive
   panels that issue outbound ``tool_call`` messages back to the host.
   Phase 3 shipped ``discovery``; Phase 5 adds ``vulnerability`` /
-  ``museum`` and will add ``entity-graph`` / ``trade-flows`` / etc.
-  as follow-ups.
+  ``museum`` / ``molecular`` and will add ``entity-graph`` /
+  ``trade-flows`` / etc. as follow-ups.
 
 The two public entry points are :func:`register_shapes` and
 :func:`register_apps`, called once from the discovery provider during
@@ -27,6 +27,7 @@ from pydantic import AnyUrl
 
 from .app_discovery_v1 import register as _register_discovery_app
 from .app_entity_graph_v1 import register as _register_entity_graph_app
+from .app_molecular_v1 import register as _register_molecular_app
 from .app_museum_v1 import register as _register_museum_app
 from .app_vulnerability_v1 import register as _register_vulnerability_app
 from .shape_geofeatures_v1 import register as _register_geofeatures
@@ -75,4 +76,5 @@ def register_apps(
         "vulnerability/v1": _register_vulnerability_app(resources, resources_handlers),
         "entity-graph/v1": _register_entity_graph_app(resources, resources_handlers),
         "museum/v1": _register_museum_app(resources, resources_handlers),
+        "molecular/v1": _register_molecular_app(resources, resources_handlers),
     }

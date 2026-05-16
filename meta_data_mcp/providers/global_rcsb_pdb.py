@@ -16,6 +16,7 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_molecular_v1 import URI as MOLECULAR_APP_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -68,6 +69,14 @@ TOOLS.append(
         name="pdb-entry",
         description="Fetch 3D macromolecular structure metadata from RCSB PDB by entry ID.",
         inputSchema=PDBEntryParams.model_json_schema(),
+        # MCP Apps binding: render via the molecular structure app. The
+        # entry endpoint returns metadata (title, resolution, method); the
+        # app derives a files.rcsb.org/download/<ID>.pdb URL for the atoms.
+        # pdb-polymer-entity is intentionally NOT bound: it returns one
+        # chain's metadata only, with no separable structure URL — the
+        # viewer would have nothing to render that the parent entry
+        # doesn't already provide.
+        _meta={"ui": {"resourceUri": MOLECULAR_APP_URI}},
     )
 )
 TOOLS_HANDLERS["pdb-entry"] = handle_pdb_entry
