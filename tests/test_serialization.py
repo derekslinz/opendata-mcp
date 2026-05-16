@@ -174,7 +174,12 @@ def test_to_entity_graph_text_trims_nodes_and_filters_orphan_edges():
     would draw edges into thin air."""
     payload = {
         "nodes": [
-            {"id": f"n{i}", "label": f"node-{i}", "type": "author", "attrs": {"x": "y" * 50}}
+            {
+                "id": f"n{i}",
+                "label": f"node-{i}",
+                "type": "author",
+                "attrs": {"x": "y" * 50},
+            }
             for i in range(500)
         ],
         "edges": [{"source": f"n{i}", "target": f"n{i + 1}"} for i in range(499)],
