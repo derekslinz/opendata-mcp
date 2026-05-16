@@ -133,6 +133,51 @@ The materialized plugin lives on disk (`meta_data_mcp/providers/{id}.py` + `test
 
 Every bundled plugin contributes its own tools under the one server. Their names are unique kebab-case identifiers, often using a provider-specific prefix (e.g. `usgs-eq-feed-significant-week`, `frankfurter-latest`, `wikipedia-fetch-summary`). The LLM discovers them through `opendata-find-providers` and `opendata-describe-provider`; you don't need to memorize them.
 
+## Presentation layer (MCP Apps)
+
+v2.0 adds a visual layer on top of every tool result. Hosts that support the [MCP Apps extension](https://modelcontextprotocol.io/docs/extensions/apps) (Claude Desktop, MCP Inspector, others) render bound tool results inline as interactive panels in a sandboxed iframe instead of as JSON text. Hosts that don't speak MCP Apps fall back to the same JSON they always got — the binding is purely additive.
+
+Each MCP-Apps-aware tool declares its panel via `_meta.ui.resourceUri` on the tool description. The host fetches the `ui://` resource (HTML + bundled JS, single payload, no external requests besides explicitly-whitelisted CDNs) and dispatches bidirectional `postMessage` events between the iframe and itself.
+
+### Shape primitives — `ui://meta-data-mcp/shape/<name>/v1`
+
+Three reusable bundles cover the common payload contracts. Any tool whose response matches one of these shapes binds to the corresponding primitive automatically and gets a rich renderer for free.
+
+| Shape | Renders | Payload contract |
+|---|---|---|
+| `timeseries/v1` | Line chart + auto-computed profile (min/max/mean/stddev/gap-count) via Plotly. | `{points: [{date, value, series?}], axes: {x, y}, annotations?}` |
+| `geofeatures/v1` | Leaflet map + marker cluster (with density layer for high-cardinality outputs). | `{features: GeoJSON | [{lat, lon, attrs}], layers?, facets?}` |
+| `records/v1` | Faceted, sortable, paginated HTML table + per-column auto-profile (type inference, top-k, null rate, range). | `{rows: [...], schema?, default_facets?}` |
+
+### Custom apps — `ui://meta-data-mcp/app/<name>/v1`
+
+Some data shapes don't fit a generic primitive. v2.0 ships dedicated apps for them:
+
+| App | Drives | Visualization |
+|---|---|---|
+| `discovery/v1` | `opendata-find-providers`, `opendata-list-domains`, `opendata-list-regions`, `opendata-activate-provider`, etc. | Faceted plugin browser with live health badges. |
+| `vulnerability/v1` | `nvd-*`, `osv-*`, `epss-*`, `cisa-kev`. | CVSS radar + severity heatmap + exploitation-probability gauge. |
+| `entity-graph/v1` | `crossref-works-by-author`, `openalex-search-works`, `wikidata-search-entities`, `opensanctions-search`. | Force-directed graph (D3) with co-authorship overlay. |
+| `trade-flows/v1` | `comtrade-trade-data`. | Reporter → commodity → partner Sankey + commodity treemap. |
+| `news-tone/v1` | `gdelt-article-search`, `gdelt-volume-timeline`. | Volume + tone timeline with country-pair chord diagram. |
+| `network-topology/v1` | `ripestat-asn-neighbours` and friends. | Force-directed ASN peering/upstream/downstream graph. |
+| `molecular/v1` | `pubchem-compound`, `pdb-entry`. | WebGL 3D structure viewer (3Dmol.js, cartoon for proteins, stick+sphere for ligands). |
+| `museum/v1` | `met-search`, `met-search-by-artist`, `met-get-object`. | Lazy-loaded CSS-grid image gallery + provenance detail panel. |
+
+### Building new apps
+
+Adding a UI binding to a generated provider is now a one-line spec change:
+
+```yaml
+tools:
+  - name: my-tool
+    description: ...
+    endpoint: /foo
+    response_shape: records   # ← binds to the shape primitive
+```
+
+See [`tools/specs/README.md`](tools/specs/README.md) for the full reference. Bundle-size budgets are enforced in CI (warn ≥ 100 KB, error ≥ 1 MB); the v2.0 bundles range from 14 KB (timeseries primitive) to 34 KB (vulnerability app), all comfortably inside the budget.
+
 ## Bundled plugins (66)
 
 This is what's inside the one server. You don't install these individually — they all come along.
