@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trade Flows — meta-data-mcp app v1</title>
+  <!--
+    ui://meta-data-mcp/app/trade-flows/v1 — Phase 5 bilateral trade-flows app.
+
+    Synthesises one provider into two coordinated visualisations:
+
+      - UN Comtrade (global_un_comtrade): annual / monthly bilateral
+        merchandise + services trade reported to the UN Statistics
+        Division by 200+ national authorities. Rows are
+        reporter ↔ partner ↔ commodity ↔ flow ↔ value tuples — the
+        natural Sankey input.
+
+    Visualisations:
+
+      - Sankey diagram: reporter → commodity → partner (3-layer).
+        Link width is proportional to USD trade value; node size is
+        the sum of inbound + outbound link values.
+      - Commodity treemap: rectangles sized by total trade value
+        across all (reporter, partner) pairs for that commodity. A
+        quick "what dominates this slice of the world's trade" read.
+      - Hover-driven flow tooltip surfaces the full
+        reporter / partner / commodity / value tuple for whichever
+        link (Sankey) or rectangle (treemap) the cursor sits on.
+      - Header filters narrow the dataset by year, reporter, and
+        commodity before the visuals are recomputed. Filters are
+        derived from the payload, never assumed.
+
+    postMessage protocol (inherited from the Phase 3 discovery app and
+    Phase 5 vulnerability app):
+
+      host → app:   { type: "tool_result"|"render", id?, tool?, payload }
+      app → host:   { type: "tool_call", id, name, arguments }
+
+    Bound tools (via Tool._meta.ui.resourceUri on the upstream provider):
+
+      - comtrade-trade-data  (global_un_comtrade)
+
+    Payload contract — the bundle accepts either a wrapped form
+    matching the contract described inline below, or a raw UN Comtrade
+    /get response (``{data: [...]}``) which is normalised on ingest:
+
+      Wrapped form (preferred for tool replies + dev injection):
+      {
+        "flows": [
+          {
+            "reporter":      "USA",
+            "partner":       "China",
+            "commodity":     "10 — Cereals",
+            "value_usd":     12345678901,
+            "year":          2023,            // optional
+            "flow":          "Exports",       // optional
+            "reporter_code": "840",           // optional, M49
+            "partner_code":  "156",           // optional, M49
+            "commodity_code":"10"             // optional, HS
+          },
+          ...
+        ],
+        "facets": ["year", "reporter", "commodity"]  // optional hint
+      }
+
+      Raw UN Comtrade form (auto-normalised — keys vary by API
+      version; the normaliser tolerates camelCase + snake_case):
+      {
+        "data": [
+          { "period": 2023, "reporterDesc": "USA",
+            "partnerDesc": "China", "cmdDesc": "Cereals",
+            "primaryValue": 12345678901, "flowDesc": "Export", ... },
+          ...
+        ]
+      }
+
+    Render priority for the seed payload:
+
+      1. window.message events from window.parent only
+         (``ev.source === window.parent`` is required so a stray
+         postMessage from another frame cannot inject flows).
+      2. ``?data=<base64-JSON>`` URL parameter, UTF-8-safe decode
+         via TextDecoder so multibyte commodity / country names
+         survive the round-trip.
+      3. ``window.__app_data__`` global set before script load.
+
+    External origins:
+
+      - https://cdn.jsdelivr.net/npm/d3@7
+      - https://cdn.jsdelivr.net/npm/d3-sankey@0.12
+
+    Sankey + treemap are heavy enough in pure SVG that the layout
+    arithmetic alone would dwarf the bundle. D3 + d3-sankey via CDN
+    keeps the bundle under 100KB while still giving a polished result.
+    Treemap uses d3.treemap; Sankey uses d3-sankey. No other deps.
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e5e5e5;
+      --accent: #2563eb;
+      --accent-bg: #eff6ff;
+      --header-bg: #f8fafc;
+      --row-hover: #f1f5f9;
+      --tooltip-bg: rgba(20, 26, 36, 0.94);
+      --tooltip-fg: #f8fafc;
+      --node-reporter: #1d4ed8;
+      --node-commodity: #047857;
+      --node-partner: #b45309;
+      --link: #94a3b8;
+      --link-active: #2563eb;
+      --treemap-stroke: #ffffff;
+      --pill-bg:  #e2e8f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f17;
+        --fg: #e8edf3;
+        --muted: #9aa3af;
+        --border: #1f2937;
+        --accent: #60a5fa;
+        --accent-bg: #1e293b;
+        --header-bg: #111827;
+        --row-hover: #182030;
+        --tooltip-bg: rgba(232, 237, 243, 0.94);
+        --tooltip-fg: #0b0f17;
+        --node-reporter: #60a5fa;
+        --node-commodity: #34d399;
+        --node-partner: #fbbf24;
+        --link: #475569;
+        --link-active: #93c5fd;
+        --treemap-stroke: #0b0f17;
+        --pill-bg:  #1f2937;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+    header { padding: 10px 16px; border-bottom: 1px solid var(--border);
+      background: var(--header-bg); display: flex; gap: 12px; align-items: center;
+      flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    header .hint { color: var(--muted); font-size: 12px; }
+    header .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    header label { color: var(--muted); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; font-weight: 600; }
+    header select { padding: 4px 6px; border: 1px solid var(--border);
+      border-radius: 4px; background: var(--bg); color: var(--fg);
+      font-family: inherit; font-size: 12px; min-width: 100px; max-width: 220px; }
+    main { display: grid; grid-template-columns: 1.4fr 1fr; min-height: 0;
+      overflow: hidden; }
+    section.panel { padding: 10px 14px; overflow: auto; min-width: 0; }
+    section.panel + section.panel { border-left: 1px solid var(--border); }
+    h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+    .empty { color: var(--muted); padding: 32px 12px; text-align: center; }
+    .err   { background: #dc2626; color: white;
+      padding: 6px 10px; margin: 8px 16px; border-radius: 4px; }
+    .stats { display: flex; gap: 14px; margin: 4px 0 8px; flex-wrap: wrap;
+      font-size: 12px; color: var(--muted); }
+    .stats strong { color: var(--fg); font-weight: 600; }
+    svg.chart { width: 100%; height: auto; display: block; }
+    .sankey-link { fill: none; stroke: var(--link); stroke-opacity: 0.45;
+      transition: stroke 0.15s, stroke-opacity 0.15s; }
+    .sankey-link.active { stroke: var(--link-active); stroke-opacity: 0.9; }
+    .sankey-node rect { stroke: var(--border); stroke-width: 0.5; cursor: pointer; }
+    .sankey-node text { font-size: 10.5px; fill: var(--fg); pointer-events: none; }
+    .treemap-tile rect { stroke: var(--treemap-stroke); stroke-width: 1;
+      cursor: pointer; transition: opacity 0.15s; }
+    .treemap-tile rect:hover { opacity: 0.78; }
+    .treemap-tile text { font-size: 11px; fill: white; pointer-events: none;
+      font-weight: 600; }
+    .treemap-tile text.sub { font-size: 10px; font-weight: 400; opacity: 0.85; }
+    #tooltip { position: fixed; pointer-events: none; z-index: 50;
+      background: var(--tooltip-bg); color: var(--tooltip-fg);
+      padding: 6px 10px; border-radius: 4px; font-size: 12px;
+      max-width: 320px; display: none; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+    #tooltip .ttl { font-weight: 600; margin-bottom: 2px; }
+    #tooltip dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px;
+      margin: 0; font-size: 11px; }
+    #tooltip dt { opacity: 0.7; }
+    #tooltip dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted);
+      margin-top: 6px; flex-wrap: wrap; }
+    .legend .swatch { display: inline-block; width: 9px; height: 9px;
+      border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Bilateral Trade Flows</h1>
+      <span class="hint" id="hint">Sankey: reporter → commodity → partner. Treemap: commodity totals.</span>
+      <div class="filters">
+        <label for="f-year">Year</label>
+        <select id="f-year"><option value="">All</option></select>
+        <label for="f-reporter">Reporter</label>
+        <select id="f-reporter"><option value="">All</option></select>
+        <label for="f-commodity">Commodity</label>
+        <select id="f-commodity"><option value="">All</option></select>
+      </div>
+    </header>
+    <main>
+      <section class="panel" id="sankey-panel">
+        <h2>Trade flow Sankey</h2>
+        <div class="stats" id="stats"></div>
+        <div id="sankey-host">
+          <div class="empty" id="sankey-empty">No flows loaded. Run comtrade-trade-data to populate.</div>
+        </div>
+        <div class="legend" id="legend"></div>
+      </section>
+      <section class="panel" id="treemap-panel">
+        <h2>Commodity treemap (total value)</h2>
+        <div id="treemap-host">
+          <div class="empty" id="treemap-empty">No commodities to render.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="tooltip" role="tooltip" aria-hidden="true"></div>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    // ----- State -----
+    var state = {
+      flows: [],             // normalised [{reporter, partner, commodity, value_usd, year, flow, ...}]
+      filters: { year: '', reporter: '', commodity: '' },
+      pendingCalls: {},
+    };
+
+    // ----- DOM refs -----
+    var $hint        = document.getElementById('hint');
+    var $sankeyHost  = document.getElementById('sankey-host');
+    var $sankeyEmpty = document.getElementById('sankey-empty');
+    var $treemapHost = document.getElementById('treemap-host');
+    var $treemapEmpty= document.getElementById('treemap-empty');
+    var $stats       = document.getElementById('stats');
+    var $legend      = document.getElementById('legend');
+    var $tooltip     = document.getElementById('tooltip');
+    var $fYear       = document.getElementById('f-year');
+    var $fReporter   = document.getElementById('f-reporter');
+    var $fCommodity  = document.getElementById('f-commodity');
+
+    // ----- DOM helpers (no innerHTML anywhere) -----
+
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      if (attrs) {
+        for (var k in attrs) {
+          if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+          var v = attrs[k];
+          if (k === 'class')     node.setAttribute('class', v);
+          else if (k === 'text') node.textContent = v;
+          else if (k === 'on') {
+            for (var ev in v) {
+              if (Object.prototype.hasOwnProperty.call(v, ev)) {
+                node.addEventListener(ev, v[ev]);
+              }
+            }
+          } else if (v !== null && v !== undefined) {
+            node.setAttribute(k, v);
+          }
+        }
+      }
+      if (children) {
+        children.forEach(function (c) {
+          if (c == null) return;
+          node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+        });
+      }
+      return node;
+    }
+
+    function clearNode(node) { node.replaceChildren(); }
+
+    function showError(msg) {
+      var div = el('div', { class: 'err', text: msg });
+      document.body.insertBefore(div, document.getElementById('app'));
+      setTimeout(function () { div.remove(); }, 6000);
+    }
+
+    function formatUsd(v) {
+      if (v == null || !isFinite(v)) return '—';
+      var abs = Math.abs(v);
+      if (abs >= 1e12) return '$' + (v / 1e12).toFixed(2) + 'T';
+      if (abs >= 1e9)  return '$' + (v / 1e9).toFixed(2) + 'B';
+      if (abs >= 1e6)  return '$' + (v / 1e6).toFixed(2) + 'M';
+      if (abs >= 1e3)  return '$' + (v / 1e3).toFixed(1) + 'K';
+      return '$' + v.toFixed(0);
+    }
+
+    // ----- postMessage transport -----
+
+    function newCallId() {
+      return 'tc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function callTool(name, args) {
+      var id = newCallId();
+      var msg = { type: 'tool_call', id: id, name: name, arguments: args || {} };
+      return new Promise(function (resolve, reject) {
+        state.pendingCalls[id] = { resolve: resolve, reject: reject, name: name };
+        try {
+          window.parent.postMessage(msg, '*');
+        } catch (e) {
+          delete state.pendingCalls[id];
+          reject(e);
+          return;
+        }
+        setTimeout(function () {
+          if (state.pendingCalls[id]) {
+            delete state.pendingCalls[id];
+            reject(new Error('tool call timed out: ' + name));
+          }
+        }, 30000);
+      });
+    }
+
+    function handleIncomingMessage(ev) {
+      // Source guard: only accept messages from the host frame. A
+      // stray postMessage from a sibling iframe must never be able
+      // to inject trade flows into the panel.
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type !== 'tool_result' && msg.type !== 'render') return;
+      var id = msg.id;
+      var payload = msg.payload;
+      if (id && state.pendingCalls[id]) {
+        var pending = state.pendingCalls[id];
+        delete state.pendingCalls[id];
+        try { pending.resolve(payload); } catch (e) { /* swallow */ }
+      }
+      ingest(payload);
+    }
+    window.addEventListener('message', handleIncomingMessage);
+
+    // ----- Payload ingest + normalisation -----
+
+    function ingest(payload) {
+      if (!payload || typeof payload !== 'object') return;
+      var rows = normalise(payload);
+      if (!rows.length) return;
+      state.flows = rows;
+      rebuildFilters();
+      renderAll();
+    }
+
+    function normalise(p) {
+      // Wrapped form: {flows: [...]}.
+      if (Array.isArray(p.flows)) {
+        return p.flows.map(coerceFlow).filter(Boolean);
+      }
+      // Raw UN Comtrade /get envelope: {data: [...]}.
+      if (Array.isArray(p.data)) {
+        return p.data.map(coerceComtradeRow).filter(Boolean);
+      }
+      // Single row passed bare.
+      if (p.reporter || p.reporterDesc) {
+        var single = coerceFlow(p) || coerceComtradeRow(p);
+        return single ? [single] : [];
+      }
+      return [];
+    }
+
+    function coerceFlow(r) {
+      if (!r || typeof r !== 'object') return null;
+      var value = toNum(r.value_usd != null ? r.value_usd : (r.value != null ? r.value : r.primaryValue));
+      var reporter = str(r.reporter || r.reporterDesc);
+      var partner  = str(r.partner  || r.partnerDesc);
+      var commodity= str(r.commodity || r.cmdDesc || r.commodityDesc);
+      if (!reporter || !partner || !commodity) return null;
+      if (!isFinite(value) || value <= 0) return null;
+      return {
+        reporter: reporter,
+        partner: partner,
+        commodity: commodity,
+        value_usd: value,
+        year: r.year != null ? r.year : (r.period != null ? r.period : null),
+        flow: str(r.flow || r.flowDesc || ''),
+        reporter_code: str(r.reporter_code || r.reporterCode || ''),
+        partner_code:  str(r.partner_code  || r.partnerCode  || ''),
+        commodity_code: str(r.commodity_code || r.cmdCode || ''),
+      };
+    }
+
+    function coerceComtradeRow(r) {
+      // Same shape as coerceFlow once it tolerates camelCase aliases.
+      return coerceFlow(r);
+    }
+
+    function str(v) {
+      if (v == null) return '';
+      return String(v).trim();
+    }
+    function toNum(v) {
+      if (v == null || v === '') return NaN;
+      var n = typeof v === 'number' ? v : parseFloat(v);
+      return isFinite(n) ? n : NaN;
+    }
+
+    // ----- Filter wiring -----
+
+    function uniqueValues(rows, key) {
+      var seen = {};
+      var out = [];
+      rows.forEach(function (r) {
+        var v = r[key];
+        if (v == null || v === '') return;
+        if (!seen[v]) { seen[v] = true; out.push(v); }
+      });
+      out.sort(function (a, b) {
+        // Numeric sort for year, lexicographic otherwise.
+        if (key === 'year') return Number(a) - Number(b);
+        return String(a).localeCompare(String(b));
+      });
+      return out;
+    }
+
+    function rebuildFilters() {
+      populateSelect($fYear,      uniqueValues(state.flows, 'year'));
+      populateSelect($fReporter,  uniqueValues(state.flows, 'reporter'));
+      populateSelect($fCommodity, uniqueValues(state.flows, 'commodity'));
+    }
+
+    function populateSelect(sel, values) {
+      var current = sel.value;
+      clearNode(sel);
+      sel.appendChild(el('option', { value: '', text: 'All' }));
+      values.forEach(function (v) {
+        sel.appendChild(el('option', { value: String(v), text: String(v) }));
+      });
+      // Restore previous selection if still in the list.
+      if (current && values.indexOf(isNaN(Number(current)) ? current : Number(current)) === -1
+          && values.map(String).indexOf(current) === -1) {
+        sel.value = '';
+      } else {
+        sel.value = current;
+      }
+    }
+
+    function applyFilters(rows) {
+      var f = state.filters;
+      return rows.filter(function (r) {
+        if (f.year      && String(r.year)      !== f.year)      return false;
+        if (f.reporter  && r.reporter          !== f.reporter)  return false;
+        if (f.commodity && r.commodity         !== f.commodity) return false;
+        return true;
+      });
+    }
+
+    [$fYear, $fReporter, $fCommodity].forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        state.filters.year      = $fYear.value;
+        state.filters.reporter  = $fReporter.value;
+        state.filters.commodity = $fCommodity.value;
+        renderAll();
+      });
+    });
+
+    // ----- Tooltip -----
+
+    function showTooltip(ev, kind, row) {
+      $tooltip.replaceChildren();
+      var title = kind === 'sankey-link'
+        ? row.reporter + ' → ' + row.partner
+        : (kind === 'commodity' ? row.commodity : row.label);
+      $tooltip.appendChild(el('div', { class: 'ttl', text: title }));
+      var dl = el('dl');
+      function addRow(k, v) {
+        if (v == null || v === '') return;
+        dl.appendChild(el('dt', { text: k }));
+        dl.appendChild(el('dd', { text: String(v) }));
+      }
+      if (kind === 'sankey-link') {
+        addRow('Commodity', row.commodity);
+        if (row.year != null) addRow('Year', String(row.year));
+        if (row.flow) addRow('Flow', row.flow);
+        addRow('Value', formatUsd(row.value_usd));
+      } else if (kind === 'commodity') {
+        addRow('Total', formatUsd(row.total));
+        addRow('Flows', String(row.count));
+      } else if (kind === 'node') {
+        addRow('Total throughput', formatUsd(row.total));
+      }
+      $tooltip.appendChild(dl);
+      $tooltip.style.display = 'block';
+      $tooltip.setAttribute('aria-hidden', 'false');
+      moveTooltip(ev);
+    }
+    function moveTooltip(ev) {
+      var pad = 14;
+      var x = ev.clientX + pad;
+      var y = ev.clientY + pad;
+      var w = window.innerWidth, h = window.innerHeight;
+      var rect = $tooltip.getBoundingClientRect();
+      if (x + rect.width  > w) x = ev.clientX - rect.width  - pad;
+      if (y + rect.height > h) y = ev.clientY - rect.height - pad;
+      $tooltip.style.left = Math.max(4, x) + 'px';
+      $tooltip.style.top  = Math.max(4, y) + 'px';
+    }
+    function hideTooltip() {
+      $tooltip.style.display = 'none';
+      $tooltip.setAttribute('aria-hidden', 'true');
+    }
+
+    // ----- Sankey rendering (d3-sankey) -----
+
+    function buildSankeyData(rows) {
+      // 3-layer: reporter → commodity → partner. Each row contributes
+      // value to both the reporter→commodity link and the
+      // commodity→partner link so the totals balance.
+      var nodes = {};
+      var links = {};
+      function nodeKey(layer, name) { return layer + '' + name; }
+      function ensureNode(layer, name) {
+        var k = nodeKey(layer, name);
+        if (!nodes[k]) nodes[k] = { id: k, layer: layer, name: name };
+        return k;
+      }
+      function ensureLink(srcKey, dstKey, row) {
+        var lk = srcKey + '' + dstKey;
+        if (!links[lk]) links[lk] = { source: srcKey, target: dstKey, value: 0, rows: [] };
+        links[lk].value += row.value_usd;
+        // Cap retained rows per link so hover-detail stays cheap on big payloads.
+        if (links[lk].rows.length < 64) links[lk].rows.push(row);
+      }
+      rows.forEach(function (r) {
+        var rk = ensureNode(0, r.reporter);
+        var ck = ensureNode(1, r.commodity);
+        var pk = ensureNode(2, r.partner);
+        ensureLink(rk, ck, r);
+        ensureLink(ck, pk, r);
+      });
+      var nodeList = Object.keys(nodes).map(function (k) { return nodes[k]; });
+      var keyToIdx = {};
+      nodeList.forEach(function (n, i) { keyToIdx[n.id] = i; });
+      var linkList = Object.keys(links).map(function (k) {
+        var l = links[k];
+        return { source: keyToIdx[l.source], target: keyToIdx[l.target],
+                 value: l.value, rows: l.rows,
+                 srcName: nodes[l.source].name, dstName: nodes[l.target].name,
+                 srcLayer: nodes[l.source].layer };
+      });
+      return { nodes: nodeList, links: linkList };
+    }
+
+    function renderSankey(rows) {
+      clearNode($sankeyHost);
+      if (!rows.length) {
+        $sankeyHost.appendChild(el('div', { class: 'empty',
+          text: 'No flows match the current filters.' }));
+        return;
+      }
+      // Width follows the host panel; height scales with node count.
+      var width  = Math.max(360, $sankeyHost.clientWidth || 600);
+      var data   = buildSankeyData(rows);
+      var height = Math.max(240, Math.min(720, data.nodes.length * 14 + 100));
+      var pad    = { t: 8, r: 110, b: 8, l: 8 };
+
+      var sankey = d3.sankey()
+        .nodeWidth(14)
+        .nodePadding(8)
+        .extent([[pad.l, pad.t], [width - pad.r, height - pad.b]]);
+      var graph = sankey({
+        nodes: data.nodes.map(function (n) { return Object.assign({}, n); }),
+        links: data.links.map(function (l) { return Object.assign({}, l); }),
+      });
+
+      var svg = d3.create('svg')
+        .attr('class', 'chart')
+        .attr('viewBox', '0 0 ' + width + ' ' + height)
+        .attr('preserveAspectRatio', 'xMidYMid meet');
+
+      // Links.
+      svg.append('g')
+        .selectAll('path')
+        .data(graph.links)
+        .join('path')
+          .attr('class', 'sankey-link')
+          .attr('d', d3.sankeyLinkHorizontal())
+          .attr('stroke-width', function (d) { return Math.max(1, d.width); })
+          .on('mousemove', function (ev, d) {
+            d3.select(this).classed('active', true);
+            // Synthesise an aggregate "row" for the link's tooltip;
+            // when a single underlying row dominates the link, use
+            // it directly so the year / flow surface.
+            var sample = d.rows && d.rows.length === 1 ? d.rows[0] : null;
+            var info = sample || {
+              reporter: d.srcLayer === 0 ? d.srcName : '—',
+              partner:  d.srcLayer === 0 ? '—'      : d.dstName,
+              commodity: d.srcLayer === 0 ? d.dstName : d.srcName,
+              value_usd: d.value,
+              year: null,
+              flow: ''
+            };
+            if (!sample && d.rows && d.rows.length) {
+              // Highlight which side this link sits on so the tooltip
+              // still gives a useful read on the aggregated case.
+              if (d.srcLayer === 0) info.reporter = d.srcName;
+              else { info.partner = d.dstName; info.reporter = '(aggregated)'; }
+            }
+            info.value_usd = d.value;
+            showTooltip(ev, 'sankey-link', info);
+          })
+          .on('mouseleave', function () {
+            d3.select(this).classed('active', false);
+            hideTooltip();
+          });
+
+      // Nodes.
+      var nodeColour = function (n) {
+        return n.layer === 0 ? 'var(--node-reporter)'
+             : n.layer === 1 ? 'var(--node-commodity)'
+             :                 'var(--node-partner)';
+      };
+      var nodeG = svg.append('g')
+        .selectAll('g')
+        .data(graph.nodes)
+        .join('g')
+          .attr('class', 'sankey-node');
+      nodeG.append('rect')
+        .attr('x', function (d) { return d.x0; })
+        .attr('y', function (d) { return d.y0; })
+        .attr('height', function (d) { return Math.max(1, d.y1 - d.y0); })
+        .attr('width',  function (d) { return d.x1 - d.x0; })
+        .attr('fill', nodeColour)
+        .on('mousemove', function (ev, d) {
+          showTooltip(ev, 'node', { label: d.name + ' (' + layerLabel(d.layer) + ')', total: d.value });
+        })
+        .on('mouseleave', hideTooltip);
+      nodeG.append('text')
+        .attr('x', function (d) { return d.x1 + 4; })
+        .attr('y', function (d) { return (d.y0 + d.y1) / 2; })
+        .attr('dy', '0.32em')
+        .attr('text-anchor', 'start')
+        .text(function (d) { return truncate(d.name, 28); });
+
+      $sankeyHost.appendChild(svg.node());
+
+      // Legend.
+      clearNode($legend);
+      [['Reporter', 'var(--node-reporter)'],
+       ['Commodity','var(--node-commodity)'],
+       ['Partner',  'var(--node-partner)']].forEach(function (pair) {
+        $legend.appendChild(el('span', null, [
+          el('span', { class: 'swatch', style: 'background:' + pair[1] }),
+          document.createTextNode(pair[0])
+        ]));
+      });
+    }
+
+    function layerLabel(layer) {
+      return layer === 0 ? 'reporter' : layer === 1 ? 'commodity' : 'partner';
+    }
+    function truncate(s, n) {
+      if (s == null) return '';
+      return s.length > n ? (s.slice(0, n - 1) + '…') : s;
+    }
+
+    // ----- Treemap rendering (d3.treemap) -----
+
+    function aggregateCommodities(rows) {
+      var totals = {};
+      rows.forEach(function (r) {
+        if (!totals[r.commodity]) {
+          totals[r.commodity] = { commodity: r.commodity, total: 0, count: 0 };
+        }
+        totals[r.commodity].total += r.value_usd;
+        totals[r.commodity].count += 1;
+      });
+      return Object.keys(totals).map(function (k) { return totals[k]; })
+        .sort(function (a, b) { return b.total - a.total; });
+    }
+
+    function renderTreemap(rows) {
+      clearNode($treemapHost);
+      var commodities = aggregateCommodities(rows);
+      if (!commodities.length) {
+        $treemapHost.appendChild(el('div', { class: 'empty',
+          text: 'No commodities to render.' }));
+        return;
+      }
+      var width  = Math.max(280, $treemapHost.clientWidth || 480);
+      var height = Math.max(280, Math.min(640, commodities.length * 32 + 160));
+
+      var root = d3.hierarchy({ children: commodities })
+        .sum(function (d) { return d.total || 0; })
+        .sort(function (a, b) { return (b.value || 0) - (a.value || 0); });
+      d3.treemap().size([width, height]).paddingInner(2)(root);
+
+      var palette = d3.scaleSequential()
+        .domain([0, Math.max(1, commodities.length - 1)])
+        .interpolator(d3.interpolateViridis);
+
+      var svg = d3.create('svg')
+        .attr('class', 'chart')
+        .attr('viewBox', '0 0 ' + width + ' ' + height)
+        .attr('preserveAspectRatio', 'xMidYMid meet');
+
+      var tiles = svg.selectAll('g')
+        .data(root.leaves())
+        .join('g')
+          .attr('class', 'treemap-tile')
+          .attr('transform', function (d) { return 'translate(' + d.x0 + ',' + d.y0 + ')'; });
+      tiles.append('rect')
+        .attr('width',  function (d) { return Math.max(0, d.x1 - d.x0); })
+        .attr('height', function (d) { return Math.max(0, d.y1 - d.y0); })
+        .attr('fill', function (d, i) { return palette(i); })
+        .on('mousemove', function (ev, d) { showTooltip(ev, 'commodity', d.data); })
+        .on('mouseleave', hideTooltip)
+        .on('click', function (ev, d) {
+          // Click-to-filter on commodity.
+          $fCommodity.value = d.data.commodity;
+          state.filters.commodity = d.data.commodity;
+          renderAll();
+        });
+      tiles.each(function (d) {
+        var w = d.x1 - d.x0, h = d.y1 - d.y0;
+        if (w < 50 || h < 24) return; // skip labels in tiny tiles
+        var g = d3.select(this);
+        g.append('text')
+          .attr('x', 4)
+          .attr('y', 14)
+          .text(truncate(d.data.commodity, Math.floor(w / 6)));
+        g.append('text')
+          .attr('class', 'sub')
+          .attr('x', 4)
+          .attr('y', 28)
+          .text(formatUsd(d.data.total));
+      });
+
+      $treemapHost.appendChild(svg.node());
+    }
+
+    // ----- Stats line -----
+
+    function renderStats(rows) {
+      clearNode($stats);
+      if (!rows.length) return;
+      var total = rows.reduce(function (a, r) { return a + r.value_usd; }, 0);
+      var reporters  = uniqueValues(rows, 'reporter').length;
+      var partners   = uniqueValues(rows, 'partner').length;
+      var commodities= uniqueValues(rows, 'commodity').length;
+      function stat(label, value) {
+        return el('span', null, [
+          document.createTextNode(label + ': '),
+          el('strong', { text: value }),
+        ]);
+      }
+      $stats.appendChild(stat('Flows', String(rows.length)));
+      $stats.appendChild(stat('Total', formatUsd(total)));
+      $stats.appendChild(stat('Reporters', String(reporters)));
+      $stats.appendChild(stat('Partners',  String(partners)));
+      $stats.appendChild(stat('Commodities', String(commodities)));
+    }
+
+    // ----- Top-level render -----
+
+    function renderAll() {
+      var rows = applyFilters(state.flows);
+      renderStats(rows);
+      renderSankey(rows);
+      renderTreemap(rows);
+      if (state.flows.length) {
+        $hint.textContent = 'Showing ' + rows.length + ' of ' + state.flows.length + ' flows.';
+      }
+    }
+
+    // ----- Tooltip global movement -----
+
+    document.addEventListener('mousemove', function (ev) {
+      if ($tooltip.style.display === 'block') moveTooltip(ev);
+    });
+
+    // ----- Dev-mode ingress -----
+
+    function loadFromUrl() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var b64 = params.get('data');
+        if (!b64) return null;
+        // URL-safe base64 → standard base64 + padding restoration.
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join('=');
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        // UTF-8-safe decode so multibyte commodity / country names round-trip.
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      } catch (e) {
+        showError('Invalid ?data= URL parameter: ' + e.message);
+        return null;
+      }
+    }
+    function loadFromGlobal() {
+      return (typeof window.__app_data__ === 'object' && window.__app_data__) || null;
+    }
+    var seed = loadFromUrl() || loadFromGlobal();
+    if (seed) ingest(seed);
+
+    // ----- Resize handling -----
+
+    var resizeT = null;
+    window.addEventListener('resize', function () {
+      if (resizeT) clearTimeout(resizeT);
+      resizeT = setTimeout(renderAll, 120);
+    });
+  })();
+  </script>
+</body>
+</html>
