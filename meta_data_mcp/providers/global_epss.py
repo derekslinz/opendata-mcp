@@ -16,6 +16,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_vulnerability_v1 import URI as VULN_APP_URI
 from meta_data_mcp.utils import (
     create_mcp_server,
     http_get,
@@ -123,6 +124,8 @@ TOOLS.append(
             "30-day exploitation probability and percentile rank for each CVE."
         ),
         inputSchema=EpssScoresParams.model_json_schema(),
+        # MCP Apps binding: render via the vulnerability app.
+        _meta={"ui": {"resourceUri": VULN_APP_URI}},
     )
 )
 TOOLS_HANDLERS["epss-scores"] = handle_epss_scores

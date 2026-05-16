@@ -6,6 +6,7 @@ import pytest
 
 from meta_data_mcp import utils
 from meta_data_mcp.providers.us_cisa_kev import (
+    TOOLS,
     CisaKevGetParams,
     CisaKevListParams,
     fetch_cisa_kev_get,
@@ -13,6 +14,7 @@ from meta_data_mcp.providers.us_cisa_kev import (
     handle_cisa_kev_get,
     handle_cisa_kev_list,
 )
+from meta_data_mcp.ui_resources.app_vulnerability_v1 import URI as VULN_URI
 
 
 @pytest.fixture
@@ -184,3 +186,20 @@ async def test_handle_cisa_kev_list_translates_upstream_503(monkeypatch):
     with pytest.raises(UpstreamError) as exc_info:
         await handle_cisa_kev_list({})
     assert exc_info.value.provider == "us-cisa-kev"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: MCP Apps shape primitive binding (vulnerability app).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tool_name", ["cisa-kev-list", "cisa-kev-get"])
+def test_kev_tool_binds_to_vulnerability_app(tool_name):
+    """KEV tools render through the Phase 5 vulnerability app. The
+    binding's wire-level alias (``_meta``) is what the host reads."""
+    tool = next(t for t in TOOLS if t.name == tool_name)
+    assert tool.meta == {"ui": {"resourceUri": VULN_URI}}, (
+        f"{tool_name} is not bound to {VULN_URI}"
+    )
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == VULN_URI

@@ -17,6 +17,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_vulnerability_v1 import URI as VULN_APP_URI
 from meta_data_mcp.utils import (
     create_mcp_server,
     http_get,
@@ -87,6 +88,8 @@ TOOLS.append(
             "CVE, GHSA, PYSEC, GO, RUSTSEC, OSV, and similar namespace ids."
         ),
         inputSchema=OsvGetVulnParams.model_json_schema(),
+        # MCP Apps binding: render via the vulnerability app.
+        _meta={"ui": {"resourceUri": VULN_APP_URI}},
     )
 )
 TOOLS_HANDLERS["osv-get-vulnerability"] = handle_osv_get_vuln
@@ -156,6 +159,7 @@ TOOLS.append(
             "feeds in the OSV schema."
         ),
         inputSchema=OsvQueryPackageParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": VULN_APP_URI}},
     )
 )
 TOOLS_HANDLERS["osv-query-package"] = handle_osv_query_package
