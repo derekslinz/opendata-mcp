@@ -1,0 +1,130 @@
+"""Repo-wide invariants enforced in CI (post-v2.0 architecture review).
+
+Two checks, both deliberately simple and fast (<50ms total) so they sit
+inside the regular ``test`` job rather than a dedicated workflow:
+
+1. **Generator-TODO lint (M3 from the v2.0 review)** — the generator
+   emits a ``# TODO: write a _<snake>_to_shape_payload(data) adapter``
+   comment whenever a tool spec sets ``response_shape``. If a generated
+   provider ships with that comment still in place, the bundle gets
+   un-shape-mapped data routed through the size-bounded serializer and
+   renders empty (the bug class v2.0 closed; this test ensures we
+   don't re-open it).
+
+2. **Bundle CDN origin allowlist (M4)** — every external ``<script src=>``
+   and resource URL in a ``ui://`` bundle must point at a known
+   origin. Catches supply-chain drift: a future bundle that adds an
+   unreviewed CDN would land silently otherwise (bundle-size budget
+   catches inflation, not origin drift).
+
+Both tests parse with regular expressions because htmls in this repo
+are hand-authored, single-file, and small enough that pulling in
+lxml/beautifulsoup would be more risk than parser-leniency saves.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PROVIDERS_DIR = REPO_ROOT / "meta_data_mcp" / "providers"
+BUNDLES_DIR = REPO_ROOT / "meta_data_mcp" / "ui_resources"
+
+
+# ---------------------------------------------------------------------------
+# M3 — generator TODO lint
+# ---------------------------------------------------------------------------
+
+# Matches the literal comment the generator emits in
+# ``tools/generate_provider.py::_render_handler`` for shape-bound tools.
+ADAPTER_TODO_RE = re.compile(
+    r"^\s*#\s*TODO:\s*write\s+a\s+_\w+_to_shape_payload\(data\)\s+adapter\b",
+    re.MULTILINE,
+)
+
+
+def test_no_generated_provider_ships_with_unwritten_shape_adapter() -> None:
+    """A generated provider must not reach main with the placeholder
+    adapter TODO still in place — the bundle would render empty even
+    though CI is green.
+    """
+    offenders: list[tuple[Path, int]] = []
+    for path in sorted(PROVIDERS_DIR.glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        for match in ADAPTER_TODO_RE.finditer(text):
+            line = text.count("\n", 0, match.start()) + 1
+            offenders.append((path, line))
+
+    if not offenders:
+        return
+
+    rendered = "\n".join(
+        f"  - {path.relative_to(REPO_ROOT)}:{line}" for path, line in offenders
+    )
+    pytest.fail(
+        "Generator placeholder adapters still in tree — write the "
+        "_<snake>_to_shape_payload(data) function and replace the TODO "
+        "before merging the provider:\n" + rendered
+    )
+
+
+# ---------------------------------------------------------------------------
+# M4 — bundle CDN-origin allowlist
+# ---------------------------------------------------------------------------
+
+# Origins explicitly approved for ``ui://`` bundles. Adding to this list
+# is an architectural decision — do it in the same PR that introduces
+# the new dependency and document why in the bundle's header comment.
+ALLOWED_BUNDLE_ORIGINS: frozenset[str] = frozenset(
+    {
+        # JS libraries pulled from their canonical CDNs.
+        "cdn.plot.ly",  # Plotly (shape_timeseries)
+        "cdn.jsdelivr.net",  # D3 + d3-sankey (entity-graph, network-topology, trade-flows)
+        "unpkg.com",  # Reserved (Leaflet via unpkg is the documented fallback)
+        "3dmol.org",  # 3Dmol.js (molecular app)
+        # Data origins — bundles fetch these via the host's network,
+        # not via <script>, but the URL strings appear in the bundle
+        # source and the regex catches both.
+        "files.rcsb.org",  # RCSB PDB structure downloads (molecular)
+        "pubchem.ncbi.nlm.nih.gov",  # PubChem SDF downloads (molecular)
+        "www.openstreetmap.org",  # OSM attribution link (geofeatures)
+    }
+)
+
+# Matches any ``https://<host>`` reference in a bundle. We deliberately
+# don't try to distinguish <script src=> from a tooltip-link href=,
+# because the security boundary is "no unreviewed origin ever appears in
+# the bundle" — link OR script.
+ORIGIN_RE = re.compile(r"https://([a-zA-Z0-9.-]+)")
+
+
+def _bundles() -> list[Path]:
+    return sorted(BUNDLES_DIR.glob("*.html"))
+
+
+@pytest.mark.parametrize("bundle", _bundles(), ids=lambda p: p.name)
+def test_bundle_external_origins_are_allowlisted(bundle: Path) -> None:
+    """Every external ``https://<host>`` reference in a bundle must
+    point at an allowlisted origin. Catches a future bundle that adds
+    an unreviewed CDN or data-source dependency.
+    """
+    text = bundle.read_text(encoding="utf-8")
+    seen_origins = {match.group(1) for match in ORIGIN_RE.finditer(text)}
+    rogue = sorted(seen_origins - ALLOWED_BUNDLE_ORIGINS)
+    assert not rogue, (
+        f"{bundle.name} references un-allowlisted external origin(s): {rogue}. "
+        f"If this is intentional, add to ALLOWED_BUNDLE_ORIGINS in {Path(__file__).name} "
+        f"in the same PR that adds the dependency, and document why in the bundle's "
+        f"header comment."
+    )
+
+
+def test_bundle_directory_is_populated() -> None:
+    """Parametrize-with-empty-list silently produces zero test cases.
+    Pin a floor so a refactor that moves the directory fails loudly."""
+    assert _bundles(), (
+        f"No bundles found in {BUNDLES_DIR} — directory moved or glob is stale."
+    )
