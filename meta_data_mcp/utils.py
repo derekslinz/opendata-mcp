@@ -303,7 +303,15 @@ def http_get(
         response.raise_for_status()
     except httpx.HTTPStatusError as e:
         status_code = getattr(e.response, "status_code", None)
-        health.record_failure(provider, status=status_code)
+        # V12 fix (Phase 3): 401/403 indicate caller-side credential misconfig,
+        # not upstream fault. Penalizing the provider's health score would
+        # bias routing away from a provider that's actually healthy — the
+        # right outcome is for the caller to fix their env vars. Translate
+        # the error (so the caller still sees a structured AuthError) but
+        # don't degrade health. Pinned by
+        # tests/test_health.py::test_record_failure_skipped_for_401_403.
+        if status_code not in (401, 403):
+            health.record_failure(provider, status=status_code)
         raise translate_http_error(provider, e) from e
 
     health.record_success(provider)
@@ -417,7 +425,10 @@ def http_post(
         response.raise_for_status()
     except httpx.HTTPStatusError as e:
         status_code = getattr(e.response, "status_code", None)
-        health.record_failure(provider, status=status_code)
+        # V12 fix (Phase 3): see the matching comment in ``http_get``. 401/403
+        # is caller misconfig, not upstream fault — don't degrade health.
+        if status_code not in (401, 403):
+            health.record_failure(provider, status=status_code)
         raise translate_http_error(provider, e) from e
 
     health.record_success(provider)

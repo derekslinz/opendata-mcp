@@ -622,3 +622,147 @@ async def test_main_function_creates_server():
 
             # Verify run_server was called
             mock_run.assert_awaited_once_with(mock_server, "stdio", 8000, "127.0.0.1")
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: discovery app binding + opendata-health-snapshot
+# ---------------------------------------------------------------------------
+
+
+from meta_data_mcp.providers.meta_data_mcp import (  # noqa: E402
+    DISCOVERY_TOOL_NAMES as _DISCOVERY_BOUND_TOOLS,
+)
+from meta_data_mcp.ui_resources.app_discovery_v1 import URI as _DISCOVERY_URI  # noqa: E402
+
+
+@pytest.mark.parametrize("tool_name", _DISCOVERY_BOUND_TOOLS)
+def test_discovery_tool_binds_to_discovery_app(tool_name):
+    """Each discovery meta tool must declare ``_meta.ui.resourceUri`` pointing
+    at the canonical discovery app URI. If this drifts, the MCP Apps host
+    stops loading the panel when these tools are called.
+
+    Pin both the Python-side ``.meta`` attribute AND the wire-level alias
+    (``model_dump(by_alias=True)`` emits ``_meta``) so a future SDK
+    regression on the populate_by_name footgun is caught here.
+    """
+    tool = next(t for t in TOOLS if t.name == tool_name)
+    assert tool.meta == {"ui": {"resourceUri": _DISCOVERY_URI}}, (
+        f"{tool_name} is not bound to {_DISCOVERY_URI}"
+    )
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == _DISCOVERY_URI
+
+
+def test_health_snapshot_tool_registered():
+    """``opendata-health-snapshot`` is the only net-new tool in Phase 3."""
+    names = {t.name for t in TOOLS}
+    assert "opendata-health-snapshot" in names
+    assert "opendata-health-snapshot" in TOOLS_HANDLERS
+
+
+@pytest.mark.anyio
+async def test_health_snapshot_default_returns_full_registry():
+    """Called with no arguments, the handler returns a snapshot for every
+    registered provider — i.e. the discovery app can fetch all badges in
+    one call."""
+    from meta_data_mcp.providers.meta_data_mcp import handle_health_snapshot
+    from meta_data_mcp.registry import iter_registry
+
+    result = await handle_health_snapshot({})
+    payload = json.loads(result[0].text)
+    assert "snapshot" in payload
+    # Two clock fields are intentional: ``generated_at`` is wall-clock for
+    # display, ``generated_at_monotonic`` is the reference clock for
+    # ``last_update_ts`` (also monotonic) so consumers can compute staleness
+    # without mixing clock domains. See handle_health_snapshot's docstring.
+    assert "generated_at" in payload
+    assert "generated_at_monotonic" in payload
+    assert isinstance(payload["generated_at"], float)
+    assert isinstance(payload["generated_at_monotonic"], float)
+    snap = payload["snapshot"]
+    # The registry has tens of providers; the snapshot must cover them all.
+    registry_ids = {p.id for p in iter_registry()}
+    assert registry_ids.issubset(snap.keys())
+    # Every entry has the expected shape.
+    for entry in snap.values():
+        assert set(entry.keys()) == {"score", "failure_mass", "last_update_ts"}
+        assert 0.0 <= entry["score"] <= 1.0
+
+
+@pytest.mark.anyio
+async def test_health_snapshot_with_explicit_ids_filters_response():
+    """Explicit ``provider_ids`` restricts the snapshot to that subset."""
+    from meta_data_mcp.providers.meta_data_mcp import handle_health_snapshot
+
+    result = await handle_health_snapshot(
+        {"provider_ids": ["us_nasa", "global_frankfurter"]}
+    )
+    payload = json.loads(result[0].text)
+    snap = payload["snapshot"]
+    assert set(snap.keys()) == {"us_nasa", "global_frankfurter"}
+
+
+@pytest.mark.anyio
+async def test_health_snapshot_unknown_provider_returns_baseline():
+    """Asking for a provider that's never been routed through ``http_get``
+    must return the healthy baseline rather than dropping the key. The
+    discovery app relies on this for "first-load" rendering before any
+    real traffic has touched the provider."""
+    from meta_data_mcp.providers.meta_data_mcp import handle_health_snapshot
+
+    result = await handle_health_snapshot({"provider_ids": ["zzz_never_seen"]})
+    payload = json.loads(result[0].text)
+    assert payload["snapshot"]["zzz_never_seen"] == {
+        "score": 1.0,
+        "failure_mass": 0.0,
+        "last_update_ts": None,
+    }
+
+
+@pytest.mark.anyio
+async def test_find_providers_includes_breakdowns_per_provider():
+    """Phase 3: handle_find_providers now passes ``explain=True`` to the
+    routing engine and surfaces ``breakdowns`` in the payload so the
+    discovery app can render per-strategy bars."""
+    result = await handle_find_providers({"query": "weather", "limit": 5})
+    payload = json.loads(result[0].text)
+    assert "breakdowns" in payload
+    # At least one provider's breakdown must contain the canonical scorers.
+    if payload["providers"]:
+        first_id = payload["providers"][0]["id"]
+        breakdown = payload["breakdowns"].get(first_id, {})
+        # Token + fuzzy + metadata + semantic + health are the wired scorers.
+        # ``explain`` skips zero-weight scorers, so we only assert that at
+        # least one non-health scorer ran — that's what the app relies on.
+        non_health = {k: v for k, v in breakdown.items() if k != "health"}
+        assert non_health, (
+            "expected at least one non-health scorer to appear in breakdown"
+        )
+
+
+@pytest.mark.anyio
+async def test_find_providers_omits_breakdowns_when_no_query():
+    """Phase 3 refinement: when the caller doesn't supply a query, every
+    passing provider is assigned a flat 1.0 score with no per-strategy
+    contribution. Returning an all-zero breakdown would lie ("every
+    scorer rated this provider 0%"), so the handler omits ``breakdowns``
+    entirely. The discovery app's row renderer treats absence as 'no
+    per-strategy data' rather than drawing zero-height bars."""
+    result = await handle_find_providers({"limit": 3})
+    payload = json.loads(result[0].text)
+    assert "breakdowns" not in payload, (
+        "breakdowns must be absent when no query was supplied; got "
+        f"{payload.get('breakdowns')!r}"
+    )
+    # Empty string query / whitespace-only query should be treated the same.
+    result_blank = await handle_find_providers({"query": "   ", "limit": 3})
+    payload_blank = json.loads(result_blank.__getitem__(0).text)
+    assert "breakdowns" not in payload_blank
+
+
+def test_discovery_app_resource_registered_at_boot():
+    """``register_apps()`` ran during module import, so the discovery app
+    URI must already be in RESOURCES_HANDLERS by the time tests load."""
+    assert _DISCOVERY_URI in RESOURCES_HANDLERS
+    uris = [str(r.uri) for r in RESOURCES]
+    assert _DISCOVERY_URI in uris

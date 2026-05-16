@@ -148,3 +148,63 @@ def reset(provider_id: str | None = None) -> None:
             _state.clear()
         else:
             _state.pop(provider_id, None)
+
+
+def snapshot(
+    provider_ids: list[str] | tuple[str, ...] | None = None,
+    *,
+    now: float | None = None,
+) -> dict[str, dict[str, float | None]]:
+    """Return a snapshot of health state for instrumentation / UI.
+
+    The Phase 3 ``opendata-health-snapshot`` meta tool calls this to feed
+    the discovery app's per-provider health badges. The return value is a
+    fresh dict — callers can mutate it freely without affecting the
+    in-memory registry.
+
+    Args:
+        provider_ids: Optional list of provider ids to query. When given,
+            providers with no recorded state default to a fully-healthy
+            entry (score 1.0, ``failure_mass`` 0.0, ``last_update_ts`` ``None``).
+            When ``None``, returns every provider currently in the registry.
+        now: Optional clock value for decay computation. ``None`` reads the
+            module-level ``_clock``. Used by tests.
+
+    Returns:
+        ``{provider_id: {"score": float, "failure_mass": float,
+        "last_update_ts": float | None}}``.
+    """
+    current = now if now is not None else _clock()
+    with _lock:
+        if provider_ids is None:
+            ids = list(_state.keys())
+        else:
+            ids = list(provider_ids)
+
+        result: dict[str, dict[str, float | None]] = {}
+        for pid in ids:
+            entry = _state.get(pid)
+            if entry is None:
+                result[pid] = {
+                    "score": 1.0,
+                    "failure_mass": 0.0,
+                    "last_update_ts": None,
+                }
+                continue
+            # Mirror health_score()'s decay calculation so the snapshot is
+            # consistent with whatever the scorer would have returned at
+            # the same instant.
+            if entry.failure_mass <= 0.0 or entry.last_update_ts is None:
+                score = 1.0
+                decayed_mass = entry.failure_mass
+            else:
+                dt = max(0.0, current - entry.last_update_ts)
+                decayed_mass = entry.failure_mass * exp(-dt / _DECAY_TAU_SECONDS)
+                penalty = min(1.0, decayed_mass)
+                score = max(0.0, min(1.0, 1.0 - penalty))
+            result[pid] = {
+                "score": score,
+                "failure_mass": decayed_mass,
+                "last_update_ts": entry.last_update_ts,
+            }
+    return result
