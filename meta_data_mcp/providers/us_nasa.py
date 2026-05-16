@@ -327,7 +327,10 @@ def fetch_ace_data(params: ACESolarWindParams) -> list:
         if time_tag:
             date_part = time_tag.split(" ")[0]
             if start_str <= date_part <= end_str:
-                results.append(dict(zip(headers, row)))
+                # strict=False: NASA CSV-like rows are inherently
+                # best-effort; a ragged row produces a partial dict
+                # rather than dropping the whole row.
+                results.append(dict(zip(headers, row, strict=False)))
 
     return results
 

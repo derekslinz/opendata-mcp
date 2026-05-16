@@ -110,7 +110,10 @@ def _open_meteo_to_shape_payload(data: dict) -> dict:
             unit = units.get(var_name)
             if isinstance(unit, str) and unit:
                 unit_set.add(unit)
-        for date, value in zip(times, values):
+        # strict=True: ``times`` is the canonical grid for the entire
+        # hourly/daily block; every variable's value series must align.
+        # Mismatched length means the upstream response is broken.
+        for date, value in zip(times, values, strict=True):
             if not isinstance(date, str):
                 continue
             if value is None or isinstance(value, bool):

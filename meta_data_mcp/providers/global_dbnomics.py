@@ -155,7 +155,11 @@ def _dbnomics_series_to_shape_payload(data: dict) -> dict:
         values = doc.get("value") or []
         if not isinstance(periods, list) or not isinstance(values, list):
             continue
-        for period, value in zip(periods, values):
+        # strict=False: if DBnomics returns ragged arrays (rare but
+        # documented for partial-series responses), better to surface
+        # the prefix that does line up than to drop the whole series
+        # by raising.
+        for period, value in zip(periods, values, strict=False):
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 continue
             if not isinstance(period, str):

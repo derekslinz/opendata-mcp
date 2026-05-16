@@ -213,7 +213,10 @@ def _eurostat_dataset_to_shape_payload(data: dict) -> dict:
 
     # Build per-dimension code lookups: position -> code.
     pos_to_code: list[list[str]] = []
-    for dim_id, size in zip(ids, sizes):
+    # strict=True: ids and sizes come from the same JSON-stat
+    # ``dimension`` block and must be parallel. A mismatch means the
+    # upstream response is malformed; fail loudly rather than truncate.
+    for dim_id, size in zip(ids, sizes, strict=True):
         dim_block = dimension.get(dim_id) or {}
         category = dim_block.get("category") or {}
         index_map = category.get("index") or {}
@@ -260,7 +263,10 @@ def _eurostat_dataset_to_shape_payload(data: dict) -> dict:
             continue
         coords = []
         remaining = flat_idx
-        for size, stride in zip(sizes, strides):
+        # strides was computed from sizes immediately above; the two
+        # lists are invariant-equal length. strict=True documents that
+        # and catches refactors that break it.
+        for _size, stride in zip(sizes, strides, strict=True):
             coord = remaining // stride
             remaining = remaining % stride
             coords.append(coord)

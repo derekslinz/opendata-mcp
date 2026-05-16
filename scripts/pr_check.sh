@@ -32,6 +32,18 @@ for cmd in gh jq; do
 done
 
 REPO="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+
+# Confirm the PR actually exists upfront. ``gh pr view`` is a leaky
+# abstraction here: ``--json number`` echoes back whatever integer you
+# pass without a server roundtrip, so a missing PR looks valid. Pick a
+# field that forces the GraphQL fetch and surfaces the GraphQL error.
+EXISTENCE_OUT="$(gh pr view "$PR" --json state 2>&1 || true)"
+if [[ "$EXISTENCE_OUT" == *"Could not resolve to a PullRequest"* ]] \
+    || [[ "$EXISTENCE_OUT" != *'"state"'* ]]; then
+    echo "❌ PR #${PR} not found in ${REPO}" >&2
+    exit 1
+fi
+
 echo "── PR merge gate for ${REPO} #${PR} ──"
 echo
 
@@ -44,11 +56,15 @@ pass() {
     echo "✅ $*"
 }
 
+# Every command that talks to GitHub gets ``|| true`` on its capture so
+# a transient gh failure inside a step doesn't abort the whole gate —
+# we want each step to report individually.
+
 # Step 1: CI is green.
 echo "[1/7] CI checks"
-CHECK_STATES="$(gh pr checks "$PR" --json bucket --jq '.[].bucket' 2>/dev/null | sort -u)"
+CHECK_STATES="$(gh pr checks "$PR" --json bucket --jq '.[].bucket' 2>/dev/null | sort -u || true)"
 if [[ -z "$CHECK_STATES" ]]; then
-    fail "PR has no CI checks (or PR not found)"
+    fail "PR has no CI checks (or check-fetch failed)"
 else
     # Buckets: pass, fail, pending, skipping, cancel.
     BAD="$(echo "$CHECK_STATES" | grep -vE '^(pass|skipping)$' || true)"
@@ -63,7 +79,7 @@ echo
 
 # Step 2: Review state.
 echo "[2/7] Review state"
-DECISION="$(gh pr view "$PR" --json reviewDecision --jq .reviewDecision)"
+DECISION="$(gh pr view "$PR" --json reviewDecision --jq .reviewDecision 2>/dev/null || true)"
 case "$DECISION" in
 "" | "null" | "APPROVED")
     pass "reviewDecision: ${DECISION:-<none>} (no required reviewers or approved)"
@@ -102,7 +118,7 @@ echo
 # Step 4: Stack hygiene — base branch is main (we don't run stacks
 # automatically here; if you're stacking, audit by hand).
 echo "[4/7] Stack hygiene"
-BASE="$(gh pr view "$PR" --json baseRefName --jq .baseRefName)"
+BASE="$(gh pr view "$PR" --json baseRefName --jq .baseRefName 2>/dev/null || true)"
 if [[ "$BASE" == "main" ]]; then
     pass "base: main"
 else
@@ -114,7 +130,7 @@ echo
 # Step 5–6: Merge state + merged confirmation are post-merge; here we
 # only require the PR to be mergeable.
 echo "[5/7] Mergeability"
-STATE="$(gh pr view "$PR" --json mergeable --jq .mergeable)"
+STATE="$(gh pr view "$PR" --json mergeable --jq .mergeable 2>/dev/null || true)"
 case "$STATE" in
 "MERGEABLE")
     pass "mergeable: clean"

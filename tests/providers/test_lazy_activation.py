@@ -232,15 +232,12 @@ def test_load_all_plugins_preload_specific(monkeypatch):
     # Need to clear state first because we're sharing module-level state.
     srv._active_providers.clear()
     srv._owner_by_tool.clear()
-    # Remove any plugin tools left from previous tests.
+    # Remove any plugin tools left from previous tests. ``_load_all_plugins``
+    # doesn't read ``TOOLS_HANDLERS`` for the meta tools it leaves behind —
+    # the isolate fixture restores the full handler dict after the test —
+    # so we only need to reset the plugin-side state above.
     srv.TOOLS[:] = [t for t in srv.TOOLS if t.name.startswith("opendata-")]
     srv.TOOLS_HANDLERS.clear()
-    # Repopulate handlers for the meta tools that remain in TOOLS.
-    # (The isolate fixture will restore everything after the test.)
-    for t in srv.TOOLS:
-        # Best-effort: the original handlers are restored by the fixture.
-        # We just need TOOLS_HANDLERS to be a real dict here.
-        pass
 
     loaded, added = srv._load_all_plugins()
     assert loaded == 2  # two valid ids preloaded
