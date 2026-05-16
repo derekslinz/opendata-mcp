@@ -81,6 +81,27 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
         ],
         "edges": [{"source": "n2", "target": "n1", "label": "authored", "weight": 1}],
     },
+    # Seed the museum panel with one image-bearing object and one
+    # image-less object so the lazy-load + "no image available"
+    # codepaths both render at smoke time.
+    "app_museum_v1.html": {
+        "objects": [
+            {
+                "id": 436535,
+                "title": "Wheat Field with Cypresses",
+                "artist": "Vincent van Gogh",
+                "date": "1889",
+                "medium": "Oil on canvas",
+                "image_url": "",
+                "primary_image_url": "",
+                "url": "https://www.metmuseum.org/art/collection/search/436535",
+                "provenance": "Bequest of Annie Swan Coburn, 1934.",
+                "tags": ["Landscapes", "Cypresses"],
+                "is_public_domain": True,
+            },
+            {"id": 999999, "title": "Untitled (no image)"},
+        ],
+    },
 }
 
 # At least one element matching the selector must be present after load. We
@@ -93,6 +114,7 @@ ROOT_SELECTORS: dict[str, str] = {
     "app_discovery_v1.html": "#app",
     "app_vulnerability_v1.html": "#app",
     "app_entity_graph_v1.html": "#app, #graph",
+    "app_museum_v1.html": "#app, #grid",
 }
 
 # CDN origins to ignore in error filtering. Bundle's own inline JS has no

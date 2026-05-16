@@ -28,7 +28,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.app_museum_v1 import URI as MUSEUM_APP_URI
+from meta_data_mcp.utils import MAX_RESPONSE_CHARS, http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -83,7 +84,11 @@ async def handle_met_list_objects(
     try:
         params = MetListObjectsParams(**(arguments or {}))
         data = fetch_met_list_objects(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error listing Met objects: {e}")
         raise
@@ -125,7 +130,11 @@ async def handle_met_get_object(
             raise ValueError("objectID is required")
         params = MetGetObjectParams(**arguments)
         data = fetch_met_get_object(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching Met object: {e}")
         raise
@@ -136,6 +145,8 @@ TOOLS.append(
         name="met-get-object",
         description="Fetch the full metadata record for a Met Museum object by object ID.",
         inputSchema=MetGetObjectParams.model_json_schema(),
+        # MCP Apps binding: render via the museum app's detail modal.
+        _meta={"ui": {"resourceUri": MUSEUM_APP_URI}},
     )
 )
 TOOLS_HANDLERS["met-get-object"] = handle_met_get_object
@@ -200,7 +211,11 @@ async def handle_met_search(
             raise ValueError("q is required")
         params = MetSearchParams(**arguments)
         data = fetch_met_search(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error searching Met collection: {e}")
         raise
@@ -211,6 +226,8 @@ TOOLS.append(
         name="met-search",
         description="Search the Met Museum collection by free text with optional faceted filters.",
         inputSchema=MetSearchParams.model_json_schema(),
+        # MCP Apps binding: render via the museum app's image grid.
+        _meta={"ui": {"resourceUri": MUSEUM_APP_URI}},
     )
 )
 TOOLS_HANDLERS["met-search"] = handle_met_search
@@ -238,7 +255,11 @@ async def handle_met_list_departments(
     try:
         params = MetListDepartmentsParams(**(arguments or {}))
         data = fetch_met_list_departments(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error listing Met departments: {e}")
         raise
@@ -286,7 +307,11 @@ async def handle_met_search_by_artist(
             raise ValueError("q is required")
         params = MetSearchByArtistParams(**arguments)
         data = fetch_met_search_by_artist(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error searching Met collection by artist: {e}")
         raise
@@ -297,6 +322,9 @@ TOOLS.append(
         name="met-search-by-artist",
         description="Search the Met Museum collection restricted to artist or culture fields.",
         inputSchema=MetSearchByArtistParams.model_json_schema(),
+        # MCP Apps binding: same response shape as met-search ({total, objectIDs}),
+        # so it renders through the museum app's image grid the same way.
+        _meta={"ui": {"resourceUri": MUSEUM_APP_URI}},
     )
 )
 TOOLS_HANDLERS["met-search-by-artist"] = handle_met_search_by_artist

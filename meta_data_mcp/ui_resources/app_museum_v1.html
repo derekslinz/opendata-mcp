@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Museum — meta-data-mcp app v1</title>
+  <!--
+    ui://meta-data-mcp/app/museum/v1 — Phase 5 museum app.
+
+    Wraps the Met Museum Open Access tools into one image-driven panel:
+
+      - met-search (global_met_museum): free-text search, returns object
+        IDs that match a query plus optional faceted filters (department,
+        medium, geography, date range).
+      - met-get-object (global_met_museum): single-object detail —
+        title, artist, date, medium, primary image URL, provenance text.
+
+    The grid is pure CSS grid + <img loading="lazy"> — no chart library,
+    no canvas, no CDN. CC0 imagery, attribution-free; the Met Open
+    Access program publishes every public-domain image under Creative
+    Commons Zero.
+
+    postMessage protocol (inherited from the Phase 3 discovery app):
+
+      host → app:   { type: "tool_result"|"render", id?, tool?, payload }
+      app → host:   { type: "tool_call", id, name, arguments }
+
+    Payload contract (documented in app_museum_v1.py too):
+
+      {
+        objects: [
+          { id, title, artist, date, medium,
+            image_url, primary_image_url, url, provenance, tags },
+          ...
+        ],
+        facets?: [ ... ]
+      }
+
+    Raw {objectIDs: [...]} from met-search is also accepted — the
+    bundle renders an id-only fallback grid (one tile per object id,
+    no thumbnails, click to issue a met-get-object tool_call).
+
+    Security note: this bundle never assigns to ``.innerHTML``. All DOM
+    mutation goes through ``textContent`` / ``replaceChildren`` /
+    explicit element creation, so untrusted upstream JSON (Met titles,
+    provenance, artist names) cannot inject markup.
+
+    Dependency-free vanilla JS — no chart libraries, no CDN.
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e5e5e5;
+      --accent: #2563eb;
+      --accent-bg: #eff6ff;
+      --header-bg: #f8fafc;
+      --row-hover: #f1f5f9;
+      --pill-bg: #e2e8f0;
+      --tile-bg: #f3f4f6;
+      --overlay-bg: rgba(15, 23, 42, 0.55);
+      --panel-bg: #ffffff;
+      --shadow: 0 10px 25px -10px rgba(0, 0, 0, 0.35);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f17;
+        --fg: #e8edf3;
+        --muted: #9aa3af;
+        --border: #1f2937;
+        --accent: #60a5fa;
+        --accent-bg: #1e293b;
+        --header-bg: #111827;
+        --row-hover: #182030;
+        --pill-bg: #1f2937;
+        --tile-bg: #111827;
+        --overlay-bg: rgba(0, 0, 0, 0.65);
+        --panel-bg: #0f1623;
+        --shadow: 0 10px 25px -10px rgba(0, 0, 0, 0.7);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+    header { padding: 12px 16px; border-bottom: 1px solid var(--border);
+      background: var(--header-bg); display: flex; gap: 12px; align-items: center;
+      flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    header .hint { color: var(--muted); font-size: 12px; }
+    header input[type=text] { flex: 1; min-width: 180px; padding: 6px 8px;
+      border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--fg); font-family: inherit; }
+    header button { padding: 6px 12px; border: 1px solid var(--accent);
+      color: var(--accent); background: transparent; border-radius: 4px;
+      cursor: pointer; font-size: 12px; font-family: inherit; }
+    header button:hover { background: var(--accent-bg); }
+    main { display: grid; grid-template-columns: 220px 1fr; min-height: 0;
+      overflow: hidden; }
+    aside { border-right: 1px solid var(--border); padding: 12px;
+      overflow-y: auto; }
+    aside h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+    aside section { margin-bottom: 16px; }
+    aside label { display: flex; align-items: center; gap: 6px; padding: 2px 0;
+      cursor: pointer; font-size: 12px; }
+    aside label input { accent-color: var(--accent); }
+    aside .facet-empty { color: var(--muted); font-style: italic; font-size: 12px; }
+    aside button.clear { margin-top: 6px; background: none;
+      border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;
+      font-family: inherit; }
+    aside button.clear:hover { color: var(--fg); }
+    #content { overflow-y: auto; padding: 12px 16px; }
+    #count { color: var(--muted); font-size: 12px; margin-bottom: 8px;
+      display: block; }
+    #grid { display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px; }
+    .tile { background: var(--tile-bg); border: 1px solid var(--border);
+      border-radius: 4px; overflow: hidden; cursor: pointer; display: flex;
+      flex-direction: column; transition: transform 0.12s, box-shadow 0.12s; }
+    .tile:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+    .tile .thumb-wrap { position: relative; width: 100%; padding-top: 100%;
+      background: var(--tile-bg); overflow: hidden; }
+    .tile .thumb-wrap img { position: absolute; inset: 0; width: 100%;
+      height: 100%; object-fit: cover; display: block; }
+    .tile .no-image { position: absolute; inset: 0; display: flex;
+      align-items: center; justify-content: center; color: var(--muted);
+      font-size: 11px; padding: 8px; text-align: center; }
+    .tile .meta { padding: 8px; display: flex; flex-direction: column; gap: 2px;
+      flex: 1; }
+    .tile .title { font-size: 12px; font-weight: 600; line-height: 1.3;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; }
+    .tile .artist { font-size: 11px; color: var(--muted);
+      display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+      overflow: hidden; }
+    .tile .date { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .tile .id-only { font-size: 12px; padding: 16px 8px; text-align: center;
+      color: var(--muted); }
+    .empty { color: var(--muted); padding: 24px 8px; text-align: center; }
+    .err { background: #dc2626; color: white;
+      padding: 6px 10px; margin: 8px 16px; border-radius: 4px; }
+    /* ----- Modal ----- */
+    #modal-backdrop { position: fixed; inset: 0; background: var(--overlay-bg);
+      display: none; align-items: center; justify-content: center; z-index: 50;
+      padding: 24px; }
+    #modal-backdrop.open { display: flex; }
+    #modal { background: var(--panel-bg); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 6px;
+      box-shadow: var(--shadow);
+      max-width: 720px; width: 100%; max-height: 90vh;
+      display: flex; flex-direction: column; overflow: hidden; }
+    #modal header { padding: 10px 14px; border-bottom: 1px solid var(--border);
+      background: var(--header-bg); display: flex; gap: 8px;
+      align-items: center; justify-content: space-between; }
+    #modal header .title { font-size: 14px; font-weight: 600;
+      line-height: 1.3; }
+    #modal header button.close { background: none; border: none;
+      color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 6px;
+      font-family: inherit; }
+    #modal header button.close:hover { color: var(--fg); }
+    #modal .body { padding: 14px; overflow-y: auto; display: grid;
+      grid-template-columns: 240px 1fr; gap: 16px; }
+    #modal .hero { width: 100%; background: var(--tile-bg); border-radius: 4px;
+      overflow: hidden; aspect-ratio: 1 / 1; display: flex;
+      align-items: center; justify-content: center; }
+    #modal .hero img { max-width: 100%; max-height: 100%; object-fit: contain;
+      display: block; }
+    #modal .hero .no-image { color: var(--muted); padding: 12px;
+      text-align: center; font-size: 12px; }
+    #modal dl { display: grid; grid-template-columns: 110px 1fr;
+      gap: 4px 12px; margin: 0; font-size: 12px; }
+    #modal dl dt { color: var(--muted); }
+    #modal dl dd { margin: 0; word-break: break-word; }
+    #modal .provenance { font-size: 12px; margin-top: 10px;
+      color: var(--fg); white-space: pre-wrap; word-wrap: break-word;
+      background: var(--accent-bg); padding: 8px 10px; border-radius: 4px;
+      max-height: 200px; overflow-y: auto; }
+    #modal .tags { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+    #modal .pill { background: var(--pill-bg); color: var(--fg);
+      padding: 1px 8px; border-radius: 10px; font-size: 11px; }
+    #modal a.source { display: inline-block; margin-top: 10px;
+      color: var(--accent); text-decoration: none; font-size: 12px; }
+    #modal a.source:hover { text-decoration: underline; }
+    @media (max-width: 560px) {
+      main { grid-template-columns: 1fr; }
+      aside { border-right: none; border-bottom: 1px solid var(--border);
+        max-height: 160px; }
+      #modal .body { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Met Museum Browser</h1>
+      <input type="text" id="search-input" placeholder="Filter loaded objects — title, artist, medium"
+             autocomplete="off" spellcheck="false">
+      <button type="button" id="search-btn">Search Met</button>
+      <span class="hint" id="hint">Click a tile for provenance + source link.</span>
+    </header>
+    <main>
+      <aside id="facets-side">
+        <section id="facets-empty-section">
+          <p class="facet-empty" id="facets-empty">No facets in payload yet.</p>
+        </section>
+      </aside>
+      <section id="content">
+        <span id="count">No objects loaded.</span>
+        <div id="grid">
+          <div class="empty" id="grid-empty">Load objects via met-search, then click a tile for detail.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Detail modal (hidden by default) -->
+  <div id="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div id="modal">
+      <header>
+        <span class="title" id="modal-title"></span>
+        <button type="button" class="close" id="modal-close" aria-label="Close">×</button>
+      </header>
+      <div class="body">
+        <div class="hero" id="modal-hero"></div>
+        <div>
+          <dl id="modal-meta"></dl>
+          <div class="provenance" id="modal-provenance" hidden></div>
+          <div class="tags" id="modal-tags"></div>
+          <a class="source" id="modal-source" href="#" target="_blank" rel="noopener noreferrer" hidden>View at metmuseum.org →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // ----- State -----
+    var state = {
+      objects: [],     // [{id, title, artist, date, medium, image_url, ...}]
+      facets: [],      // optional [{name, values:[{value, count?}]}, ...]
+      activeFacets: {},// {facetName: Set(value)}
+      filter: '',      // free-text filter
+      pendingCalls: {},
+    };
+
+    // ----- DOM refs -----
+    var $search = document.getElementById('search-input');
+    var $searchBtn = document.getElementById('search-btn');
+    var $hint = document.getElementById('hint');
+    var $grid = document.getElementById('grid');
+    var $count = document.getElementById('count');
+    var $facetsSide = document.getElementById('facets-side');
+    var $facetsEmpty = document.getElementById('facets-empty');
+    var $modalBackdrop = document.getElementById('modal-backdrop');
+    var $modalTitle = document.getElementById('modal-title');
+    var $modalClose = document.getElementById('modal-close');
+    var $modalHero = document.getElementById('modal-hero');
+    var $modalMeta = document.getElementById('modal-meta');
+    var $modalProv = document.getElementById('modal-provenance');
+    var $modalTags = document.getElementById('modal-tags');
+    var $modalSource = document.getElementById('modal-source');
+
+    // ----- DOM helpers -----
+
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      applyAttrs(node, attrs);
+      appendChildren(node, children);
+      return node;
+    }
+
+    function applyAttrs(node, attrs) {
+      if (!attrs) return;
+      for (var k in attrs) {
+        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+        var v = attrs[k];
+        if (k === 'class')     node.setAttribute('class', v);
+        else if (k === 'text') node.textContent = v;
+        else if (k === 'on') {
+          for (var ev in v) {
+            if (Object.prototype.hasOwnProperty.call(v, ev)) {
+              node.addEventListener(ev, v[ev]);
+            }
+          }
+        } else if (v !== null && v !== undefined) {
+          node.setAttribute(k, v);
+        }
+      }
+    }
+
+    function appendChildren(node, children) {
+      if (!children) return;
+      children.forEach(function (c) {
+        if (c == null) return;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      });
+    }
+
+    function clearNode(node) { node.replaceChildren(); }
+
+    function showError(msg) {
+      var div = el('div', { class: 'err', text: msg });
+      document.body.insertBefore(div, document.getElementById('app'));
+      setTimeout(function () { div.remove(); }, 6000);
+    }
+
+    // ----- postMessage transport -----
+
+    function newCallId() {
+      return 'tc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function callTool(name, args) {
+      var id = newCallId();
+      var msg = { type: 'tool_call', id: id, name: name, arguments: args || {} };
+      return new Promise(function (resolve, reject) {
+        state.pendingCalls[id] = { resolve: resolve, reject: reject, name: name };
+        try {
+          window.parent.postMessage(msg, '*');
+        } catch (e) {
+          delete state.pendingCalls[id];
+          reject(e);
+          return;
+        }
+        setTimeout(function () {
+          if (state.pendingCalls[id]) {
+            delete state.pendingCalls[id];
+            reject(new Error('tool call timed out: ' + name));
+          }
+        }, 30000);
+      });
+    }
+
+    function handleIncomingMessage(ev) {
+      // Hard origin guard. Without it, any frame on the page could push
+      // payloads in and the bundle would happily render them — including
+      // attacker-controlled metadata that flows into provenance text.
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type !== 'tool_result' && msg.type !== 'render') return;
+      var id = msg.id;
+      var payload = msg.payload;
+      if (id && state.pendingCalls[id]) {
+        var pending = state.pendingCalls[id];
+        delete state.pendingCalls[id];
+        pending.resolve(payload);
+        return;
+      }
+      ingestPayload(payload, msg.tool || msg.name);
+    }
+    window.addEventListener('message', handleIncomingMessage);
+
+    // ----- Payload ingest -----
+
+    function ingestPayload(payload, toolName) {
+      if (!payload || typeof payload !== 'object') return;
+
+      // Single-object hydration (met-get-object): merge into objects list
+      // if the panel already has it, or seed it as a one-tile grid.
+      if (toolName === 'met-get-object' || (payload.objectID && !payload.objects)) {
+        upsertObject(normalizeMetObject(payload));
+        renderAll();
+        return;
+      }
+
+      // Pre-hydrated contract: {objects: [...], facets?: [...]}.
+      if (Array.isArray(payload.objects)) {
+        state.objects = payload.objects.map(normalizeObject);
+        if (Array.isArray(payload.facets)) {
+          state.facets = payload.facets;
+        }
+        renderAll();
+        return;
+      }
+
+      // Raw met-search payload: {total, objectIDs: [...]}. Render an
+      // id-only fallback grid — each tile is clickable and issues a
+      // met-get-object tool_call to hydrate that record.
+      if (Array.isArray(payload.objectIDs)) {
+        state.objects = payload.objectIDs.slice(0, 200).map(function (id) {
+          return { id: id, _idOnly: true };
+        });
+        renderAll();
+        if (typeof payload.total === 'number' && payload.total > state.objects.length) {
+          $hint.textContent = 'Showing first ' + state.objects.length +
+            ' of ' + payload.total + ' results.';
+        }
+        return;
+      }
+
+      // Met departments / by-artist responses sometimes use the same
+      // {objectIDs} shape — handled above. Anything else is unknown.
+    }
+
+    function upsertObject(obj) {
+      if (!obj || obj.id == null) return;
+      var idx = state.objects.findIndex(function (o) { return o.id === obj.id; });
+      if (idx >= 0) {
+        state.objects[idx] = Object.assign({}, state.objects[idx], obj);
+      } else {
+        state.objects.unshift(obj);
+      }
+    }
+
+    function normalizeObject(o) {
+      if (!o || typeof o !== 'object') return { id: null };
+      // Accept either the pre-hydrated shape or a raw Met API record.
+      if (o.objectID && !o.id) {
+        return normalizeMetObject(o);
+      }
+      return {
+        id: o.id,
+        title: o.title || '',
+        artist: o.artist || '',
+        date: o.date || '',
+        medium: o.medium || '',
+        image_url: o.image_url || '',
+        primary_image_url: o.primary_image_url || o.thumbnail || '',
+        url: o.url || '',
+        provenance: o.provenance || '',
+        tags: Array.isArray(o.tags) ? o.tags.slice() : [],
+        department: o.department || '',
+        culture: o.culture || '',
+        dimensions: o.dimensions || '',
+        repository: o.repository || '',
+        is_public_domain: o.is_public_domain === true,
+      };
+    }
+
+    // Normalize a raw Met /objects/{id} response into the bundle's
+    // internal shape. The Met API field names are awkward (camelCase
+    // with embedded acronyms), so this is the only place the bundle
+    // touches them.
+    function normalizeMetObject(r) {
+      if (!r || typeof r !== 'object') return { id: null };
+      return {
+        id: r.objectID,
+        title: r.title || '',
+        artist: r.artistDisplayName || '',
+        date: r.objectDate || '',
+        medium: r.medium || '',
+        image_url: r.primaryImage || '',
+        primary_image_url: r.primaryImageSmall || r.primaryImage || '',
+        url: r.objectURL || '',
+        provenance: r.creditLine || '',
+        tags: (Array.isArray(r.tags) ? r.tags : [])
+          .map(function (t) { return (t && t.term) || t; })
+          .filter(Boolean)
+          .slice(0, 12),
+        department: r.department || '',
+        culture: r.culture || '',
+        dimensions: r.dimensions || '',
+        repository: r.repository || '',
+        is_public_domain: r.isPublicDomain === true,
+      };
+    }
+
+    // ----- Dev-mode ingress -----
+
+    function loadFromUrl() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var b64 = params.get('data');
+        if (!b64) return null;
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join('=');
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      } catch (e) {
+        showError('Invalid ?data= URL parameter: ' + e.message);
+        return null;
+      }
+    }
+    function loadFromGlobal() {
+      return (typeof window.__app_data__ === 'object' && window.__app_data__) || null;
+    }
+    var seed = loadFromUrl() || loadFromGlobal();
+    if (seed) ingestPayload(seed, null);
+
+    // ----- Filter helpers -----
+
+    function objectMatchesFilter(o) {
+      var q = state.filter;
+      if (!q) return true;
+      q = q.toLowerCase();
+      return ((o.title || '').toLowerCase().indexOf(q) >= 0) ||
+             ((o.artist || '').toLowerCase().indexOf(q) >= 0) ||
+             ((o.medium || '').toLowerCase().indexOf(q) >= 0) ||
+             ((o.culture || '').toLowerCase().indexOf(q) >= 0) ||
+             ((o.department || '').toLowerCase().indexOf(q) >= 0);
+    }
+
+    function objectMatchesFacets(o) {
+      // For each facet group with at least one selected value, require
+      // a match. Across groups: AND. Within a group: OR.
+      var groups = Object.keys(state.activeFacets);
+      for (var i = 0; i < groups.length; i++) {
+        var name = groups[i];
+        var set = state.activeFacets[name];
+        if (!set || !set.size) continue;
+        var fieldVal = o[name];
+        if (!fieldVal) return false;
+        // Tags is an array; everything else is a string.
+        if (Array.isArray(fieldVal)) {
+          var hit = false;
+          for (var j = 0; j < fieldVal.length; j++) {
+            if (set.has(fieldVal[j])) { hit = true; break; }
+          }
+          if (!hit) return false;
+        } else if (!set.has(fieldVal)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function visibleObjects() {
+      return state.objects.filter(function (o) {
+        return objectMatchesFilter(o) && objectMatchesFacets(o);
+      });
+    }
+
+    // ----- Render -----
+
+    function renderAll() {
+      renderCount();
+      renderFacets();
+      renderGrid();
+    }
+
+    function renderCount() {
+      var total = state.objects.length;
+      var shown = visibleObjects().length;
+      if (!total) {
+        $count.textContent = 'No objects loaded.';
+        return;
+      }
+      $count.textContent = shown === total
+        ? (total + ' object' + (total === 1 ? '' : 's') + ' loaded.')
+        : (shown + ' of ' + total + ' shown.');
+    }
+
+    function renderFacets() {
+      clearNode($facetsSide);
+      if (!state.facets || !state.facets.length) {
+        $facetsSide.appendChild(el('section', null, [
+          el('p', { class: 'facet-empty',
+                    text: 'No facets in payload yet.' }),
+        ]));
+        return;
+      }
+      state.facets.forEach(function (facet) {
+        if (!facet || !facet.name) return;
+        var values = Array.isArray(facet.values) ? facet.values : [];
+        if (!values.length) return;
+        var section = el('section', null, [
+          el('h3', { text: facet.label || facet.name }),
+        ]);
+        values.forEach(function (vEntry) {
+          var value = typeof vEntry === 'string' ? vEntry : (vEntry && vEntry.value);
+          if (value == null) return;
+          var count = typeof vEntry === 'object' && vEntry !== null
+            ? vEntry.count : undefined;
+          var labelText = count != null ? (value + ' (' + count + ')') : value;
+          var checked = state.activeFacets[facet.name] &&
+                        state.activeFacets[facet.name].has(value);
+          var checkbox = el('input', { type: 'checkbox' });
+          if (checked) checkbox.checked = true;
+          checkbox.addEventListener('change', function () {
+            if (!state.activeFacets[facet.name]) {
+              state.activeFacets[facet.name] = new Set();
+            }
+            if (checkbox.checked) state.activeFacets[facet.name].add(value);
+            else state.activeFacets[facet.name].delete(value);
+            renderAll();
+          });
+          section.appendChild(el('label', null, [checkbox, labelText]));
+        });
+        $facetsSide.appendChild(section);
+      });
+      $facetsSide.appendChild(el('button', {
+        class: 'clear',
+        type: 'button',
+        on: { click: function () {
+          state.activeFacets = {};
+          renderAll();
+        } },
+        text: 'Clear filters',
+      }));
+    }
+
+    function renderGrid() {
+      clearNode($grid);
+      var items = visibleObjects();
+      if (!items.length) {
+        $grid.appendChild(el('div', {
+          class: 'empty',
+          text: state.objects.length
+            ? 'No objects match the current filter.'
+            : 'Load objects via met-search, then click a tile for detail.',
+        }));
+        return;
+      }
+      items.forEach(function (o) {
+        $grid.appendChild(renderTile(o));
+      });
+    }
+
+    function renderTile(o) {
+      var thumbSrc = o.primary_image_url || o.image_url || '';
+      var thumbWrap = el('div', { class: 'thumb-wrap' });
+      if (o._idOnly) {
+        thumbWrap.appendChild(el('div', {
+          class: 'no-image id-only',
+          text: '#' + o.id,
+        }));
+      } else if (thumbSrc) {
+        var img = el('img', {
+          src: thumbSrc,
+          loading: 'lazy',
+          decoding: 'async',
+          referrerpolicy: 'no-referrer',
+          alt: o.title || ('Met object ' + o.id),
+        });
+        // The Met sometimes 404s on missing images even when the
+        // record advertises a primaryImageSmall URL. Fall back to
+        // the "no image" placeholder when the load errors.
+        img.addEventListener('error', function () {
+          clearNode(thumbWrap);
+          thumbWrap.appendChild(el('div', {
+            class: 'no-image',
+            text: 'Image unavailable',
+          }));
+        });
+        thumbWrap.appendChild(img);
+      } else {
+        thumbWrap.appendChild(el('div', {
+          class: 'no-image',
+          text: 'No image available',
+        }));
+      }
+      var meta = el('div', { class: 'meta' });
+      meta.appendChild(el('div', {
+        class: 'title',
+        text: o.title || ('Met object #' + o.id),
+      }));
+      if (o.artist) meta.appendChild(el('div', { class: 'artist', text: o.artist }));
+      if (o.date) meta.appendChild(el('div', { class: 'date', text: o.date }));
+      var tile = el('div', { class: 'tile' }, [thumbWrap, meta]);
+      tile.addEventListener('click', function () { onTileClick(o); });
+      return tile;
+    }
+
+    function onTileClick(o) {
+      if (o._idOnly) {
+        // Ask the host to hydrate this object via met-get-object.
+        callTool('met-get-object', { objectID: o.id })
+          .then(function (payload) {
+            var hydrated = normalizeMetObject(payload || {});
+            if (!hydrated.id) hydrated.id = o.id;
+            upsertObject(hydrated);
+            renderAll();
+            openModal(hydrated);
+          })
+          .catch(function (e) { showError('Failed to load #' + o.id + ': ' + e.message); });
+        return;
+      }
+      openModal(o);
+    }
+
+    // ----- Modal -----
+
+    function openModal(o) {
+      $modalTitle.textContent = o.title || ('Met object #' + o.id);
+
+      clearNode($modalHero);
+      var heroSrc = o.image_url || o.primary_image_url || '';
+      if (heroSrc) {
+        var heroImg = el('img', {
+          src: heroSrc,
+          loading: 'lazy',
+          decoding: 'async',
+          referrerpolicy: 'no-referrer',
+          alt: o.title || ('Met object ' + o.id),
+        });
+        heroImg.addEventListener('error', function () {
+          clearNode($modalHero);
+          $modalHero.appendChild(el('div', {
+            class: 'no-image',
+            text: 'Image unavailable',
+          }));
+        });
+        $modalHero.appendChild(heroImg);
+      } else {
+        $modalHero.appendChild(el('div', {
+          class: 'no-image',
+          text: 'No public-domain image available for this object.',
+        }));
+      }
+
+      clearNode($modalMeta);
+      function row(label, value) {
+        if (!value) return;
+        $modalMeta.appendChild(el('dt', { text: label }));
+        $modalMeta.appendChild(el('dd', { text: value }));
+      }
+      row('Object ID', String(o.id));
+      row('Artist', o.artist);
+      row('Date', o.date);
+      row('Medium', o.medium);
+      row('Culture', o.culture);
+      row('Department', o.department);
+      row('Dimensions', o.dimensions);
+      row('Repository', o.repository);
+      row('Public domain', o.is_public_domain ? 'Yes (CC0)' : null);
+
+      if (o.provenance) {
+        $modalProv.textContent = o.provenance;
+        $modalProv.hidden = false;
+      } else {
+        $modalProv.textContent = '';
+        $modalProv.hidden = true;
+      }
+
+      clearNode($modalTags);
+      if (Array.isArray(o.tags)) {
+        o.tags.slice(0, 16).forEach(function (t) {
+          $modalTags.appendChild(el('span', { class: 'pill', text: String(t) }));
+        });
+      }
+
+      if (o.url) {
+        $modalSource.setAttribute('href', o.url);
+        $modalSource.hidden = false;
+      } else {
+        $modalSource.setAttribute('href', '#');
+        $modalSource.hidden = true;
+      }
+
+      $modalBackdrop.classList.add('open');
+      $modalBackdrop.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeModal() {
+      $modalBackdrop.classList.remove('open');
+      $modalBackdrop.setAttribute('aria-hidden', 'true');
+    }
+    $modalClose.addEventListener('click', closeModal);
+    $modalBackdrop.addEventListener('click', function (ev) {
+      if (ev.target === $modalBackdrop) closeModal();
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && $modalBackdrop.classList.contains('open')) {
+        closeModal();
+      }
+    });
+
+    // ----- Search wiring -----
+
+    $search.addEventListener('input', function () {
+      state.filter = $search.value || '';
+      renderCount();
+      renderGrid();
+    });
+
+    function issueMetSearch() {
+      var q = ($search.value || '').trim();
+      if (!q) {
+        showError('Enter a search term first.');
+        return;
+      }
+      $hint.textContent = 'Searching the Met for "' + q + '"…';
+      callTool('met-search', { q: q, hasImages: true })
+        .then(function (payload) {
+          ingestPayload(payload, 'met-search');
+          $hint.textContent = 'Loaded.';
+        })
+        .catch(function (e) { showError('Search failed: ' + e.message); });
+    }
+    $searchBtn.addEventListener('click', issueMetSearch);
+    $search.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') {
+        // Enter: prefer remote search unless the user is filtering an
+        // already-loaded grid (i.e. state.objects is non-empty AND the
+        // typed value matches something on screen).
+        if (state.objects.length && visibleObjects().length) {
+          renderCount();
+          renderGrid();
+        } else {
+          issueMetSearch();
+        }
+      }
+    });
+
+    // Initial paint.
+    renderAll();
+  })();
+  </script>
+</body>
+</html>
