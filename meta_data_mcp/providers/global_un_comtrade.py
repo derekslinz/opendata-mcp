@@ -22,10 +22,11 @@ from pydantic import BaseModel, Field
 
 from meta_data_mcp.ui_resources.app_trade_flows_v1 import URI as TRADE_FLOWS_APP_URI
 from meta_data_mcp.utils import (
+    MAX_RESPONSE_CHARS,
     create_mcp_server,
     http_get,
     run_server,
-    serialize_for_llm,
+    to_json_text,
 )
 
 log = logging.getLogger(__name__)
@@ -156,7 +157,11 @@ async def handle_comtrade_trade_data(
     """Handle the comtrade-trade-data tool call."""
     params = ComtradeTradeDataParams(**(arguments or {}))
     data = fetch_comtrade_trade_data(params)
-    return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    return [
+        types.TextContent(
+            type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+        )
+    ]
 
 
 TOOLS.append(
