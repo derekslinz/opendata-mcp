@@ -1,0 +1,417 @@
+"""MCP server bootstrap.
+
+Owns ``create_mcp_server`` (assembles a low-level
+:class:`mcp.server.Server` from the resources/tools/prompts dicts each
+provider builds at import time), the ``register_ui_resource`` helper
+that wires ``ui://`` resources into the server's catalog, the
+``BearerAuthMiddleware`` that protects SSE endpoints, and ``run_server``
+which dispatches stdio vs. SSE transports.
+
+Module split out of ``utils.py`` in the v2.1 hygiene pass (architecture
+review §H1). ``meta_data_mcp.utils`` re-exports the public symbols so
+existing call sites continue to import the same names.
+"""
+
+from __future__ import annotations
+
+import hmac
+import logging
+import os
+from typing import Any, Callable, Sequence
+
+from mcp import types
+from mcp.server import Server
+from mcp.server.lowlevel.helper_types import ReadResourceContents
+from pydantic import AnyUrl
+
+log = logging.getLogger(__name__)
+
+
+def register_ui_resource(
+    *,
+    name: str,
+    html: str,
+    description: str,
+    resources: list[types.Resource],
+    resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]],
+    server_name: str = "meta-data-mcp",
+    mime: str = "text/html;profile=mcp-app",
+) -> str:
+    """Register a ``ui://<server_name>/<name>`` resource backed by static HTML.
+
+    The MCP Apps extension (https://modelcontextprotocol.io/docs/extensions/apps)
+    lets a server return interactive UIs by:
+
+    1. Declaring a ``ui://`` resource that holds the HTML (optionally with
+       inlined JS and CSS).
+    2. Binding a tool to it via ``_meta={"ui": {"resourceUri": ...}}`` so
+       the host renders that resource in a sandboxed iframe alongside the
+       tool's result. Pass the alias keyword ``_meta=`` — NOT ``meta=``.
+       The SDK's ``Tool`` model has ``meta`` aliased to ``_meta`` but does
+       not enable ``populate_by_name``, so ``meta=`` silently lands in
+       extras and never reaches the wire. See ``tests/test_ui_resource.py``
+       for the regression that pins this footgun.
+
+    This helper covers step 1. It appends a ``types.Resource`` to the caller's
+    ``resources`` list and registers a handler in ``resources_handlers`` that
+    returns the HTML string when the host calls ``resources/read``.
+
+    Args:
+        name: Path component for the URI (e.g. ``"discovery"``,
+            ``"shape/timeseries/v1"``). Slashes are allowed.
+        html: The full resource body. Usually HTML with inlined `<script>`
+            and `<style>` for self-contained delivery.
+        description: Short human-readable description that surfaces in the
+            host's resource catalog.
+        resources: The server's ``RESOURCES`` list (mutated in place).
+        resources_handlers: The server's ``RESOURCES_HANDLERS`` dict
+            (mutated in place).
+        server_name: Authority component of the URI. Defaults to
+            ``"meta-data-mcp"``; override per server if reusing this helper
+            from outside the meta server.
+        mime: Content-Type of the resource. Defaults to
+            ``"text/html;profile=mcp-app"`` — the MCP Apps standard MIME
+            type. Hosts use the ``;profile=mcp-app`` parameter to
+            distinguish renderable MCP-UI bundles from arbitrary HTML;
+            without it they reject the resource with
+            ``"Unsupported UI resource content format"``. See
+            https://mcpui.dev/guide/protocol-details.html.
+
+    Returns:
+        The fully-qualified ``ui://`` URI as a string, suitable for passing
+        as ``_meta={"ui": {"resourceUri": <returned>}}`` on a Tool.
+
+    Raises:
+        ValueError: If ``name`` is empty or the resulting URI collides with
+            an already-registered handler.
+    """
+    if not name:
+        raise ValueError("name must be non-empty")
+    uri = f"ui://{server_name}/{name.lstrip('/')}"
+    if uri in resources_handlers:
+        raise ValueError(f"ui resource already registered: {uri}")
+    resources.append(
+        types.Resource(
+            uri=AnyUrl(uri),
+            name=name,
+            description=description,
+            mimeType=mime,
+        )
+    )
+
+    def _handler(_uri: AnyUrl) -> str:
+        return html
+
+    resources_handlers[uri] = _handler
+    return uri
+
+
+def create_mcp_server(
+    server_name: str,
+    resources: list[types.Resource] | None = None,
+    resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]] | None = None,
+    tools: list[types.Tool] | None = None,
+    tools_handlers: dict[
+        str,
+        Callable[
+            [dict[str, Any] | None],
+            Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource],
+        ],
+    ]
+    | None = None,
+    prompts: list[types.Prompt] | None = None,
+    prompts_handlers: dict[
+        str,
+        Callable[
+            [dict[str, str] | None],
+            types.GetPromptResult,
+        ],
+    ]
+    | None = None,
+    resource_templates: list[types.ResourceTemplate] | None = None,
+) -> Server:
+    """
+    Create a MCP server with the given resources, tools, and prompts.
+
+    Args:
+        server_name: The name of the server.
+        resources: The list of resources to register.
+        resources_handlers: The dictionary of resource handlers.
+        tools: The list of tools to register.
+        tools_handlers: The dictionary of tools handlers.
+        prompts: The list of prompts to register.
+        prompts_handlers: The dictionary of prompt handlers.
+        resource_templates: The list of resource templates to register.
+
+    Returns:
+        The created MCP server.
+    """
+    _resources = resources or []
+    _resources_handlers = resources_handlers or {}
+    _tools = tools or []
+    _tools_handlers = tools_handlers or {}
+    _prompts = prompts or []
+    _prompts_handlers = prompts_handlers or {}
+    _resource_templates = resource_templates or []
+
+    # instantiate the server
+    server = Server(server_name)
+
+    # register resources
+    @server.list_resources()
+    async def handle_list_resources() -> list[types.Resource]:
+        return _resources
+
+    # Build a fast (URI → mimeType) lookup once so the read handler can
+    # propagate the registered MIME without rescanning ``_resources`` on
+    # every call. Falls back to ``text/plain`` only when a resource was
+    # registered without a ``mimeType`` (defensive — every codepath in
+    # this repo sets one explicitly).
+    _mime_by_uri: dict[str, str] = {
+        str(r.uri): (r.mimeType or "text/plain") for r in _resources
+    }
+
+    @server.read_resource()
+    async def handle_read_resource(
+        resource_uri: AnyUrl,
+    ) -> list[ReadResourceContents]:
+        """Return resource contents with the registered MIME type attached.
+
+        The MCP SDK's ``read_resource`` decorator wraps a bare ``str`` /
+        ``bytes`` return into a content envelope, but it defaults the
+        envelope's ``mimeType`` to ``text/plain`` (or
+        ``application/octet-stream`` for bytes) — completely independent
+        of whatever the registered ``Resource.mimeType`` declares. The
+        host reads the envelope's ``mimeType``, not the catalog entry's,
+        when deciding how to render. An HTML ``ui://`` resource
+        registered as ``text/html`` was therefore being served as
+        ``text/plain`` on read, and the host refused to mount it.
+
+        Returning ``Iterable[ReadResourceContents]`` lets us pin the
+        correct MIME and also silences the SDK's deprecation warning
+        about returning bare strings.
+
+        See:
+        - ``register_ui_resource`` for where each resource declares its MIME
+        - the SDK ``read_resource`` decorator (``mcp.server.lowlevel``)
+        - tests/test_ui_resource.py::test_read_resource_returns_text_html_mime
+        """
+        resource_key = str(resource_uri)
+
+        if resource_key not in _resources_handlers:
+            log.error(f"Resource {resource_uri} not found")
+            raise AttributeError(f"Resource {resource_uri} not found")
+
+        payload = _resources_handlers[resource_key](resource_uri)
+        mime = _mime_by_uri.get(resource_key, "text/plain")
+        return [ReadResourceContents(content=payload, mime_type=mime)]
+
+    # register resource templates
+    @server.list_resource_templates()
+    async def handle_list_resource_templates() -> list[types.ResourceTemplate]:
+        return _resource_templates
+
+    # register the tools
+    @server.list_tools()
+    async def handle_list_tools() -> list[types.Tool]:
+        return _tools
+
+    # register the tools handlers
+    @server.call_tool()
+    async def handle_call_tool(
+        name: str, arguments: dict[str, Any] | None = None
+    ) -> Sequence[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+        if name not in _tools_handlers:
+            log.error(f"Tool {name} not found")
+            raise AttributeError(f"Tool {name} not found")
+
+        try:
+            return await _tools_handlers[name](arguments)
+        except Exception as e:
+            log.error(f"Error calling tool {name}: {e}")
+            raise
+
+    # register the prompts
+    @server.list_prompts()
+    async def handle_list_prompts() -> list[types.Prompt]:
+        return _prompts
+
+    # register the prompts handlers
+    @server.get_prompt()
+    async def handle_get_prompt(
+        name: str, arguments: dict[str, str] | None = None
+    ) -> types.GetPromptResult:
+        if name not in _prompts_handlers:
+            log.error(f"Prompt {name} not found")
+            raise AttributeError(f"Prompt {name} not found")
+
+        try:
+            return await _prompts_handlers[name](arguments)
+        except Exception as e:
+            log.error(f"Error getting prompt {name}: {e}")
+            raise
+
+    return server
+
+
+class BearerAuthMiddleware:
+    """Require ``Authorization: Bearer <token>`` on protected ASGI paths.
+
+    Pure ASGI middleware (not BaseHTTPMiddleware) so it does not buffer
+    streaming SSE responses. The health check at ``/`` is left open so
+    uptime probes work without credentials.
+    """
+
+    def __init__(
+        self,
+        app: Any,
+        token: str,
+        protected_prefixes: Sequence[str] = ("/sse", "/messages"),
+    ) -> None:
+        self.app = app
+        self.token = token
+        self.protected_prefixes = tuple(protected_prefixes)
+
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope.get("type") != "http" or not any(
+            scope.get("path", "").startswith(p) for p in self.protected_prefixes
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        auth_header = ""
+        for name, value in scope.get("headers", []):
+            if name == b"authorization":
+                auth_header = value.decode("latin-1")
+                break
+
+        scheme = ""
+        presented = ""
+        parts = auth_header.split(" ", 1)
+        if len(parts) == 2:
+            scheme, presented = parts
+        if (
+            scheme.casefold() != "bearer"
+            or not presented
+            or not hmac.compare_digest(presented, self.token)
+        ):
+            from starlette.responses import JSONResponse
+
+            response = JSONResponse(
+                {"error": "unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": 'Bearer realm="meta-data-mcp"'},
+            )
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
+async def run_server(
+    server: Server, transport: str = "stdio", port: int = 8000, host: str = "127.0.0.1"
+):
+    """
+    Run the MCP server with the specified transport.
+
+    SSE auth: if ``META_DATA_MCP_AUTH_TOKEN`` is set, requests to ``/sse``
+    and ``/messages`` must include ``Authorization: Bearer <token>``. When
+    unset, SSE is served unauthenticated (logs a startup warning).
+    """
+    if transport == "stdio":
+        from mcp.server.stdio import stdio_server
+
+        async with stdio_server() as streams:
+            await server.run(
+                streams[0], streams[1], server.create_initialization_options()
+            )
+    elif transport == "sse":
+        import uvicorn
+        from mcp.server.sse import SseServerTransport
+        from starlette.applications import Starlette
+        from starlette.middleware.cors import CORSMiddleware
+        from starlette.responses import JSONResponse
+        from starlette.routing import Mount, Route
+
+        sse = SseServerTransport("/messages")
+
+        class SseApp:
+            async def __call__(self, scope, receive, send):
+                log.info(f"New SSE connection request from {scope.get('client')}")
+                try:
+                    async with sse.connect_sse(scope, receive, send) as streams:
+                        log.info("SSE connection established, running server...")
+                        await server.run(
+                            streams[0],
+                            streams[1],
+                            server.create_initialization_options(),
+                        )
+                except Exception as e:
+                    # Connection closed by client is common and can be ignored or logged at debug
+                    log.debug(f"SSE connection error: {e}")
+                finally:
+                    log.info("SSE connection closed")
+
+        async def root(request):
+            return JSONResponse(
+                {
+                    "status": "running",
+                    "server": server.name,
+                    "transport": "sse",
+                    "endpoints": {"sse": "/sse", "messages": "/messages"},
+                }
+            )
+
+        app = Starlette(
+            debug=False,
+            routes=[
+                Route("/", endpoint=root),
+                Route("/sse", endpoint=SseApp()),
+                Mount("/messages", app=sse.handle_post_message),
+            ],
+        )
+
+        auth_token = os.getenv("META_DATA_MCP_AUTH_TOKEN")
+        if auth_token:
+            app.add_middleware(BearerAuthMiddleware, token=auth_token)
+            log.info(
+                "SSE bearer auth enabled (META_DATA_MCP_AUTH_TOKEN set; "
+                "protecting /sse and /messages)"
+            )
+        else:
+            log.warning(
+                "SSE bearer auth DISABLED — set META_DATA_MCP_AUTH_TOKEN to "
+                "require Authorization: Bearer <token> on /sse and /messages"
+            )
+
+        # CORSMiddleware must be added last so it is outermost; this ensures
+        # that OPTIONS preflight requests receive CORS headers before reaching
+        # BearerAuthMiddleware (which would otherwise reject them with 401).
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["*"],
+        )
+
+        config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            log_level="debug",
+            timeout_keep_alive=65,
+            timeout_notify=60,
+        )
+        uvicorn_server = uvicorn.Server(config)
+        await uvicorn_server.serve()
+    else:
+        raise ValueError(f"Unknown transport: {transport}")
+
+
+__all__ = [
+    "BearerAuthMiddleware",
+    "create_mcp_server",
+    "register_ui_resource",
+    "run_server",
+]
