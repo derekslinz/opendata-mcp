@@ -234,7 +234,7 @@ def create_mcp_server(
             raise
 
         if provenance.is_enabled():
-            result = provenance.attach(result)
+            result = provenance.attach(result, tool_name=name, arguments=arguments)
         return result
 
     # register the prompts
