@@ -21,10 +21,11 @@ from pydantic import BaseModel, Field
 
 from meta_data_mcp.ui_resources.app_news_tone_v1 import URI as NEWS_TONE_APP_URI
 from meta_data_mcp.utils import (
+    MAX_RESPONSE_CHARS,
     create_mcp_server,
     http_get,
     run_server,
-    serialize_for_llm,
+    to_json_text,
 )
 
 log = logging.getLogger(__name__)
@@ -101,7 +102,11 @@ async def handle_gdelt_article_search(
     """Handle the gdelt-article-search tool call."""
     params = GdeltArticleSearchParams(**(arguments or {}))
     data = fetch_gdelt_article_search(params)
-    return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    return [
+        types.TextContent(
+            type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+        )
+    ]
 
 
 TOOLS.append(
@@ -172,7 +177,11 @@ async def handle_gdelt_volume_timeline(
     """Handle the gdelt-volume-timeline tool call."""
     params = GdeltVolumeTimelineParams(**(arguments or {}))
     data = fetch_gdelt_volume_timeline(params)
-    return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    return [
+        types.TextContent(
+            type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+        )
+    ]
 
 
 TOOLS.append(
