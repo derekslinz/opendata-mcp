@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from meta_data_mcp.providers.global_osv_dev import (
+    TOOLS,
     OsvGetVulnParams,
     OsvQueryPackageParams,
     fetch_osv_get_vuln,
@@ -13,6 +14,7 @@ from meta_data_mcp.providers.global_osv_dev import (
     handle_osv_get_vuln,
     handle_osv_query_package,
 )
+from meta_data_mcp.ui_resources.app_vulnerability_v1 import URI as VULN_URI
 
 
 @pytest.fixture
@@ -180,3 +182,19 @@ async def test_handle_osv_query_package_translates_503():
                     {"name": "requests", "ecosystem": "PyPI"}
                 )
         assert exc_info.value.provider == "global-osv-dev"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: MCP Apps shape primitive binding (vulnerability app).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tool_name", ["osv-get-vulnerability", "osv-query-package"])
+def test_osv_tool_binds_to_vulnerability_app(tool_name):
+    """OSV tools render through the Phase 5 vulnerability app."""
+    tool = next(t for t in TOOLS if t.name == tool_name)
+    assert tool.meta == {"ui": {"resourceUri": VULN_URI}}, (
+        f"{tool_name} is not bound to {VULN_URI}"
+    )
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == VULN_URI

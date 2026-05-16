@@ -6,10 +6,12 @@ import httpx
 import pytest
 
 from meta_data_mcp.providers.global_epss import (
+    TOOLS,
     EpssScoresParams,
     fetch_epss_scores,
     handle_epss_scores,
 )
+from meta_data_mcp.ui_resources.app_vulnerability_v1 import URI as VULN_URI
 
 
 @pytest.fixture
@@ -117,3 +119,18 @@ async def test_handle_epss_scores_translates_404_via_provider_kwarg():
 
         assert exc_info.value.provider == "global-epss"
         assert "api.first.org" not in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: MCP Apps shape primitive binding (vulnerability app).
+# ---------------------------------------------------------------------------
+
+
+def test_epss_scores_tool_binds_to_vulnerability_app():
+    """epss-scores renders through the Phase 5 vulnerability app."""
+    tool = next(t for t in TOOLS if t.name == "epss-scores")
+    assert tool.meta == {"ui": {"resourceUri": VULN_URI}}, (
+        f"epss-scores is not bound to {VULN_URI}"
+    )
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == VULN_URI

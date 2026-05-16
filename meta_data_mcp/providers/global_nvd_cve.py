@@ -13,6 +13,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_vulnerability_v1 import URI as VULN_APP_URI
 from meta_data_mcp.utils import (
     create_mcp_server,
     http_get,
@@ -137,6 +138,10 @@ TOOLS.append(
         name="nvd-search-cves",
         description="Search the NVD CVE 2.0 database. Combine any of: keywordSearch (free-text), cpeName (CPE 2.3), cvssV3Severity (NONE|LOW|MEDIUM|HIGH|CRITICAL), pubStartDate/pubEndDate, lastModStartDate/lastModEndDate. Returns up to 2000 results per page; paginate with startIndex.",
         inputSchema=NvdSearchCvesParams.model_json_schema(),
+        # MCP Apps binding: render via the vulnerability app. Use the alias
+        # keyword (``_meta=``) — ``meta=`` silently drops into extras; see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": VULN_APP_URI}},
     )
 )
 TOOLS_HANDLERS["nvd-search-cves"] = handle_nvd_search_cves
@@ -183,6 +188,7 @@ TOOLS.append(
         name="nvd-get-cve",
         description="Fetch a single CVE record by id. Convenience wrapper over search.",
         inputSchema=NvdGetCveParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": VULN_APP_URI}},
     )
 )
 TOOLS_HANDLERS["nvd-get-cve"] = handle_nvd_get_cve
@@ -258,6 +264,7 @@ TOOLS.append(
         name="nvd-cve-history",
         description="List CVE change-history events. Filter by CVE id or change date range; paginate with startIndex.",
         inputSchema=NvdCveHistoryParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": VULN_APP_URI}},
     )
 )
 TOOLS_HANDLERS["nvd-cve-history"] = handle_nvd_cve_history

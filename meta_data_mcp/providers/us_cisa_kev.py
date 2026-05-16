@@ -19,6 +19,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_vulnerability_v1 import URI as VULN_APP_URI
 from meta_data_mcp.utils import (
     create_mcp_server,
     http_get,
@@ -154,6 +155,9 @@ TOOLS.append(
             "list of actively exploited vulnerabilities (~1000 entries)."
         ),
         inputSchema=CisaKevListParams.model_json_schema(),
+        # MCP Apps binding: render via the vulnerability app. Use the alias
+        # keyword (``_meta=``) — see tests/test_ui_resource.py for the footgun.
+        _meta={"ui": {"resourceUri": VULN_APP_URI}},
     )
 )
 TOOLS_HANDLERS["cisa-kev-list"] = handle_cisa_kev_list
@@ -203,6 +207,7 @@ TOOLS.append(
             "{cveID, in_kev: false} if the CVE is not on the list."
         ),
         inputSchema=CisaKevGetParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": VULN_APP_URI}},
     )
 )
 TOOLS_HANDLERS["cisa-kev-get"] = handle_cisa_kev_get
