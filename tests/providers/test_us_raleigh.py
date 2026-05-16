@@ -91,3 +91,26 @@ def test_search_catalog_tool_binds_to_records_shape_primitive():
     assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
     wire = tool.model_dump(by_alias=True, exclude_none=True)
     assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+def test_adapter_owner_non_dict_does_not_raise_attribute_error():
+    """REGRESSION: ``a.get("x") or a.get("y") if isinstance(a, dict) else None``
+    parses as ``a.get("x") or (a.get("y") if isinstance(a, dict) else None)``
+    — the FIRST ``.get()`` always runs, so a non-dict truthy ``owner``
+    raises AttributeError. The fix wraps the or-chain in parens so the
+    conditional applies to the whole expression. Mirrors the same fix in
+    us_fayetteville, us_cary, us_cdc_socrata, us_healthdata_gov,
+    fr_data_gouv, us_data_gov."""
+    raw = [
+        {
+            "id": "abc-1234",
+            "name": "Sample",
+            "owner": "not-a-dict-just-a-string",
+        }
+    ]
+    payload = _socrata_views_to_shape_payload(raw)
+    assert len(payload["rows"]) == 1
+    assert payload["rows"][0]["id"] == "abc-1234"
+    # Row stores owner_name under the "owner" key (after adapter resolution);
+    # when the raw owner is non-dict, the resolved value is None.
+    assert payload["rows"][0]["owner"] is None
