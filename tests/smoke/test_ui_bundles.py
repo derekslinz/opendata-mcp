@@ -176,6 +176,24 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
             "query": "smoke",
         },
     },
+    # Network-topology app: rendered idle when no payload is provided,
+    # populated when a topology payload is pushed in. The sample payload
+    # exercises the focus-node highlight + all three relationship edge
+    # types so a regression that breaks SVG layout fails the smoke.
+    "app_network_topology_v1.html": {
+        "asns": [
+            {"asn": 3333, "name": "RIPE-NCC-AS", "country": "NL"},
+            {"asn": 1234, "name": "ALPHA", "country": "DE"},
+            {"asn": 5678, "name": "BETA", "country": "FR"},
+            {"asn": 9999, "name": "GAMMA", "country": "GB"},
+        ],
+        "edges": [
+            {"source_asn": 3333, "target_asn": 1234, "relationship": "peer"},
+            {"source_asn": 3333, "target_asn": 5678, "relationship": "upstream"},
+            {"source_asn": 3333, "target_asn": 9999, "relationship": "downstream"},
+        ],
+        "focus_asn": 3333,
+    },
 }
 
 # At least one element matching the selector must be present after load. We
@@ -192,6 +210,7 @@ ROOT_SELECTORS: dict[str, str] = {
     "app_museum_v1.html": "#app, #grid",
     "app_molecular_v1.html": "#app, #viewer-pane",
     "app_news_tone_v1.html": "#app",
+    "app_network_topology_v1.html": "#app, #graph",
 }
 
 # CDN origins to ignore in error filtering. Bundle's own inline JS has no
@@ -206,6 +225,9 @@ ROOT_SELECTORS: dict[str, str] = {
 CDN_ORIGINS_TO_IGNORE = (
     "cdn.plot.ly",
     "unpkg.com",
+    # jsdelivr ships D3.js v7 for the network-topology app. CDN errors
+    # (offline test runner, transient 5xx) shouldn't fail the smoke
+    # because they're not our bug.
     "cdn.jsdelivr.net",
     "3dmol.org",
 )

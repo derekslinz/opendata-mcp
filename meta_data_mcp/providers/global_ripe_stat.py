@@ -32,8 +32,17 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_network_topology_v1 import (
+    URI as NETWORK_TOPOLOGY_URI,
+)
 from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
-from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
+from meta_data_mcp.utils import (
+    MAX_RESPONSE_CHARS,
+    http_get,
+    to_entity_graph_text,
+    to_geofeatures_text,
+    to_json_text,
+)
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +91,11 @@ async def handle_ripestat_network_info(
             raise ValueError("resource is required")
         params = RIPEStatNetworkInfoParams(**arguments)
         data = fetch_ripestat_network_info(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat network info: {e}")
         raise
@@ -141,7 +154,11 @@ async def handle_ripestat_bgp_state(
             raise ValueError("resource is required")
         params = RIPEStatBGPStateParams(**arguments)
         data = fetch_ripestat_bgp_state(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat BGP state: {e}")
         raise
@@ -193,7 +210,11 @@ async def handle_ripestat_prefix_overview(
             raise ValueError("resource is required")
         params = RIPEStatPrefixOverviewParams(**arguments)
         data = fetch_ripestat_prefix_overview(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat prefix overview: {e}")
         raise
@@ -266,7 +287,11 @@ async def handle_ripestat_announced_prefixes(
             raise ValueError("resource is required")
         params = RIPEStatAnnouncedPrefixesParams(**arguments)
         data = fetch_ripestat_announced_prefixes(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat announced prefixes: {e}")
         raise
@@ -331,7 +356,11 @@ async def handle_ripestat_routing_history(
             raise ValueError("resource is required")
         params = RIPEStatRoutingHistoryParams(**arguments)
         data = fetch_ripestat_routing_history(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat routing history: {e}")
         raise
@@ -385,15 +414,130 @@ def fetch_ripestat_asn_neighbours(params: RIPEStatASNNeighboursParams) -> dict:
     return response.json()
 
 
+def _coerce_asn(value: Any) -> int | None:
+    """Normalise an ASN-ish value to an int, or ``None`` if it doesn't look
+    like one. RIPEstat returns ASNs as numbers, but the resource echoed in
+    ``data.resource`` is a string (e.g. ``"3333"`` or ``"AS3333"``)."""
+    if isinstance(value, bool):
+        # bool is an int subclass; never an ASN.
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        s = value.strip().upper()
+        if s.startswith("AS"):
+            s = s[2:]
+        if s.isdigit():
+            return int(s)
+    return None
+
+
+# RIPEstat ``/data/asn-neighbours`` uses a directional convention:
+#   - "left"      → the neighbour sits upstream of the resource ASN
+#                    (i.e. the neighbour is a transit-provider TO us).
+#   - "right"     → the neighbour sits downstream (a transit-customer
+#                    of the resource ASN).
+#   - "peer"      → lateral / settlement-free interconnection.
+#   - "uncertain" → relationship not classified by the heuristic.
+#
+# We project these onto the panel's three-way edge palette (peer /
+# upstream / downstream). "uncertain" defaults to "peer" because that's
+# the most charitable / least misleading classification — we don't want
+# to render a guessed transit hierarchy.
+_RIPESTAT_NEIGHBOUR_TYPE_MAP = {
+    "left": "upstream",
+    "right": "downstream",
+    "peer": "peer",
+    "uncertain": "peer",
+}
+
+
+def _ripestat_asn_neighbours_to_topology_payload(data: Any, focus: Any) -> dict:
+    """Adapt the RIPEstat ``/data/asn-neighbours`` response to the
+    ``ui://meta-data-mcp/app/network-topology/v1`` payload contract.
+
+    The response carries ``data.neighbours: [{"asn": <int>, "type":
+    "left"|"right"|"peer"|"uncertain", ...}]`` with one entry per
+    observed neighbour ASN. The focus ASN itself isn't included in the
+    neighbour list — we synthesise it from the caller-supplied
+    ``focus`` argument (which is the ``resource`` the tool was called
+    with) so the resulting graph is connected.
+
+    Entries that can't be coerced to an integer ASN are dropped silently
+    rather than crashing the whole render. Self-edges (neighbour ASN ==
+    focus ASN — shouldn't happen but the upstream can be inconsistent)
+    are also dropped.
+    """
+    focus_asn = _coerce_asn(focus)
+    asns: list[dict] = []
+    edges: list[dict] = []
+    seen_asns: set[int] = set()
+
+    if focus_asn is not None:
+        asns.append({"asn": focus_asn})
+        seen_asns.add(focus_asn)
+
+    if not isinstance(data, dict):
+        return {"asns": asns, "edges": edges, "focus_asn": focus_asn}
+    neighbours = data.get("data", {}).get("neighbours")
+    if not isinstance(neighbours, list):
+        return {"asns": asns, "edges": edges, "focus_asn": focus_asn}
+
+    for entry in neighbours:
+        if not isinstance(entry, dict):
+            continue
+        neighbour_asn = _coerce_asn(entry.get("asn"))
+        if neighbour_asn is None:
+            continue
+        if focus_asn is not None and neighbour_asn == focus_asn:
+            continue
+        if neighbour_asn not in seen_asns:
+            asns.append({"asn": neighbour_asn})
+            seen_asns.add(neighbour_asn)
+        if focus_asn is None:
+            # No focus to anchor edges from — skip edge construction.
+            continue
+        ripe_type = entry.get("type")
+        relationship = _RIPESTAT_NEIGHBOUR_TYPE_MAP.get(
+            ripe_type if isinstance(ripe_type, str) else "", "peer"
+        )
+        edge: dict[str, Any] = {
+            "source_asn": focus_asn,
+            "target_asn": neighbour_asn,
+            "relationship": relationship,
+        }
+        # Power (peer count) is RIPEstat's signal strength for the
+        # observation. Surface it as edge weight when available so the
+        # bundle can vary stroke width.
+        power = entry.get("power")
+        if isinstance(power, (int, float)) and not isinstance(power, bool):
+            edge["weight"] = float(power)
+        edges.append(edge)
+
+    return {"asns": asns, "edges": edges, "focus_asn": focus_asn}
+
+
 async def handle_ripestat_asn_neighbours(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
+    """Handle the ripestat-asn-neighbours tool call.
+
+    Returns a payload in the
+    ``ui://meta-data-mcp/app/network-topology/v1`` contract so the MCP
+    Apps host can render the result inline via the bound app panel.
+    The original RIPEstat JSON shape is intentionally not surfaced
+    here — the bound app reads ``asns`` / ``edges`` / ``focus_asn`` and
+    nothing else, and the contract payload still preserves every ASN
+    number from the upstream response so LLM callers can reason about
+    it textually.
+    """
     try:
         if not arguments or "resource" not in arguments:
             raise ValueError("resource is required")
         params = RIPEStatASNNeighboursParams(**arguments)
         data = fetch_ripestat_asn_neighbours(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _ripestat_asn_neighbours_to_topology_payload(data, params.resource)
+        return [types.TextContent(type="text", text=to_entity_graph_text(payload))]
     except Exception as e:
         log.error(f"Error fetching RIPEstat ASN neighbours: {e}")
         raise
@@ -407,6 +551,11 @@ TOOLS.append(
             "from RIPE NCC RIS. Returns neighbor ASNs grouped by relationship type."
         ),
         inputSchema=RIPEStatASNNeighboursParams.model_json_schema(),
+        # MCP Apps binding: render via the Phase 5 network-topology app.
+        # Use the alias keyword ``_meta=`` — ``meta=`` silently drops into
+        # extras; see tests/test_ui_resource.py::
+        # test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": NETWORK_TOPOLOGY_URI}},
     )
 )
 TOOLS_HANDLERS["ripestat-asn-neighbours"] = handle_ripestat_asn_neighbours
@@ -464,7 +613,11 @@ async def handle_ripestat_asn_neighbours_history(
             raise ValueError("resource is required")
         params = RIPEStatASNNeighboursHistoryParams(**arguments)
         data = fetch_ripestat_asn_neighbours_history(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat ASN neighbours history: {e}")
         raise
@@ -478,6 +631,17 @@ TOOLS.append(
             "Shows how peering, transit, and customer relationships changed over time."
         ),
         inputSchema=RIPEStatASNNeighboursHistoryParams.model_json_schema(),
+        # MCP Apps binding: render via the Phase 5 network-topology app.
+        # The handler intentionally returns the raw RIPEstat history
+        # response (not a network-topology payload) — the history shape
+        # is a time-bucketed series of neighbour sets, and projecting it
+        # onto the single-snapshot {asns, edges, focus_asn} contract
+        # would silently drop the time dimension. The bound panel
+        # currently renders only the latest bucket via the
+        # ripestat-asn-neighbours tool; this binding declares intent so
+        # a future "evolving topology" payload contract has a place to
+        # plug in without re-touching the wire format.
+        _meta={"ui": {"resourceUri": NETWORK_TOPOLOGY_URI}},
     )
 )
 TOOLS_HANDLERS["ripestat-asn-neighbours-history"] = (
