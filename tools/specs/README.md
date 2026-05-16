@@ -50,6 +50,7 @@ byte-identical output.
 | `description`     | string       | yes      | Shown to the LLM in the tool catalog.                       |
 | `endpoint`        | string       | yes      | Path appended to `base_url`. May contain `{name}` segments. |
 | `response_format` | `json`/`text`| no       | Defaults to `json`. `text` returns the raw body (≤20 000c). |
+| `response_shape`  | enum         | no       | One of `none` (default), `timeseries`, `geofeatures`, `records`. Wires the tool to the matching MCP Apps shape primitive — see below. |
 | `params`          | list[param]  | no       | Tool input parameters (becomes a Pydantic model).           |
 
 ### Each `params[]` entry
@@ -68,6 +69,34 @@ If `endpoint` contains `{placeholder}` segments, the matching `params[]`
 entries are substituted into the URL via f-string interpolation and are
 **not** sent as query parameters. Multiple placeholders in a single segment
 (e.g. `/points/{latitude},{longitude}`) are supported.
+
+### MCP Apps shape binding (`response_shape`)
+
+Setting `response_shape: timeseries | geofeatures | records` does three
+things automatically:
+
+1. Adds the matching URI import from `meta_data_mcp.ui_resources` to the
+   generated module.
+2. Emits `_meta={"ui": {"resourceUri": <URI>}}` on the tool's
+   `types.Tool(...)` registration so the MCP Apps host renders results
+   through the bound shape primitive.
+3. Swaps the handler's serializer for the size-bounded helper that
+   preserves the shape contract on overflow:
+   - `records` → `to_records_text(data)` (trims `rows` list)
+   - `geofeatures` → `to_geofeatures_text(data)` (trims feature list)
+   - `timeseries` → `to_json_text(data, max_chars=MAX_RESPONSE_CHARS)`
+     (no list-key in the timeseries contract to trim; falls back to the
+     generic truncation wrapper)
+
+The generator emits a **`# TODO: write a _<snake>_to_shape_payload(data)`
+adapter** comment in the handler. The shape-mapping function is
+provider-specific (SDMX observations vs JSON-stat vs native rate tables
+vs …) and the generator deliberately doesn't guess. Write it before the
+provider goes live; the size-bounded serializer assumes the data already
+matches the shape's payload contract.
+
+`response_shape` requires `response_format: json` — text responses can't
+carry the shape envelope.
 
 ## What the generator does NOT handle
 
