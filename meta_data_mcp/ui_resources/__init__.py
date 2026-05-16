@@ -25,6 +25,7 @@ from mcp import types
 from pydantic import AnyUrl
 
 from .app_discovery_v1 import register as _register_discovery_app
+from .app_entity_graph_v1 import register as _register_entity_graph_app
 from .app_vulnerability_v1 import register as _register_vulnerability_app
 from .shape_geofeatures_v1 import register as _register_geofeatures
 from .shape_records_v1 import register as _register_records
@@ -70,4 +71,5 @@ def register_apps(
     return {
         "discovery/v1": _register_discovery_app(resources, resources_handlers),
         "vulnerability/v1": _register_vulnerability_app(resources, resources_handlers),
+        "entity-graph/v1": _register_entity_graph_app(resources, resources_handlers),
     }

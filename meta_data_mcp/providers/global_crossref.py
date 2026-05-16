@@ -30,6 +30,7 @@ from urllib.parse import quote
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_entity_graph_v1 import URI as ENTITY_GRAPH_URI
 from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
@@ -295,16 +296,145 @@ def fetch_crossref_works_by_author(params: CrossrefWorksByAuthorParams) -> dict:
     return response.json()
 
 
+def _crossref_works_by_author_to_entity_graph_payload(
+    data: dict, query_author: str = ""
+) -> dict:
+    """Adapt Crossref's ``/works?query.author=...`` response to entity-graph.
+
+    Surfaces the co-authorship overlay called out in the plan: every
+    work in the response is a ``work`` node; every author on each
+    work is an ``author`` node; an "authored" edge connects each
+    work to each of its authors. Authors dedupe across works, which
+    is precisely what makes the co-author cluster visible — a prolific
+    pair shares N work nodes, producing the visual triangle the layout
+    pulls together.
+
+    The provider's ``crossref-works-search`` tool stays on the records
+    primitive (it's a flat tabular surface), so this binding doesn't
+    override that one — different tool, different shape.
+    """
+    message = data.get("message") if isinstance(data, dict) else None
+    items = message.get("items", []) if isinstance(message, dict) else []
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add_node(
+        node_id: str, label: str, ntype: str, attrs: dict | None = None
+    ) -> None:
+        if not node_id or node_id in seen:
+            return
+        seen.add(node_id)
+        nodes.append(
+            {
+                "id": node_id,
+                "label": label or node_id,
+                "type": ntype,
+                "attrs": attrs or {},
+            }
+        )
+
+    # Count how many works each author touched so the layout's link
+    # weight can pull frequent authors closer to their works cluster.
+    author_work_counts: dict[str, int] = {}
+
+    for work in items:
+        if not isinstance(work, dict):
+            continue
+        doi = work.get("DOI")
+        if not doi:
+            continue
+        work_id = "doi:" + str(doi)
+        title_list = work.get("title") or []
+        title = (
+            title_list[0] if isinstance(title_list, list) and title_list else str(doi)
+        )
+        container = work.get("container-title") or []
+        container_title = (
+            container[0] if isinstance(container, list) and container else None
+        )
+        _add_node(
+            work_id,
+            str(title),
+            "work",
+            {
+                "DOI": doi,
+                "publisher": work.get("publisher"),
+                "container_title": container_title,
+                "type": work.get("type"),
+                "is_referenced_by_count": work.get("is-referenced-by-count"),
+            },
+        )
+
+        authors = work.get("author") or []
+        if not isinstance(authors, list):
+            continue
+        for author in authors:
+            if not isinstance(author, dict):
+                continue
+            given = author.get("given") or ""
+            family = author.get("family") or author.get("name") or ""
+            display = (f"{given} {family}").strip() or family or given
+            if not display:
+                continue
+            # Authors don't carry stable ids in /works; use ORCID when
+            # present, otherwise a normalized display-name id. Two
+            # authors with identical names will collide — that's the
+            # expected tradeoff for a co-author overlay.
+            author_id = (
+                "orcid:" + author.get("ORCID")
+                if author.get("ORCID")
+                else "name:" + display.lower()
+            )
+            author_work_counts[author_id] = author_work_counts.get(author_id, 0) + 1
+            _add_node(
+                author_id,
+                display,
+                "author",
+                {
+                    "ORCID": author.get("ORCID"),
+                    "affiliation": [
+                        a.get("name")
+                        for a in (author.get("affiliation") or [])
+                        if isinstance(a, dict) and a.get("name")
+                    ]
+                    or None,
+                },
+            )
+            edges.append(
+                {
+                    "source": work_id,
+                    "target": author_id,
+                    "label": "authored",
+                    "weight": 1,
+                }
+            )
+
+    # Promote author edge weights by works-shared count so the force
+    # layout pulls prolific co-authors closer.
+    for e in edges:
+        if e["label"] == "authored":
+            e["weight"] = author_work_counts.get(e["target"], 1)
+
+    return {"nodes": nodes, "edges": edges}
+
+
 async def handle_crossref_works_by_author(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the crossref-works-by-author tool call."""
+    """Handle the crossref-works-by-author tool call.
+
+    Returns the response shaped for the entity-graph app primitive
+    (co-author overlay) — works on the query author's publication
+    list become a force-directed map of co-authors.
+    """
     try:
         if not arguments or "author" not in arguments:
             raise ValueError("author is required")
         params = CrossrefWorksByAuthorParams(**arguments)
         data = fetch_crossref_works_by_author(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _crossref_works_by_author_to_entity_graph_payload(data, params.author)
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
     except Exception as e:
         log.error(f"Error searching Crossref works by author: {e}")
         raise
@@ -315,6 +445,11 @@ TOOLS.append(
         name="crossref-works-by-author",
         description="Search Crossref works whose author field matches the given name.",
         inputSchema=CrossrefWorksByAuthorParams.model_json_schema(),
+        # MCP Apps binding: co-author overlay via entity-graph. Distinct
+        # from ``crossref-works-search`` which renders as the records
+        # primitive — different shape, different tool. Use the alias
+        # keyword (``_meta=``) — ``meta=`` silently drops into extras.
+        _meta={"ui": {"resourceUri": ENTITY_GRAPH_URI}},
     )
 )
 TOOLS_HANDLERS["crossref-works-by-author"] = handle_crossref_works_by_author

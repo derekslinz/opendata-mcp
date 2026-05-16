@@ -21,6 +21,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, ConfigDict, Field
 
+from meta_data_mcp.ui_resources.app_entity_graph_v1 import URI as ENTITY_GRAPH_URI
 from meta_data_mcp.utils import (
     create_mcp_server,
     http_get,
@@ -121,15 +122,128 @@ def fetch_opensanctions_search(params: OpenSanctionsSearchParams) -> Any:
     return response.json()
 
 
+def _opensanctions_search_to_entity_graph_payload(data: dict) -> dict:
+    """Adapt OpenSanctions ``/search/<dataset>`` response to entity-graph.
+
+    Each result is a top-level entity node typed by its schema (Person,
+    Company, Vessel, …) lower-cased and mapped onto the bundle's color
+    palette ("entity" is the catch-all). Where a result's ``properties``
+    dict contains nested entity references — ``familyMembers``,
+    ``associates``, ``directorOf``, etc. — those are emitted as
+    secondary nodes with a relationship-typed edge back to the parent.
+
+    Topics (sanction, role.pep, crime.fin, …) are emitted as edge
+    labels on the parent's self-edge to surface compliance signal in
+    the graph view without inventing a separate "topic" node type
+    (which would blow up the node count for popular topic strings).
+    """
+    results = data.get("results", []) if isinstance(data, dict) else []
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _node_type(schema: str | None) -> str:
+        if not schema:
+            return "entity"
+        lower = schema.lower()
+        # Persons map to the "author" palette slot for visual contrast
+        # against the "entity" catch-all; the *label* still says Person.
+        if lower == "person":
+            return "author"
+        return "entity"
+
+    def _add_node(
+        node_id: str, label: str, ntype: str, attrs: dict | None = None
+    ) -> None:
+        if not node_id or node_id in seen:
+            return
+        seen.add(node_id)
+        nodes.append(
+            {
+                "id": node_id,
+                "label": label or node_id,
+                "type": ntype,
+                "attrs": attrs or {},
+            }
+        )
+
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        entity_id = result.get("id")
+        if not entity_id:
+            continue
+        entity_id = str(entity_id)
+        schema = result.get("schema")
+        caption = result.get("caption") or entity_id
+        topics = result.get("topics") or []
+        countries = result.get("countries") or []
+        datasets = result.get("datasets") or []
+        _add_node(
+            entity_id,
+            str(caption),
+            _node_type(schema),
+            {
+                "schema": schema,
+                "topics": topics or None,
+                "countries": countries or None,
+                "datasets": datasets or None,
+                "score": result.get("score"),
+                "first_seen": result.get("first_seen"),
+                "last_seen": result.get("last_seen"),
+            },
+        )
+
+        properties = result.get("properties") or {}
+        if isinstance(properties, dict):
+            for prop_name, values in properties.items():
+                if not isinstance(values, list):
+                    continue
+                for value in values:
+                    # Nested entity references show up as dicts with their
+                    # own id + caption; scalar property values (strings,
+                    # dates) are skipped — they don't carry node identity.
+                    if not isinstance(value, dict):
+                        continue
+                    target_id = value.get("id")
+                    if not target_id:
+                        continue
+                    target_id = str(target_id)
+                    target_schema = value.get("schema")
+                    target_caption = value.get("caption") or target_id
+                    _add_node(
+                        target_id,
+                        str(target_caption),
+                        _node_type(target_schema),
+                        {"schema": target_schema},
+                    )
+                    edges.append(
+                        {
+                            "source": entity_id,
+                            "target": target_id,
+                            "label": str(prop_name),
+                            "weight": 1,
+                        }
+                    )
+
+    return {"nodes": nodes, "edges": edges}
+
+
 async def handle_opensanctions_search(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the opensanctions-search tool call."""
+    """Handle the opensanctions-search tool call.
+
+    Returns the response shaped for the entity-graph app primitive so
+    the bound bundle can render persons/companies and their
+    cross-references directly.
+    """
     # Use model_validate (not **kwargs) so the 'schema' alias works —
     # Python's keyword-arg unpack will not match the field name 'schema_'.
     params = OpenSanctionsSearchParams.model_validate(arguments or {})
     data = fetch_opensanctions_search(params)
-    return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    payload = _opensanctions_search_to_entity_graph_payload(data)
+    return [types.TextContent(type="text", text=serialize_for_llm(payload))]
 
 
 TOOLS.append(
@@ -143,6 +257,10 @@ TOOLS.append(
             "source references."
         ),
         inputSchema=OpenSanctionsSearchParams.model_json_schema(),
+        # MCP Apps binding: render persons/companies via entity-graph.
+        # Use the alias keyword (``_meta=``) — ``meta=`` silently drops
+        # into extras; see tests/test_ui_resource.py.
+        _meta={"ui": {"resourceUri": ENTITY_GRAPH_URI}},
     )
 )
 TOOLS_HANDLERS["opensanctions-search"] = handle_opensanctions_search
