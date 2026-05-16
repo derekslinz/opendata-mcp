@@ -3,6 +3,20 @@
 Every PR — author's own or another's — passes through this checklist
 before `gh pr merge`. CI green is necessary, not sufficient.
 
+## Running it
+
+For steps 1–5 (everything that can run before the merge), use:
+
+```
+make pr-check N=<PR_NUMBER>
+```
+
+This invokes `scripts/pr_check.sh`, which fails non-zero on the first
+gate that doesn't pass and prints actionable next-step commands. It
+deliberately does not auto-resolve inline comments — the operator has
+to read them and decide. Steps 6–7 are post-merge and you run them by
+hand after `gh pr merge`.
+
 ## The checklist
 
 1. **CI is green.**
