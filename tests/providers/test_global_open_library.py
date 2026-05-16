@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.global_open_library import (
+    TOOLS,
+    _openlibrary_search_to_shape_payload,
     handle_openlibrary_search_books,
     handle_openlibrary_search_authors,
     handle_openlibrary_get_work,
@@ -11,6 +15,7 @@ from meta_data_mcp.providers.global_open_library import (
     handle_openlibrary_isbn_lookup,
     handle_openlibrary_subject,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -133,3 +138,60 @@ async def test_openlibrary_subject_success():
             {"subject": "science_fiction", "limit": 5}
         )
         assert "Dune" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for openlibrary-search-books.
+# ---------------------------------------------------------------------------
+
+
+def test_openlibrary_adapter_flattens_docs_to_rows():
+    raw = {
+        "numFound": 1,
+        "docs": [
+            {
+                "key": "/works/OL45804W",
+                "title": "Foundation",
+                "author_name": ["Isaac Asimov"],
+                "first_publish_year": 1951,
+                "language": ["eng"],
+                "publisher": ["Gnome Press", "Avon"],
+                "edition_count": 50,
+                "cover_i": 12345,
+            }
+        ],
+    }
+    payload = _openlibrary_search_to_shape_payload(raw)
+    assert payload["numFound"] == 1
+    row = payload["rows"][0]
+    assert row["title"] == "Foundation"
+    assert row["authors"] == "Isaac Asimov"
+    assert row["first_publish_year"] == 1951
+    assert "eng" in row["languages"]
+    assert payload["default_facets"] == ["first_publish_year", "languages"]
+
+
+def test_openlibrary_adapter_handles_empty_docs():
+    assert _openlibrary_search_to_shape_payload({"docs": []})["rows"] == []
+    assert _openlibrary_search_to_shape_payload({})["rows"] == []
+
+
+def test_search_books_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "openlibrary-search-books")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+@pytest.mark.anyio
+async def test_openlibrary_search_books_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "numFound": 1,
+            "docs": [{"key": "/works/x", "title": "Foundation"}],
+        }
+        mock_get.return_value.raise_for_status = Mock()
+        result = await handle_openlibrary_search_books({"q": "Foundation"})
+        body = json.loads(result[0].text)
+        assert body["rows"][0]["title"] == "Foundation"
+        assert "schema" in body

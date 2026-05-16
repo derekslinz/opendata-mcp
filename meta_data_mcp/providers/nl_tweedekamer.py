@@ -19,7 +19,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, to_json_text
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, to_json_text, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -140,19 +141,43 @@ def query_tk_entity(params: TkQueryEntityParams) -> dict:
     return response.json()
 
 
+def _tk_odata_to_shape_payload(data: dict) -> dict:
+    """Adapt an OData v4 entity-set response to the records shape primitive.
+
+    OData v4 returns ``{value: [...], "@odata.count": n, "@odata.nextLink": ...}``.
+    We pass the rows through as-is — OData entities are already flat enough
+    for the records bundle to infer types and pick facets, and the entity
+    set chosen by the caller varies (Persoon, Fractie, Document, etc.).
+    """
+    raw_rows = data.get("value", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = [r for r in raw_rows if isinstance(r, dict)]
+    payload: dict[str, Any] = {"rows": rows}
+    if isinstance(data, dict):
+        if "@odata.count" in data:
+            payload["count"] = data["@odata.count"]
+        if "@odata.nextLink" in data:
+            payload["next_link"] = data["@odata.nextLink"]
+    return payload
+
+
 async def handle_tk_query(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the tk-query tool call."""
+    """Handle the tk-query tool call.
+
+    Returns the response in the records shape primitive payload. OData
+    entities vary by entity set, so the adapter passes rows through
+    untouched and lets the records bundle's auto-inference handle
+    column types and facets.
+    """
     try:
         if not arguments or "entity" not in arguments:
             raise ValueError("entity name is required")
 
         params = TkQueryEntityParams(**arguments)
         result = query_tk_entity(params)
-        return [
-            types.TextContent(type="text", text=to_json_text(result, max_chars=20000))
-        ]
+        payload = _tk_odata_to_shape_payload(result)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(
             f"Error querying TK entity {arguments.get('entity') if arguments else ''}: {e}"
@@ -165,6 +190,7 @@ TOOLS.append(
         name="tk-query",
         description="Query a Tweedekamer entity set using OData v4 parameters.",
         inputSchema=TkQueryEntityParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["tk-query"] = handle_tk_query

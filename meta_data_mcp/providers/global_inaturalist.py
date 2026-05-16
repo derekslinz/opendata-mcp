@@ -30,7 +30,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -90,14 +91,106 @@ def fetch_inaturalist_search_observations(
     return response.json()
 
 
+def _inaturalist_observations_to_shape_payload(data: dict) -> dict:
+    """Adapt iNaturalist ``/observations`` response to the records shape
+    primitive's payload.
+
+    iNaturalist returns ``{total_results, page, per_page, results: [...]}``;
+    each observation nests taxon and user info. We hoist scientific name,
+    common name, taxon rank, place_guess, user login, observed_on, and
+    quality_grade.
+    """
+    raw_rows = data.get("results", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for obs in raw_rows:
+        if not isinstance(obs, dict):
+            continue
+        taxon = obs.get("taxon") or {}
+        if not isinstance(taxon, dict):
+            taxon = {}
+        user = obs.get("user") or {}
+        rows.append(
+            {
+                "id": obs.get("id"),
+                "scientific_name": taxon.get("name") or obs.get("species_guess"),
+                "common_name": taxon.get("preferred_common_name")
+                or obs.get("species_guess"),
+                "rank": taxon.get("rank"),
+                "iconic_taxon": taxon.get("iconic_taxon_name"),
+                "place_guess": obs.get("place_guess"),
+                "observed_on": obs.get("observed_on"),
+                "user": user.get("login") if isinstance(user, dict) else None,
+                "quality_grade": obs.get("quality_grade"),
+                "license_code": obs.get("license_code"),
+                "uri": obs.get("uri"),
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "id", "type": "number", "description": "Observation id"},
+                {
+                    "name": "scientific_name",
+                    "type": "string",
+                    "description": "Scientific name",
+                },
+                {
+                    "name": "common_name",
+                    "type": "string",
+                    "description": "Preferred common name",
+                },
+                {"name": "rank", "type": "string", "description": "Taxonomic rank"},
+                {
+                    "name": "iconic_taxon",
+                    "type": "string",
+                    "description": "Iconic taxon (high-level group)",
+                },
+                {
+                    "name": "place_guess",
+                    "type": "string",
+                    "description": "Place name",
+                },
+                {
+                    "name": "observed_on",
+                    "type": "date",
+                    "description": "Observation date",
+                },
+                {"name": "user", "type": "string", "description": "Observer login"},
+                {
+                    "name": "quality_grade",
+                    "type": "string",
+                    "description": "Quality grade",
+                },
+                {
+                    "name": "license_code",
+                    "type": "string",
+                    "description": "Observation licence",
+                },
+                {"name": "uri", "type": "string", "description": "Observation URL"},
+            ]
+        },
+        "default_facets": ["iconic_taxon", "quality_grade", "rank"],
+    }
+    if isinstance(data, dict):
+        for key in ("total_results", "page", "per_page"):
+            if key in data:
+                payload[key] = data[key]
+    return payload
+
+
 async def handle_inaturalist_search_observations(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the inaturalist-search-observations tool call."""
+    """Handle the inaturalist-search-observations tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = INaturalistSearchObservationsParams(**(arguments or {}))
         data = fetch_inaturalist_search_observations(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _inaturalist_observations_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching iNaturalist observations: {e}")
         raise
@@ -108,6 +201,7 @@ TOOLS.append(
         name="inaturalist-search-observations",
         description="Search iNaturalist observations by query, taxon, place, user, and date range.",
         inputSchema=INaturalistSearchObservationsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["inaturalist-search-observations"] = (

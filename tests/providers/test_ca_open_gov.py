@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.ca_open_gov import (
+    TOOLS,
+    _ckan_package_search_to_shape_payload,
     handle_ca_opengov_search_datasets,
     handle_ca_opengov_get_dataset,
     handle_ca_opengov_list_organizations,
@@ -11,6 +15,7 @@ from meta_data_mcp.providers.ca_open_gov import (
     handle_ca_opengov_list_tags,
     handle_ca_opengov_list_licenses,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -127,3 +132,61 @@ async def test_ca_opengov_list_licenses_success():
 
         result = await handle_ca_opengov_list_licenses({})
         assert "Open Government Licence" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for ca-open-gov-search-datasets.
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_flattens_ckan_package_search_to_rows():
+    raw = {
+        "result": {
+            "count": 1,
+            "results": [
+                {
+                    "name": "canada-census-2021",
+                    "title": "Canada Census 2021",
+                    "organization": {"title": "Statistics Canada"},
+                    "license_title": "OGL-Canada",
+                    "tags": [{"display_name": "Census"}],
+                    "resources": [{"format": "csv"}],
+                }
+            ],
+        }
+    }
+    payload = _ckan_package_search_to_shape_payload(raw)
+    assert payload["rows"][0]["organization"] == "Statistics Canada"
+    assert "CSV" in payload["rows"][0]["formats"]
+    assert payload["default_facets"] == ["organization", "license", "formats"]
+
+
+def test_adapter_handles_empty_results():
+    payload = _ckan_package_search_to_shape_payload(
+        {"result": {"count": 0, "results": []}}
+    )
+    assert payload["rows"] == []
+
+
+def test_search_datasets_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "ca-open-gov-search-datasets")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+@pytest.mark.anyio
+async def test_ca_opengov_search_datasets_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "success": True,
+            "result": {
+                "count": 1,
+                "results": [{"name": "x", "title": "X"}],
+            },
+        }
+        mock_get.return_value.raise_for_status = Mock()
+        result = await handle_ca_opengov_search_datasets({"q": "x"})
+        body = json.loads(result[0].text)
+        assert body["rows"][0]["title"] == "X"
+        assert "schema" in body

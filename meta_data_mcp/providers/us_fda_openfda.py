@@ -33,7 +33,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -41,6 +42,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "us-fda-openfda"
 BASE_URL = "https://api.fda.gov"
+
+# Records-shape adapter constants
+_MAX_REASON_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -178,14 +182,117 @@ def fetch_drug_enforcement(params: OpenFDADrugEnforcementParams) -> Any:
     return response.json()
 
 
+def _openfda_drug_enforcement_to_shape_payload(data: dict) -> dict:
+    """Adapt openFDA drug enforcement (recall) response to the records
+    shape primitive.
+
+    openFDA wraps results in ``{meta, results: [...]}``; each recall record
+    is already relatively flat (classification, recall_number, status,
+    recalling_firm, product_description, reason_for_recall, dates) — we
+    keep that flat shape and just truncate reason_for_recall to keep the
+    table responsive.
+
+    Notes on scope: the related ``openfda-drug-events`` endpoint returns
+    deeply-nested FAERS reports (patient.drug[], patient.reaction[]) that
+    would require row-explosion to fit the records shape; we bind the
+    enforcement endpoint here because its row contract is naturally
+    record-shaped.
+    """
+    raw_rows = data.get("results", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for rec in raw_rows:
+        if not isinstance(rec, dict):
+            continue
+        reason = rec.get("reason_for_recall") or ""
+        if isinstance(reason, str) and len(reason) > _MAX_REASON_CHARS:
+            reason = reason[:_MAX_REASON_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "recall_number": rec.get("recall_number"),
+                "classification": rec.get("classification"),
+                "status": rec.get("status"),
+                "recalling_firm": rec.get("recalling_firm"),
+                "product_description": rec.get("product_description"),
+                "voluntary_mandated": rec.get("voluntary_mandated"),
+                "country": rec.get("country"),
+                "state": rec.get("state"),
+                "recall_initiation_date": rec.get("recall_initiation_date"),
+                "report_date": rec.get("report_date"),
+                "termination_date": rec.get("termination_date"),
+                "reason_for_recall": reason,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {
+                    "name": "recall_number",
+                    "type": "string",
+                    "description": "FDA recall id",
+                },
+                {
+                    "name": "classification",
+                    "type": "string",
+                    "description": "Class I / II / III",
+                },
+                {"name": "status", "type": "string", "description": "Recall status"},
+                {
+                    "name": "recalling_firm",
+                    "type": "string",
+                    "description": "Recalling firm",
+                },
+                {
+                    "name": "product_description",
+                    "type": "string",
+                    "description": "Product description",
+                },
+                {
+                    "name": "voluntary_mandated",
+                    "type": "string",
+                    "description": "Voluntary vs mandated",
+                },
+                {"name": "country", "type": "string", "description": "Country"},
+                {"name": "state", "type": "string", "description": "State"},
+                {
+                    "name": "recall_initiation_date",
+                    "type": "date",
+                    "description": "Initiation date",
+                },
+                {"name": "report_date", "type": "date", "description": "Report date"},
+                {
+                    "name": "termination_date",
+                    "type": "date",
+                    "description": "Termination date",
+                },
+                {
+                    "name": "reason_for_recall",
+                    "type": "string",
+                    "description": "Recall reason (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["classification", "status", "country"],
+    }
+    if isinstance(data, dict) and isinstance(data.get("meta"), dict):
+        results_meta = data["meta"].get("results")
+        if isinstance(results_meta, dict) and "total" in results_meta:
+            payload["total"] = results_meta["total"]
+    return payload
+
+
 async def handle_drug_enforcement(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the openfda-drug-enforcement tool call."""
+    """Handle the openfda-drug-enforcement tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = OpenFDADrugEnforcementParams(**(arguments or {}))
         data = fetch_drug_enforcement(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _openfda_drug_enforcement_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error fetching openFDA drug enforcement: {e}")
         raise
@@ -196,6 +303,7 @@ TOOLS.append(
         name="openfda-drug-enforcement",
         description="Query openFDA drug enforcement (recall) records.",
         inputSchema=OpenFDADrugEnforcementParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["openfda-drug-enforcement"] = handle_drug_enforcement

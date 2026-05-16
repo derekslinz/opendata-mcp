@@ -17,7 +17,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -26,6 +27,9 @@ log = logging.getLogger(__name__)
 PROVIDER_ID = "nl-rechtspraak"
 BASE_URL = "https://data.rechtspraak.nl/uitspraken"
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
+
+# Records-shape adapter constants
+_MAX_SUMMARY_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -78,14 +82,60 @@ def search_rechtspraak(params: RechtspraakSearchParams) -> List[dict]:
     return results
 
 
+def _rechtspraak_search_to_shape_payload(data: List[dict]) -> dict:
+    """Adapt the parsed Rechtspraak search results to the records shape
+    primitive's payload. ``search_rechtspraak`` already returns a list of
+    ``{ecli, title, summary, updated, link}`` dicts; we just truncate
+    summary and add schema/facets.
+    """
+    rows: list[dict[str, Any]] = []
+    if isinstance(data, list):
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            summary = entry.get("summary") or ""
+            if isinstance(summary, str) and len(summary) > _MAX_SUMMARY_CHARS:
+                summary = summary[:_MAX_SUMMARY_CHARS].rstrip() + "…"
+            rows.append(
+                {
+                    "ecli": entry.get("ecli"),
+                    "title": entry.get("title"),
+                    "summary": summary,
+                    "updated": entry.get("updated"),
+                    "link": entry.get("link"),
+                }
+            )
+    return {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "ecli", "type": "string", "description": "ECLI identifier"},
+                {"name": "title", "type": "string", "description": "Ruling title"},
+                {
+                    "name": "summary",
+                    "type": "string",
+                    "description": "Summary (truncated)",
+                },
+                {"name": "updated", "type": "date", "description": "Update timestamp"},
+                {"name": "link", "type": "string", "description": "Atom entry link"},
+            ]
+        },
+        "default_facets": [],
+    }
+
+
 async def handle_rechtspraak_search(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the rechtspraak-search tool call."""
+    """Handle the rechtspraak-search tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = RechtspraakSearchParams(**(arguments or {}))
         data = search_rechtspraak(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _rechtspraak_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching Rechtspraak: {e}")
         raise
@@ -96,6 +146,7 @@ TOOLS.append(
         name="rechtspraak-search",
         description="Search for Dutch court rulings (uitspraken) via ECLI and text search.",
         inputSchema=RechtspraakSearchParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["rechtspraak-search"] = handle_rechtspraak_search

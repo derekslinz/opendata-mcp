@@ -23,7 +23,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, to_json_text
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, to_json_text, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -188,16 +189,90 @@ def fetch_mars_photos(params: MarsRoverParams) -> dict:
     return response.json()
 
 
+def _mars_photos_to_shape_payload(data: dict) -> dict:
+    """Adapt NASA Mars rover ``/photos`` response to the records shape
+    primitive's payload.
+
+    NASA returns ``{photos: [{id, sol, camera: {name, full_name},
+    img_src, earth_date, rover: {name, landing_date, status}}]}``;
+    we hoist camera + rover to top-level columns.
+
+    The sibling ``nasa-get-asteroids`` endpoint nests data under
+    ``near_earth_objects.<date>[]`` which would need row-explosion to
+    fit the records contract; we bind Mars Photos because its response
+    is naturally a flat list.
+    """
+    raw_rows = data.get("photos", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for photo in raw_rows:
+        if not isinstance(photo, dict):
+            continue
+        camera = photo.get("camera") or {}
+        rover = photo.get("rover") or {}
+        rows.append(
+            {
+                "id": photo.get("id"),
+                "sol": photo.get("sol"),
+                "earth_date": photo.get("earth_date"),
+                "camera_name": camera.get("name") if isinstance(camera, dict) else None,
+                "camera_full_name": camera.get("full_name")
+                if isinstance(camera, dict)
+                else None,
+                "rover_name": rover.get("name") if isinstance(rover, dict) else None,
+                "rover_status": rover.get("status")
+                if isinstance(rover, dict)
+                else None,
+                "img_src": photo.get("img_src"),
+            }
+        )
+    return {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "id", "type": "number", "description": "Photo id"},
+                {"name": "sol", "type": "number", "description": "Sol (Martian day)"},
+                {
+                    "name": "earth_date",
+                    "type": "date",
+                    "description": "Earth date taken",
+                },
+                {
+                    "name": "camera_name",
+                    "type": "string",
+                    "description": "Camera abbreviation",
+                },
+                {
+                    "name": "camera_full_name",
+                    "type": "string",
+                    "description": "Camera full name",
+                },
+                {"name": "rover_name", "type": "string", "description": "Rover name"},
+                {
+                    "name": "rover_status",
+                    "type": "string",
+                    "description": "Rover status",
+                },
+                {"name": "img_src", "type": "string", "description": "Image URL"},
+            ]
+        },
+        "default_facets": ["rover_name", "camera_name", "rover_status"],
+    }
+
+
 async def handle_get_mars_photos(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the nasa-get-mars-photos tool call."""
+    """Handle the nasa-get-mars-photos tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         if not arguments or "rover" not in arguments:
             raise ValueError("rover is required")
         params = MarsRoverParams(**arguments)
         data = fetch_mars_photos(params)
-        return [types.TextContent(type="text", text=to_json_text(data))]
+        payload = _mars_photos_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error fetching Mars photos: {e}")
         raise
@@ -208,6 +283,7 @@ TOOLS.append(
         name="nasa-get-mars-photos",
         description="Get photos taken by NASA's Mars rovers (Curiosity, Opportunity, Spirit).",
         inputSchema=MarsRoverParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["nasa-get-mars-photos"] = handle_get_mars_photos

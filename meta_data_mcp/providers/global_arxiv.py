@@ -28,12 +28,14 @@ Usage:
 """
 
 import logging
+import xml.etree.ElementTree as ET
 from typing import Any, List, Sequence
 
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -41,6 +43,11 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "global-arxiv"
 BASE_URL = "https://export.arxiv.org/api"
+
+# Records-shape adapter constants
+_MAX_SUMMARY_CHARS = 500
+_ATOM_NS = "{http://www.w3.org/2005/Atom}"
+_ARXIV_NS = "{http://arxiv.org/schemas/atom}"
 
 # arXiv responds with Atom XML; ask for it explicitly.
 _ATOM_HEADERS = {"Accept": "application/atom+xml"}
@@ -99,16 +106,139 @@ def fetch_arxiv_query(params: ArxivQueryParams) -> str:
     return response.text
 
 
+def _arxiv_atom_to_shape_payload(xml_text: str) -> dict:
+    """Adapt arXiv's Atom XML feed to the
+    ``ui://meta-data-mcp/shape/records/v1`` payload.
+
+    Each ``<entry>`` becomes a row with id (arXiv identifier), title,
+    authors (csv), primary category, all categories (csv), published,
+    updated, and a truncated summary. If parsing fails (malformed XML or
+    upstream gave HTML), returns an empty payload defensively rather
+    than crashing the handler.
+    """
+    rows: list[dict[str, Any]] = []
+    if not isinstance(xml_text, str) or not xml_text.strip():
+        return {
+            "rows": rows,
+            "schema": _arxiv_schema(),
+            "default_facets": _arxiv_facets(),
+        }
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        log.warning("arxiv adapter: failed to parse Atom XML; returning empty rows")
+        return {
+            "rows": rows,
+            "schema": _arxiv_schema(),
+            "default_facets": _arxiv_facets(),
+        }
+    for entry in root.findall(f"{_ATOM_NS}entry"):
+        title_el = entry.find(f"{_ATOM_NS}title")
+        title = (
+            " ".join(title_el.text.split())
+            if title_el is not None and title_el.text
+            else ""
+        )
+        id_el = entry.find(f"{_ATOM_NS}id")
+        arxiv_id = id_el.text if id_el is not None else None
+        # Extract just the arxiv id suffix from the URL.
+        if isinstance(arxiv_id, str) and "/abs/" in arxiv_id:
+            arxiv_id = arxiv_id.rsplit("/abs/", 1)[-1]
+        summary_el = entry.find(f"{_ATOM_NS}summary")
+        summary = (
+            " ".join(summary_el.text.split())
+            if summary_el is not None and summary_el.text
+            else ""
+        )
+        if len(summary) > _MAX_SUMMARY_CHARS:
+            summary = summary[:_MAX_SUMMARY_CHARS].rstrip() + "…"
+        authors = []
+        for author in entry.findall(f"{_ATOM_NS}author"):
+            name_el = author.find(f"{_ATOM_NS}name")
+            if name_el is not None and name_el.text:
+                authors.append(name_el.text.strip())
+        primary_cat_el = entry.find(f"{_ARXIV_NS}primary_category")
+        primary_category = (
+            primary_cat_el.get("term") if primary_cat_el is not None else None
+        )
+        categories = [
+            c.get("term") for c in entry.findall(f"{_ATOM_NS}category") if c.get("term")
+        ]
+        published_el = entry.find(f"{_ATOM_NS}published")
+        updated_el = entry.find(f"{_ATOM_NS}updated")
+        rows.append(
+            {
+                "id": arxiv_id,
+                "title": title,
+                "authors": ", ".join(authors),
+                "primary_category": primary_category,
+                "categories": ", ".join(c for c in categories if c),
+                "published": published_el.text if published_el is not None else None,
+                "updated": updated_el.text if updated_el is not None else None,
+                "summary": summary,
+            }
+        )
+    return {
+        "rows": rows,
+        "schema": _arxiv_schema(),
+        "default_facets": _arxiv_facets(),
+    }
+
+
+def _arxiv_schema() -> dict[str, Any]:
+    return {
+        "columns": [
+            {"name": "id", "type": "string", "description": "arXiv identifier"},
+            {"name": "title", "type": "string", "description": "Paper title"},
+            {"name": "authors", "type": "string", "description": "Authors (csv)"},
+            {
+                "name": "primary_category",
+                "type": "string",
+                "description": "arXiv primary category",
+            },
+            {
+                "name": "categories",
+                "type": "string",
+                "description": "All categories (csv)",
+            },
+            {
+                "name": "published",
+                "type": "date",
+                "description": "Initial publication timestamp",
+            },
+            {
+                "name": "updated",
+                "type": "date",
+                "description": "Last-updated timestamp",
+            },
+            {
+                "name": "summary",
+                "type": "string",
+                "description": "Abstract (truncated)",
+            },
+        ]
+    }
+
+
+def _arxiv_facets() -> list[str]:
+    return ["primary_category"]
+
+
 async def handle_arxiv_query(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the arxiv-query tool call."""
+    """Handle the arxiv-query tool call.
+
+    Returns the response in the records shape primitive payload (parsed
+    from the upstream Atom XML feed).
+    """
     try:
         if not arguments or "search_query" not in arguments:
             raise ValueError("search_query is required")
         params = ArxivQueryParams(**arguments)
         data = fetch_arxiv_query(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _arxiv_atom_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error querying arXiv: {e}")
         raise
@@ -117,8 +247,9 @@ async def handle_arxiv_query(
 TOOLS.append(
     types.Tool(
         name="arxiv-query",
-        description="Run an arXiv search query and return raw Atom XML. Use field prefixes like 'ti:', 'au:', 'cat:'.",
+        description="Run an arXiv search query. Use field prefixes like 'ti:', 'au:', 'cat:'.",
         inputSchema=ArxivQueryParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["arxiv-query"] = handle_arxiv_query

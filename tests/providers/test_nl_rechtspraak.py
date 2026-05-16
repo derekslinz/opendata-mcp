@@ -1,16 +1,21 @@
+import json
+
 import httpx
 import pytest
 from pydantic import ValidationError
 from unittest.mock import patch
 
 from meta_data_mcp.providers.nl_rechtspraak import (
+    TOOLS,
     RechtspraakContentParams,
     RechtspraakSearchParams,
+    _rechtspraak_search_to_shape_payload,
     fetch_rechtspraak_content,
     handle_rechtspraak_content,
     handle_rechtspraak_search,
     search_rechtspraak,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -145,3 +150,45 @@ async def test_handle_rechtspraak_content_propagates_http_errors():
 
         with pytest.raises(httpx.HTTPError):
             await handle_rechtspraak_content({"ecli": "ECLI:NL:HR:2020:1234"})
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for rechtspraak-search.
+# ---------------------------------------------------------------------------
+
+
+def test_rechtspraak_adapter_wraps_list_into_rows():
+    raw = [
+        {
+            "ecli": "ECLI:NL:HR:2020:1234",
+            "title": "Arbeidsrecht uitspraak",
+            "summary": "Korte samenvatting",
+            "updated": "2020-01-02T03:04:05Z",
+            "link": "https://uitspraken.rechtspraak.nl/details?id=ECLI:NL:HR:2020:1234",
+        }
+    ]
+    payload = _rechtspraak_search_to_shape_payload(raw)
+    assert payload["rows"][0]["ecli"] == "ECLI:NL:HR:2020:1234"
+    assert "schema" in payload
+
+
+def test_rechtspraak_adapter_handles_empty_list():
+    assert _rechtspraak_search_to_shape_payload([])["rows"] == []
+    assert _rechtspraak_search_to_shape_payload(None)["rows"] == []
+
+
+def test_rechtspraak_search_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "rechtspraak-search")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+@pytest.mark.anyio
+async def test_handle_rechtspraak_search_returns_shape_payload():
+    with patch("meta_data_mcp.providers.nl_rechtspraak.http_get") as mock_get:
+        mock_get.return_value.content = ATOM_XML.encode("utf-8")
+        result = await handle_rechtspraak_search({"query": "arbeidsrecht"})
+        body = json.loads(result[0].text)
+        assert body["rows"][0]["ecli"] == "ECLI:NL:HR:2020:1234"
+        assert "schema" in body

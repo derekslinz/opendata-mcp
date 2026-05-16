@@ -34,7 +34,8 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -316,16 +317,69 @@ def fetch_wikipedia_search_title(params: WikipediaSearchTitleParams) -> list:
     return response.json()
 
 
+def _wikipedia_opensearch_to_shape_payload(data: list) -> dict:
+    """Adapt the MediaWiki opensearch response to the records shape
+    primitive's payload.
+
+    Opensearch returns ``[query, titles, descriptions, urls]`` (four
+    parallel arrays). We zip those into one row per title with title,
+    description, and url columns.
+    """
+    rows: list[dict[str, Any]] = []
+    query = ""
+    if isinstance(data, list) and len(data) >= 4:
+        query = data[0] if isinstance(data[0], str) else ""
+        titles = data[1] if isinstance(data[1], list) else []
+        descriptions = data[2] if isinstance(data[2], list) else []
+        urls = data[3] if isinstance(data[3], list) else []
+        for i, title in enumerate(titles):
+            if not isinstance(title, str):
+                continue
+            rows.append(
+                {
+                    "title": title,
+                    "description": descriptions[i]
+                    if i < len(descriptions) and isinstance(descriptions[i], str)
+                    else "",
+                    "url": urls[i]
+                    if i < len(urls) and isinstance(urls[i], str)
+                    else "",
+                }
+            )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "title", "type": "string", "description": "Article title"},
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "Short description",
+                },
+                {"name": "url", "type": "string", "description": "Article URL"},
+            ]
+        },
+        "default_facets": [],
+    }
+    if query:
+        payload["query"] = query
+    return payload
+
+
 async def handle_wikipedia_search_title(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the wikipedia-search-title tool call."""
+    """Handle the wikipedia-search-title tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         if not arguments or "search" not in arguments:
             raise ValueError("search is required")
         params = WikipediaSearchTitleParams(**arguments)
         data = fetch_wikipedia_search_title(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _wikipedia_opensearch_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching Wikipedia titles: {e}")
         raise
@@ -336,6 +390,7 @@ TOOLS.append(
         name="wikipedia-search-title",
         description="Prefix-search Wikipedia article titles via the MediaWiki opensearch endpoint.",
         inputSchema=WikipediaSearchTitleParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["wikipedia-search-title"] = handle_wikipedia_search_title

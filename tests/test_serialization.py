@@ -3,7 +3,12 @@ import json
 
 import pytest
 
-from meta_data_mcp.utils import MAX_RESPONSE_CHARS, to_geofeatures_text, to_json_text
+from meta_data_mcp.utils import (
+    MAX_RESPONSE_CHARS,
+    to_geofeatures_text,
+    to_json_text,
+    to_records_text,
+)
 
 
 def test_to_json_text_serializes_datetime():
@@ -90,3 +95,60 @@ def test_to_geofeatures_text_trims_geojson_feature_collection_to_valid_json():
     assert (
         0 < len(bounded["features"]["features"]) < len(payload["features"]["features"])
     )
+
+
+def test_to_records_text_passes_through_small_payloads_unchanged():
+    payload = {
+        "rows": [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}],
+        "schema": {"columns": [{"name": "id", "type": "number"}]},
+        "default_facets": ["name"],
+    }
+    text = to_records_text(payload, max_chars=MAX_RESPONSE_CHARS)
+    parsed = json.loads(text)
+    assert parsed["rows"] == payload["rows"]
+    assert parsed["schema"] == payload["schema"]
+    assert parsed["default_facets"] == payload["default_facets"]
+
+
+def test_to_records_text_trims_rows_list_to_valid_json():
+    """Large records payloads must trim ``rows`` rather than slicing the
+    JSON string (which would produce invalid JSON) or replacing the
+    payload with a ``{truncated: true, preview: "..."}`` wrapper that
+    drops the ``rows`` key entirely (which would leave the records bundle
+    rendering empty)."""
+    payload = {
+        "rows": [
+            {"id": i, "name": f"record-{i}", "blob": "x" * 200} for i in range(500)
+        ],
+        "schema": {"columns": [{"name": "id", "type": "number"}]},
+    }
+
+    text = to_records_text(payload, max_chars=MAX_RESPONSE_CHARS)
+
+    assert len(text) <= MAX_RESPONSE_CHARS
+    bounded = json.loads(text)
+    assert isinstance(bounded["rows"], list)
+    assert 0 < len(bounded["rows"]) < len(payload["rows"])
+    # Schema must survive — the bundle reads it for column type hints.
+    assert bounded["schema"] == payload["schema"]
+
+
+def test_to_records_text_empty_rows_remains_valid_shape():
+    """Even when the envelope itself is too big to fit (no rows can be
+    included), the fallback must still be valid JSON."""
+    payload = {"rows": [], "schema": {"columns": [{"name": "id"}] * 100}}
+    text = to_records_text(payload, max_chars=200)
+    parsed = json.loads(text)
+    # Either the trimmed shape with empty rows, or the to_json_text
+    # truncation fallback — both are valid JSON, that's the contract.
+    assert isinstance(parsed, dict)
+    assert len(text) <= 200
+
+
+def test_to_records_text_falls_back_to_json_text_for_non_dict_payload():
+    """Defense: if a non-dict accidentally reaches this helper, defer to
+    the generic truncator rather than crashing."""
+    text = to_records_text([1, 2, 3] * 1000, max_chars=50)
+    assert len(text) <= 50
+    parsed = json.loads(text)
+    assert parsed["truncated"] is True

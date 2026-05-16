@@ -512,6 +512,48 @@ def _max_prefix_json_text(
     return best_text
 
 
+def to_records_text(payload: Any, max_chars: int = MAX_RESPONSE_CHARS) -> str:
+    """Serialize a records-shape payload while preserving valid shape JSON.
+
+    Mirrors :func:`to_geofeatures_text` for the
+    ``ui://meta-data-mcp/shape/records/v1`` envelope. If the serialized
+    payload exceeds ``max_chars``, the ``rows`` list is trimmed to the
+    largest prefix that still fits while keeping the records contract
+    intact — i.e. the result is always a valid JSON object with
+    ``rows`` (possibly empty) plus the original ``schema`` /
+    ``default_facets`` metadata.
+
+    Why this exists instead of ``serialize_for_llm``: the records bundle
+    parses the response with ``JSON.parse``; a truncated-by-slicing JSON
+    string raises and the table renders empty. Why this exists instead of
+    ``to_json_text(max_chars=...)``: that helper replaces the payload with
+    ``{"truncated": true, "preview": "..."}`` when over budget, which
+    drops the ``rows`` key and again leaves the bundle with nothing to
+    render.
+
+    Returns valid JSON within ``max_chars`` in every code path. Falls
+    back to ``to_json_text`` only when the payload is not a records-shape
+    dict (the dict envelope itself doesn't have a ``rows`` list).
+    """
+    text = _json_dumps(payload)
+    if len(text) <= max_chars:
+        return text
+    if not isinstance(payload, dict):
+        return to_json_text(payload, max_chars=max_chars)
+
+    rows = payload.get("rows")
+    if isinstance(rows, list):
+        bounded_text = _max_prefix_json_text(
+            rows,
+            lambda bounded_rows: {**payload, "rows": list(bounded_rows)},
+            max_chars,
+        )
+        if bounded_text is not None:
+            return bounded_text
+
+    return to_json_text(payload, max_chars=max_chars)
+
+
 def to_geofeatures_text(payload: Any, max_chars: int = MAX_RESPONSE_CHARS) -> str:
     """Serialize a geofeatures payload while preserving valid shape JSON.
 

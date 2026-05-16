@@ -18,9 +18,13 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field, ValidationError
 
-from meta_data_mcp.utils import http_get, to_json_text
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, to_json_text, to_records_text
 
 PROVIDER_ID = "us-data-gov"
+
+# Records-shape adapter constants
+_MAX_DESC_CHARS = 500
 
 # Constants
 BASE_URL = "https://catalog.data.gov"
@@ -72,10 +76,87 @@ def list_datagov_datasets(params: DataGovListDatasetsParams) -> dict:
     return response.json()
 
 
+def _datagov_search_to_shape_payload(result: dict) -> dict:
+    """Adapt a catalog.data.gov ``/search`` response to the
+    ``ui://meta-data-mcp/shape/records/v1`` payload.
+
+    The catalog returns ``{results: [...], after: <cursor>}``; we flatten
+    each package to identifier, slug, title, publisher, organization, and a
+    truncated description, then expose the cursor as ``after`` so paginated
+    callers can chain pages.
+    """
+    raw_rows = result.get("results", []) if isinstance(result, dict) else []
+    rows: list[dict[str, Any]] = []
+    for pkg in raw_rows:
+        if not isinstance(pkg, dict):
+            continue
+        org = pkg.get("organization") or {}
+        org_name = (
+            org.get("name") or org.get("title") if isinstance(org, dict) else None
+        )
+        desc = pkg.get("description") or ""
+        if isinstance(desc, str) and len(desc) > _MAX_DESC_CHARS:
+            desc = desc[:_MAX_DESC_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "identifier": pkg.get("identifier"),
+                "slug": pkg.get("slug"),
+                "title": pkg.get("title"),
+                "publisher": pkg.get("publisher"),
+                "organization": org_name,
+                "description": desc,
+                "harvest_record": pkg.get("harvest_record"),
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {
+                    "name": "identifier",
+                    "type": "string",
+                    "description": "Dataset identifier",
+                },
+                {"name": "slug", "type": "string", "description": "URL slug"},
+                {"name": "title", "type": "string", "description": "Dataset title"},
+                {
+                    "name": "publisher",
+                    "type": "string",
+                    "description": "Publisher name",
+                },
+                {
+                    "name": "organization",
+                    "type": "string",
+                    "description": "Publishing organisation",
+                },
+                {
+                    "name": "description",
+                    "type": "string",
+                    "description": "Description (truncated)",
+                },
+                {
+                    "name": "harvest_record",
+                    "type": "string",
+                    "description": "Harvest record id",
+                },
+            ]
+        },
+        "default_facets": ["organization", "publisher"],
+    }
+    if isinstance(result, dict) and "after" in result:
+        payload["after"] = result["after"]
+    payload["count"] = len(rows)
+    return payload
+
+
 async def handle_datagov_list_datasets(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the us-datagov-list-datasets tool call."""
+    """Handle the us-datagov-list-datasets tool call.
+
+    Returns the response in the records shape primitive payload so the
+    MCP Apps host renders the catalog list as a faceted table.
+    """
     try:
         params = DataGovListDatasetsParams(**(arguments or {}))
     except ValidationError:
@@ -84,31 +165,8 @@ async def handle_datagov_list_datasets(
         raise
 
     result = list_datagov_datasets(params)
-
-    # We simplify the output to just key fields to keep it readable
-    simplified_results = []
-    for pkg in result.get("results", []):
-        simplified_results.append(
-            {
-                "identifier": pkg.get("identifier"),
-                "slug": pkg.get("slug"),
-                "title": pkg.get("title"),
-                "publisher": pkg.get("publisher"),
-                "organization": pkg.get("organization", {}).get("name"),
-                "description": pkg.get("description", "")[:200] + "..."
-                if pkg.get("description") and len(pkg.get("description")) > 200
-                else pkg.get("description"),
-                "harvest_record": pkg.get("harvest_record"),
-            }
-        )
-
-    output = {
-        "count": len(simplified_results),
-        "after": result.get("after"),
-        "datasets": simplified_results,
-    }
-
-    return [types.TextContent(type="text", text=to_json_text(output, max_chars=20000))]
+    payload = _datagov_search_to_shape_payload(result)
+    return [types.TextContent(type="text", text=to_records_text(payload))]
 
 
 TOOLS.append(
@@ -116,6 +174,7 @@ TOOLS.append(
         name="us-datagov-list-datasets",
         description="Search for datasets in the US Data.gov catalog.",
         inputSchema=DataGovListDatasetsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["us-datagov-list-datasets"] = handle_datagov_list_datasets

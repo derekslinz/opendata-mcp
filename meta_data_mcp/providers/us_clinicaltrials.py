@@ -33,7 +33,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -41,6 +42,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "us-clinicaltrials"
 BASE_URL = "https://clinicaltrials.gov/api/v2"
+
+# Records-shape adapter constants
+_MAX_SUMMARY_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -91,14 +95,132 @@ def fetch_search_studies(params: CtgovSearchStudiesParams) -> dict:
     return response.json()
 
 
+def _ctgov_search_to_shape_payload(data: dict) -> dict:
+    """Adapt ClinicalTrials.gov v2 ``/studies`` response to the records
+    shape primitive's payload.
+
+    Each study nests data under ``protocolSection.{identificationModule,
+    statusModule, designModule, descriptionModule, sponsorCollaboratorsModule,
+    conditionsModule}``; we hoist the most-useful surface fields to top-level
+    columns: nctId, briefTitle, overallStatus, studyType, phase, leadSponsor,
+    primary condition, brief summary (truncated).
+    """
+    raw_rows = data.get("studies", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for study in raw_rows:
+        if not isinstance(study, dict):
+            continue
+        ps = study.get("protocolSection") or {}
+        if not isinstance(ps, dict):
+            ps = {}
+        ident = ps.get("identificationModule") or {}
+        status = ps.get("statusModule") or {}
+        design = ps.get("designModule") or {}
+        desc = ps.get("descriptionModule") or {}
+        sponsor = ps.get("sponsorCollaboratorsModule") or {}
+        conditions = ps.get("conditionsModule") or {}
+        phases = design.get("phases") or []
+        phase_csv = (
+            ", ".join(p for p in phases if isinstance(p, str))
+            if isinstance(phases, list)
+            else ""
+        )
+        condition_list = conditions.get("conditions") or []
+        condition_csv = (
+            ", ".join(c for c in condition_list if isinstance(c, str))
+            if isinstance(condition_list, list)
+            else ""
+        )
+        lead_sponsor = sponsor.get("leadSponsor") or {}
+        lead_sponsor_name = (
+            lead_sponsor.get("name") if isinstance(lead_sponsor, dict) else None
+        )
+        brief_summary = desc.get("briefSummary") or ""
+        if isinstance(brief_summary, str) and len(brief_summary) > _MAX_SUMMARY_CHARS:
+            brief_summary = brief_summary[:_MAX_SUMMARY_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "nctId": ident.get("nctId"),
+                "briefTitle": ident.get("briefTitle"),
+                "overallStatus": status.get("overallStatus"),
+                "studyType": design.get("studyType"),
+                "phase": phase_csv,
+                "leadSponsor": lead_sponsor_name,
+                "conditions": condition_csv,
+                "startDate": (status.get("startDateStruct") or {}).get("date"),
+                "completionDate": (status.get("completionDateStruct") or {}).get(
+                    "date"
+                ),
+                "briefSummary": brief_summary,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "nctId", "type": "string", "description": "NCT identifier"},
+                {"name": "briefTitle", "type": "string", "description": "Brief title"},
+                {
+                    "name": "overallStatus",
+                    "type": "string",
+                    "description": "Lifecycle status",
+                },
+                {
+                    "name": "studyType",
+                    "type": "string",
+                    "description": "Study type (interventional, observational, etc.)",
+                },
+                {
+                    "name": "phase",
+                    "type": "string",
+                    "description": "Trial phases (csv)",
+                },
+                {
+                    "name": "leadSponsor",
+                    "type": "string",
+                    "description": "Lead sponsor",
+                },
+                {
+                    "name": "conditions",
+                    "type": "string",
+                    "description": "Conditions (csv)",
+                },
+                {
+                    "name": "startDate",
+                    "type": "date",
+                    "description": "Study start date",
+                },
+                {
+                    "name": "completionDate",
+                    "type": "date",
+                    "description": "Study completion date",
+                },
+                {
+                    "name": "briefSummary",
+                    "type": "string",
+                    "description": "Brief summary (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["overallStatus", "studyType", "phase"],
+    }
+    if isinstance(data, dict) and "nextPageToken" in data:
+        payload["nextPageToken"] = data["nextPageToken"]
+    return payload
+
+
 async def handle_search_studies(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the ctgov-search-studies tool call."""
+    """Handle the ctgov-search-studies tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = CtgovSearchStudiesParams(**(arguments or {}))
         data = fetch_search_studies(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _ctgov_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching ClinicalTrials.gov studies: {e}")
         raise
@@ -112,6 +234,7 @@ TOOLS.append(
             "pagination via pageToken and optional fields filtering."
         ),
         inputSchema=CtgovSearchStudiesParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["ctgov-search-studies"] = handle_search_studies

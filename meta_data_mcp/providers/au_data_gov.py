@@ -33,12 +33,16 @@ import mcp.types as types
 from pydantic import BaseModel, Field
 
 from meta_data_mcp.provider_config import ProviderConfig
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
 
 PROVIDER_ID = "au-data-gov"
+
+# Records-shape adapter constants
+_MAX_NOTES_CHARS = 500
 
 # Constants
 CONFIG = ProviderConfig(
@@ -88,14 +92,122 @@ def fetch_au_datagov_search_datasets(params: AUDataGovSearchDatasetsParams) -> d
     return response.json()
 
 
+def _ckan_package_search_to_shape_payload(data: dict) -> dict:
+    """Adapt a CKAN ``package_search`` response to the records shape
+    primitive's payload. CKAN portals share a stable response shape, so
+    this mirrors the UK and Canada adapters.
+    """
+    result = data.get("result") if isinstance(data, dict) else None
+    raw_rows = result.get("results", []) if isinstance(result, dict) else []
+    rows: list[dict[str, Any]] = []
+    for pkg in raw_rows:
+        if not isinstance(pkg, dict):
+            continue
+        org = pkg.get("organization") or {}
+        org_title = (
+            org.get("title") or org.get("name") if isinstance(org, dict) else None
+        )
+        tags = pkg.get("tags") or []
+        tag_names = [
+            t.get("display_name") or t.get("name") for t in tags if isinstance(t, dict)
+        ]
+        groups = pkg.get("groups") or []
+        group_titles = [
+            g.get("title") or g.get("display_name") or g.get("name")
+            for g in groups
+            if isinstance(g, dict)
+        ]
+        resources = pkg.get("resources") or []
+        formats = sorted(
+            {
+                (r.get("format") or "").upper()
+                for r in resources
+                if isinstance(r, dict) and r.get("format")
+            }
+        )
+        notes = pkg.get("notes") or ""
+        if isinstance(notes, str) and len(notes) > _MAX_NOTES_CHARS:
+            notes = notes[:_MAX_NOTES_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "name": pkg.get("name"),
+                "title": pkg.get("title"),
+                "organization": org_title,
+                "license": pkg.get("license_title"),
+                "tags": ", ".join(t for t in tag_names if t),
+                "groups": ", ".join(g for g in group_titles if g),
+                "num_resources": pkg.get("num_resources")
+                or (len(resources) if resources else 0),
+                "formats": ", ".join(formats),
+                "metadata_created": pkg.get("metadata_created"),
+                "metadata_modified": pkg.get("metadata_modified"),
+                "notes": notes,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {"name": "name", "type": "string", "description": "CKAN slug"},
+                {"name": "title", "type": "string", "description": "Dataset title"},
+                {
+                    "name": "organization",
+                    "type": "string",
+                    "description": "Publishing organisation",
+                },
+                {"name": "license", "type": "string", "description": "Licence title"},
+                {"name": "tags", "type": "string", "description": "Tag names (csv)"},
+                {
+                    "name": "groups",
+                    "type": "string",
+                    "description": "Group/theme titles (csv)",
+                },
+                {
+                    "name": "num_resources",
+                    "type": "number",
+                    "description": "Resource count",
+                },
+                {
+                    "name": "formats",
+                    "type": "string",
+                    "description": "Resource formats (csv)",
+                },
+                {
+                    "name": "metadata_created",
+                    "type": "date",
+                    "description": "Catalog creation timestamp",
+                },
+                {
+                    "name": "metadata_modified",
+                    "type": "date",
+                    "description": "Catalog last-modified timestamp",
+                },
+                {
+                    "name": "notes",
+                    "type": "string",
+                    "description": "Description (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["organization", "license", "formats"],
+    }
+    if isinstance(result, dict) and "count" in result:
+        payload["count"] = result["count"]
+    return payload
+
+
 async def handle_au_datagov_search_datasets(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the au-data-gov-search-datasets tool call."""
+    """Handle the au-data-gov-search-datasets tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = AUDataGovSearchDatasetsParams(**(arguments or {}))
         data = fetch_au_datagov_search_datasets(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _ckan_package_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching data.gov.au datasets: {e}")
         raise
@@ -106,6 +218,7 @@ TOOLS.append(
         name="au-data-gov-search-datasets",
         description="Search the Australia data.gov.au catalog (CKAN package_search).",
         inputSchema=AUDataGovSearchDatasetsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["au-data-gov-search-datasets"] = handle_au_datagov_search_datasets

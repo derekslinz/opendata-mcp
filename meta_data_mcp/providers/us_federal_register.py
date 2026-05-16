@@ -29,7 +29,8 @@ import mcp.types as types
 from pydantic import BaseModel, Field
 
 from meta_data_mcp.fields import NonEmptyStr, PageInt
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_records_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -37,6 +38,9 @@ log = logging.getLogger(__name__)
 # Constants
 PROVIDER_ID = "us-federal-register"
 BASE_URL = "https://www.federalregister.gov/api/v1"
+
+# Records-shape adapter constants
+_MAX_ABSTRACT_CHARS = 500
 
 # Registration Variables
 RESOURCES: List[Any] = []
@@ -83,14 +87,97 @@ def fetch_fedreg_search_documents(params: FedRegSearchDocumentsParams) -> dict:
     return response.json()
 
 
+def _fedreg_search_to_shape_payload(data: dict) -> dict:
+    """Adapt Federal Register ``/documents.json`` response to the records
+    shape primitive's payload.
+
+    Each result carries document_number, title, publication_date, type
+    (Rule, Proposed Rule, Notice, Presidential Document), abstract,
+    agencies (list of {name, raw_name, ...}), and html_url.
+    """
+    raw_rows = data.get("results", []) if isinstance(data, dict) else []
+    rows: list[dict[str, Any]] = []
+    for doc in raw_rows:
+        if not isinstance(doc, dict):
+            continue
+        agencies = doc.get("agencies") or []
+        if isinstance(agencies, list):
+            agency_names = [
+                a.get("name") or a.get("raw_name")
+                for a in agencies
+                if isinstance(a, dict)
+            ]
+        else:
+            agency_names = []
+        abstract = doc.get("abstract") or ""
+        if isinstance(abstract, str) and len(abstract) > _MAX_ABSTRACT_CHARS:
+            abstract = abstract[:_MAX_ABSTRACT_CHARS].rstrip() + "…"
+        rows.append(
+            {
+                "document_number": doc.get("document_number"),
+                "title": doc.get("title"),
+                "type": doc.get("type"),
+                "publication_date": doc.get("publication_date"),
+                "agencies": ", ".join(a for a in agency_names if a),
+                "html_url": doc.get("html_url"),
+                "abstract": abstract,
+            }
+        )
+    payload: dict[str, Any] = {
+        "rows": rows,
+        "schema": {
+            "columns": [
+                {
+                    "name": "document_number",
+                    "type": "string",
+                    "description": "Federal Register document number",
+                },
+                {"name": "title", "type": "string", "description": "Document title"},
+                {
+                    "name": "type",
+                    "type": "string",
+                    "description": "Document type (Rule, Notice, etc.)",
+                },
+                {
+                    "name": "publication_date",
+                    "type": "date",
+                    "description": "Publication date",
+                },
+                {
+                    "name": "agencies",
+                    "type": "string",
+                    "description": "Publishing agencies (csv)",
+                },
+                {"name": "html_url", "type": "string", "description": "Document URL"},
+                {
+                    "name": "abstract",
+                    "type": "string",
+                    "description": "Abstract (truncated)",
+                },
+            ]
+        },
+        "default_facets": ["type", "agencies"],
+    }
+    if isinstance(data, dict):
+        if "count" in data:
+            payload["count"] = data["count"]
+        if "next_page_url" in data:
+            payload["next_page_url"] = data["next_page_url"]
+    return payload
+
+
 async def handle_fedreg_search_documents(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the fedreg-search-documents tool call."""
+    """Handle the fedreg-search-documents tool call.
+
+    Returns the response in the records shape primitive payload.
+    """
     try:
         params = FedRegSearchDocumentsParams(**(arguments or {}))
         data = fetch_fedreg_search_documents(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _fedreg_search_to_shape_payload(data)
+        return [types.TextContent(type="text", text=to_records_text(payload))]
     except Exception as e:
         log.error(f"Error searching Federal Register documents: {e}")
         raise
@@ -101,6 +188,7 @@ TOOLS.append(
         name="fedreg-search-documents",
         description="Search Federal Register documents (rules, notices, proposed rules, presidential documents).",
         inputSchema=FedRegSearchDocumentsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": RECORDS_URI}},
     )
 )
 TOOLS_HANDLERS["fedreg-search-documents"] = handle_fedreg_search_documents

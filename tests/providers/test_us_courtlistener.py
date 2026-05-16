@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from unittest.mock import patch, Mock
 import httpx
 
 from meta_data_mcp.providers.us_courtlistener import (
+    TOOLS,
+    _courtlistener_search_to_shape_payload,
     CourtListenerListCourtsParams,
     CourtListenerListDocketsParams,
     CourtListenerListJudgesParams,
@@ -15,6 +19,7 @@ from meta_data_mcp.providers.us_courtlistener import (
     handle_courtlistener_get_judge,
     handle_courtlistener_list_dockets,
 )
+from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
 @pytest.fixture
@@ -173,3 +178,58 @@ def test_courtlistener_page_schema_keeps_default_and_optional(param_model_class)
     schema = param_model_class.model_json_schema()
     assert schema["properties"]["page"]["default"] == 1
     assert "required" not in schema or "page" not in schema["required"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: MCP Apps shape primitive binding for courtlistener-search.
+# ---------------------------------------------------------------------------
+
+
+def test_courtlistener_adapter_flattens_results_to_rows():
+    raw = {
+        "count": 1,
+        "results": [
+            {
+                "id": 99,
+                "caseName": "Foo v. Bar",
+                "court": "scotus",
+                "dateFiled": "2022-05-01",
+                "citation": ["123 U.S. 456"],
+                "docketNumber": "21-123",
+                "status": "Published",
+                "snippet": "Case about widgets.",
+            }
+        ],
+    }
+    payload = _courtlistener_search_to_shape_payload(raw)
+    assert payload["count"] == 1
+    row = payload["rows"][0]
+    assert row["caseName"] == "Foo v. Bar"
+    assert row["court"] == "scotus"
+    assert row["citation"] == "123 U.S. 456"
+    assert payload["default_facets"] == ["court", "status"]
+
+
+def test_courtlistener_adapter_handles_missing_results():
+    assert _courtlistener_search_to_shape_payload({})["rows"] == []
+
+
+def test_courtlistener_search_tool_binds_to_records_shape_primitive():
+    tool = next(t for t in TOOLS if t.name == "courtlistener-search")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == RECORDS_URI
+
+
+@pytest.mark.anyio
+async def test_courtlistener_search_returns_shape_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "count": 1,
+            "results": [{"id": 99, "caseName": "Foo v. Bar"}],
+        }
+        mock_get.return_value.raise_for_status = Mock()
+        result = await handle_courtlistener_search({"q": "Foo"})
+        body = json.loads(result[0].text)
+        assert body["rows"][0]["caseName"] == "Foo v. Bar"
+        assert "schema" in body
