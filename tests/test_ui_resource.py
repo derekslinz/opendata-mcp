@@ -76,7 +76,9 @@ def test_register_ui_resource_appends_resource_and_handler():
     assert str(res.uri) == uri
     assert res.name == "discovery"
     assert res.description.startswith("Faceted")
-    assert res.mimeType == "text/html"
+    # Default MIME is the MCP Apps profile string — hosts reject plain
+    # ``text/html`` with "Unsupported UI resource content format".
+    assert res.mimeType == "text/html;profile=mcp-app"
     # Handler is registered under the string URI form (matches what
     # create_mcp_server's resource handler key-lookup uses, see utils.py).
     assert uri in handlers
@@ -368,8 +370,12 @@ def anyio_backend():
 # ``"application/octet-stream"`` — *independent* of whatever ``Resource``
 # was declared in the catalog. A host reads the envelope's mimeType (not
 # the catalog entry's) when deciding how to render. Phase 5 surfaced this
-# in the wild: ``ui://`` resources catalogued as ``text/html`` were being
-# served as ``text/plain``, and the host refused to mount them as iframes.
+# in the wild: ``ui://`` resources catalogued as ``text/html;profile=mcp-app``
+# were being served as ``text/plain``, and the host refused to mount them
+# as iframes. A follow-up bug surfaced once the MIME propagated: hosts only
+# mount resources whose MIME carries the explicit ``;profile=mcp-app``
+# parameter, rejecting plain ``text/html`` with the host-side error
+# ``"Unsupported UI resource content format"``. This test pins both fixes.
 #
 # ``create_mcp_server`` now returns ``Iterable[ReadResourceContents]`` with
 # the per-resource ``mime_type`` plumbed through. This test pins that.
@@ -378,9 +384,11 @@ def anyio_backend():
 
 @pytest.mark.anyio
 async def test_read_resource_returns_text_html_mime_for_ui_resource():
-    """A ``ui://`` resource registered with ``mimeType='text/html'`` MUST
-    serve as ``text/html`` on the wire. If this drifts back to
-    ``text/plain``, MCP Apps hosts silently refuse to render the bundle."""
+    """A ``ui://`` resource MUST serve as ``text/html;profile=mcp-app`` on
+    the wire. If this drifts back to ``text/plain`` (SDK default) or to
+    plain ``text/html`` (no profile parameter), MCP Apps hosts silently
+    refuse to render the bundle — the latter fails with
+    ``"Unsupported UI resource content format"``."""
     import asyncio  # noqa: F401 — anyio_backend uses asyncio
 
     resources, handlers = [], {}
@@ -416,10 +424,13 @@ async def test_read_resource_returns_text_html_mime_for_ui_resource():
 
     content = inner.contents[0]
     assert isinstance(content, types.TextResourceContents)
-    assert content.mimeType == "text/html", (
-        f"ui:// resource served as {content.mimeType!r}, expected 'text/html'. "
-        "The MCP Apps host reads this MIME (not the catalog entry's) when "
-        "deciding whether to mount the bundle in an iframe."
+    assert content.mimeType == "text/html;profile=mcp-app", (
+        f"ui:// resource served as {content.mimeType!r}, expected "
+        "'text/html;profile=mcp-app'. The MCP Apps host reads this MIME "
+        "(not the catalog entry's) when deciding whether to mount the "
+        "bundle in an iframe, and rejects anything without the explicit "
+        "'profile=mcp-app' parameter with 'Unsupported UI resource "
+        "content format'."
     )
     assert content.text == "<!doctype html><body>regression</body>"
 
