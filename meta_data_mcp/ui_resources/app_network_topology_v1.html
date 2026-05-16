@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Network Topology — meta-data-mcp app v1</title>
+  <!--
+    ui://meta-data-mcp/app/network-topology/v1 — Phase 5 ASN-graph app.
+
+    Force-directed visualisation of BGP/ASN-level network topology.
+    Synthesises data from two providers:
+
+      - RIPE NCC RIPEstat (global_ripe_stat): authoritative source of
+        BGP neighbour relationships. ``ripestat-asn-neighbours`` returns
+        the current set of peer/upstream/downstream ASNs for any focus
+        ASN; ``ripestat-asn-neighbours-history`` returns the same data
+        over a time window. Note: ``ripestat-geoloc`` is bound to the
+        Phase 4 geofeatures shape primitive — not this app — and is
+        unrelated to network topology.
+
+      - BGPView.io (global_bgpview): historically a complementary
+        source for peers/upstreams/downstreams. The API is now offline;
+        bindings remain for protocol completeness so a future
+        replacement provider with the same tool surface lights up the
+        same panel automatically.
+
+    Payload contract (host → app):
+
+      {
+        "asns":  [ {"asn": <int>, "name": "...", "country": "...",
+                    "rank": <number>?} ],
+        "edges": [ {"source_asn": <int>, "target_asn": <int>,
+                    "relationship": "peer|upstream|downstream",
+                    "weight": <number>?} ],
+        "focus_asn": <int>?
+      }
+
+    The bundle accepts a payload via three ingress channels:
+
+      1. ``window.parent`` postMessage envelope (production host):
+         ``{ type: "tool_result"|"render", id?, tool?, payload }``
+      2. ``?data=<base64-url JSON>`` query string (dev / standalone).
+      3. ``window.__app_data__`` global (Playwright smoke harness).
+
+    postMessage protocol (inherited from the Phase 3 discovery app):
+
+      host → app:   { type: "tool_result"|"render", id?, tool?, payload }
+      app → host:   { type: "tool_call", id, name, arguments }
+
+    Interactions:
+
+      - Hover an ASN node → tooltip with AS number, holder name,
+        country, rank, and degree (number of incident edges).
+      - Click an ASN node → expand its neighbours by issuing an
+        ``app → host`` ``tool_call`` for ``ripestat-asn-neighbours``
+        with the clicked ASN. New nodes / edges merge into the
+        existing graph.
+      - The focus ASN (when present in the payload) is rendered with
+        a thicker stroke + larger radius and is fixed at the
+        viewport centre on layout start.
+
+    Edge colouring:
+
+      - peer      → muted accent (var(--rel-peer))
+      - upstream  → strong red  (var(--rel-upstream))     transit-provider
+      - downstream→ strong green (var(--rel-downstream))  customer
+
+    Dependencies:
+
+      - D3.js v7 (force layout + selection). Loaded via jsdelivr.
+        D3 is the only sensible primitive for a force-directed graph;
+        rolling our own physics simulation would inflate the bundle
+        far beyond the budget for no UX gain.
+
+    Security note: this bundle never assigns to ``.innerHTML``. All
+    text from upstream JSON is rendered via ``textContent`` / D3's
+    ``.text()`` (which goes through ``textContent`` under the hood),
+    so untrusted JSON cannot inject markup. Tooltip body is built
+    from explicit element creation only.
+
+    Bundle budget: < 100KB (Phase 6b regression in
+    tests/smoke/test_ui_bundles.py keeps this honest).
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e5e5e5;
+      --accent: #2563eb;
+      --accent-bg: #eff6ff;
+      --header-bg: #f8fafc;
+      --node-fill: #93c5fd;
+      --node-stroke: #1d4ed8;
+      --node-focus-fill: #fde047;
+      --node-focus-stroke: #b45309;
+      --rel-peer: #94a3b8;
+      --rel-upstream: #dc2626;
+      --rel-downstream: #16a34a;
+      --tooltip-bg: rgba(15, 23, 42, 0.94);
+      --tooltip-fg: #f1f5f9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f17;
+        --fg: #e8edf3;
+        --muted: #9aa3af;
+        --border: #1f2937;
+        --accent: #60a5fa;
+        --accent-bg: #1e293b;
+        --header-bg: #111827;
+        --node-fill: #1d4ed8;
+        --node-stroke: #93c5fd;
+        --node-focus-fill: #b45309;
+        --node-focus-stroke: #fde047;
+        --rel-peer: #64748b;
+        --rel-upstream: #f87171;
+        --rel-downstream: #4ade80;
+        --tooltip-bg: rgba(241, 245, 249, 0.96);
+        --tooltip-fg: #0f172a;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      height: 100%; }
+    #app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+    header { padding: 12px 16px; border-bottom: 1px solid var(--border);
+      background: var(--header-bg); display: flex; gap: 12px; align-items: center;
+      flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    header .count { color: var(--muted); font-size: 12px; }
+    header input { padding: 6px 8px; border: 1px solid var(--border);
+      border-radius: 4px; background: var(--bg); color: var(--fg);
+      font-family: inherit; min-width: 140px; }
+    header button { padding: 6px 10px; border: 1px solid var(--accent);
+      color: var(--accent); background: transparent; border-radius: 4px;
+      cursor: pointer; font-size: 12px; }
+    header button:hover { background: var(--accent-bg); }
+    main { position: relative; overflow: hidden; min-height: 0; }
+    #graph { width: 100%; height: 100%; display: block; }
+    #empty { position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; color: var(--muted); pointer-events: none;
+      padding: 24px; text-align: center; }
+    #tooltip { position: absolute; pointer-events: none; background: var(--tooltip-bg);
+      color: var(--tooltip-fg); padding: 8px 10px; border-radius: 4px;
+      font-size: 12px; max-width: 280px; line-height: 1.45;
+      visibility: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.18); z-index: 10; }
+    #tooltip .tt-title { font-weight: 600; margin-bottom: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    #tooltip .tt-row { display: flex; gap: 6px; }
+    #tooltip .tt-row .tt-k { opacity: 0.7; min-width: 64px; }
+    footer { border-top: 1px solid var(--border); background: var(--header-bg);
+      padding: 8px 16px; display: flex; gap: 14px; align-items: center;
+      flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+    footer .legend { display: inline-flex; gap: 6px; align-items: center; }
+    footer .legend .swatch { width: 18px; height: 3px; border-radius: 2px;
+      display: inline-block; }
+    .err { background: #dc2626; color: white; padding: 6px 10px;
+      margin: 8px 16px; border-radius: 4px; }
+    /* SVG graph styling (applied via D3 .attr() — kept here for cache-ability). */
+    .node circle { cursor: pointer; }
+    .node text { font: 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+      fill: var(--fg); pointer-events: none; text-anchor: middle; }
+    .link { stroke-opacity: 0.7; }
+    .link.peer { stroke: var(--rel-peer); }
+    .link.upstream { stroke: var(--rel-upstream); }
+    .link.downstream { stroke: var(--rel-downstream); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>ASN Network Topology</h1>
+      <span class="count" id="count">No graph loaded</span>
+      <input type="text" id="asn-input" placeholder="ASN (e.g. 3333)"
+             inputmode="numeric" autocomplete="off">
+      <button id="load-btn" type="button">Load</button>
+      <button id="reset-btn" type="button">Reset</button>
+    </header>
+    <main>
+      <svg id="graph" role="img" aria-label="ASN network topology force-directed graph"></svg>
+      <div id="empty">Enter an ASN above or wait for the host to push a topology payload.</div>
+      <div id="tooltip" role="tooltip"></div>
+    </main>
+    <footer>
+      <span class="legend"><span class="swatch" style="background:var(--rel-peer)"></span>peer</span>
+      <span class="legend"><span class="swatch" style="background:var(--rel-upstream)"></span>upstream (transit)</span>
+      <span class="legend"><span class="swatch" style="background:var(--rel-downstream)"></span>downstream (customer)</span>
+      <span style="margin-left:auto" id="focus-label"></span>
+    </footer>
+  </div>
+
+  <!--
+    D3.js v7 — force-directed layout primitive. Loaded over jsdelivr's
+    immutable per-version URL so the bundle is reproducible. SRI hash
+    deliberately omitted: jsdelivr serves the file under an
+    immutable path, and the host's iframe sandbox is the actual
+    integrity boundary.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    // ----- State -----
+    // Single mutable state object; D3 mutates node/link objects in place
+    // during the simulation, so we keep references stable across renders.
+    var state = {
+      asnIndex: {},        // asn (number) → node object { id, asn, name, country, rank, focus? }
+      links: [],           // [{ source: node, target: node, relationship, weight? }]
+      linkKeys: {},        // dedup key → true
+      focusAsn: null,      // number | null
+      simulation: null,
+      pendingCalls: {},    // correlation id → { resolve, reject, t }
+      width: 800,
+      height: 480,
+    };
+
+    // ----- DOM refs -----
+    var $count = document.getElementById('count');
+    var $svg = document.getElementById('graph');
+    var $empty = document.getElementById('empty');
+    var $tooltip = document.getElementById('tooltip');
+    var $input = document.getElementById('asn-input');
+    var $loadBtn = document.getElementById('load-btn');
+    var $resetBtn = document.getElementById('reset-btn');
+    var $focusLabel = document.getElementById('focus-label');
+
+    // ----- Helpers -----
+
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      if (attrs) {
+        for (var k in attrs) {
+          if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+          if (k === 'class') node.className = attrs[k];
+          else if (k === 'text') node.textContent = attrs[k];
+          else node.setAttribute(k, attrs[k]);
+        }
+      }
+      if (children) {
+        children.forEach(function (c) {
+          if (c == null) return;
+          node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+        });
+      }
+      return node;
+    }
+
+    function showError(text) {
+      var div = el('div', { class: 'err', text: text });
+      document.body.insertBefore(div, document.getElementById('app'));
+      setTimeout(function () { div.remove(); }, 6000);
+    }
+
+    function normaliseAsn(value) {
+      // Accept ASN-as-number, "AS3333", or "3333". Returns integer or null.
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return Math.trunc(value);
+      }
+      if (typeof value === 'string') {
+        var s = value.trim().toUpperCase();
+        if (s.indexOf('AS') === 0) s = s.slice(2);
+        if (/^\d+$/.test(s)) return parseInt(s, 10);
+      }
+      return null;
+    }
+
+    function linkKey(srcAsn, tgtAsn, rel) {
+      // Direction matters for upstream/downstream; peer is symmetric.
+      // For symmetric edges we canonicalise to (min, max).
+      if (rel === 'peer') {
+        var a = Math.min(srcAsn, tgtAsn);
+        var b = Math.max(srcAsn, tgtAsn);
+        return 'peer:' + a + '->' + b;
+      }
+      return rel + ':' + srcAsn + '->' + tgtAsn;
+    }
+
+    function knownRelationship(rel) {
+      return rel === 'peer' || rel === 'upstream' || rel === 'downstream';
+    }
+
+    // ----- postMessage transport -----
+
+    function newCallId() {
+      return 'tc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function callTool(name, args) {
+      var id = newCallId();
+      var msg = { type: 'tool_call', id: id, name: name, arguments: args || {} };
+      return new Promise(function (resolve, reject) {
+        state.pendingCalls[id] = { resolve: resolve, reject: reject, t: Date.now() };
+        try {
+          window.parent.postMessage(msg, '*');
+        } catch (e) {
+          delete state.pendingCalls[id];
+          reject(e);
+        }
+        setTimeout(function () {
+          if (state.pendingCalls[id]) {
+            delete state.pendingCalls[id];
+            reject(new Error('tool call timed out: ' + name));
+          }
+        }, 30000);
+      });
+    }
+
+    function handleIncomingMessage(ev) {
+      // Production hosts MUST be the parent window; reject anything else
+      // so a malicious sibling iframe can't push payloads into the panel.
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type !== 'tool_result' && msg.type !== 'render') return;
+
+      var id = msg.id;
+      var payload = msg.payload;
+
+      if (id && state.pendingCalls[id]) {
+        var pending = state.pendingCalls[id];
+        delete state.pendingCalls[id];
+        pending.resolve(payload);
+        return;
+      }
+
+      // Unsolicited push (e.g. initial render). Treat as a topology
+      // payload and merge.
+      ingestPayload(payload);
+    }
+    window.addEventListener('message', handleIncomingMessage);
+
+    // ----- Dev-mode ingress -----
+
+    function loadFromUrl() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var b64 = params.get('data');
+        if (!b64) return null;
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join('=');
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      } catch (e) {
+        showError('Invalid ?data= URL parameter: ' + e.message);
+        return null;
+      }
+    }
+
+    function loadFromGlobal() {
+      return (typeof window.__app_data__ === 'object' && window.__app_data__) || null;
+    }
+
+    // ----- Ingest -----
+
+    function ingestPayload(payload) {
+      if (!payload || typeof payload !== 'object') return;
+      var asns = Array.isArray(payload.asns) ? payload.asns : [];
+      var edges = Array.isArray(payload.edges) ? payload.edges : [];
+      var focus = normaliseAsn(payload.focus_asn);
+
+      var addedNode = false;
+      asns.forEach(function (a) {
+        if (!a || typeof a !== 'object') return;
+        var asn = normaliseAsn(a.asn);
+        if (asn == null) return;
+        var existing = state.asnIndex[asn];
+        if (existing) {
+          // Merge metadata — newer call may carry a holder/country we lacked.
+          if (!existing.name && a.name) existing.name = String(a.name);
+          if (!existing.country && a.country) existing.country = String(a.country);
+          if (existing.rank == null && typeof a.rank === 'number') existing.rank = a.rank;
+        } else {
+          state.asnIndex[asn] = {
+            id: 'as-' + asn,
+            asn: asn,
+            name: a.name ? String(a.name) : '',
+            country: a.country ? String(a.country) : '',
+            rank: typeof a.rank === 'number' ? a.rank : null,
+          };
+          addedNode = true;
+        }
+      });
+
+      // Always ensure focus node exists if specified.
+      if (focus != null && !state.asnIndex[focus]) {
+        state.asnIndex[focus] = {
+          id: 'as-' + focus,
+          asn: focus,
+          name: '',
+          country: '',
+          rank: null,
+        };
+        addedNode = true;
+      }
+      if (focus != null) state.focusAsn = focus;
+
+      edges.forEach(function (e) {
+        if (!e || typeof e !== 'object') return;
+        var src = normaliseAsn(e.source_asn);
+        var tgt = normaliseAsn(e.target_asn);
+        if (src == null || tgt == null || src === tgt) return;
+        var rel = knownRelationship(e.relationship) ? e.relationship : 'peer';
+        // Make sure both endpoints exist (the payload may declare an
+        // edge to an ASN it didn't list in ``asns`` — happens often
+        // when callers only ship the focus ASN's metadata).
+        if (!state.asnIndex[src]) {
+          state.asnIndex[src] = { id: 'as-' + src, asn: src, name: '', country: '', rank: null };
+          addedNode = true;
+        }
+        if (!state.asnIndex[tgt]) {
+          state.asnIndex[tgt] = { id: 'as-' + tgt, asn: tgt, name: '', country: '', rank: null };
+          addedNode = true;
+        }
+        var key = linkKey(src, tgt, rel);
+        if (state.linkKeys[key]) return;
+        state.linkKeys[key] = true;
+        state.links.push({
+          source: state.asnIndex[src],
+          target: state.asnIndex[tgt],
+          relationship: rel,
+          weight: typeof e.weight === 'number' ? e.weight : 1,
+        });
+      });
+
+      if (addedNode || edges.length || focus != null) {
+        renderGraph();
+        updateCount();
+      }
+    }
+
+    function resetGraph() {
+      state.asnIndex = {};
+      state.links = [];
+      state.linkKeys = {};
+      state.focusAsn = null;
+      if (state.simulation) {
+        state.simulation.stop();
+        state.simulation = null;
+      }
+      renderGraph();
+      updateCount();
+    }
+
+    function updateCount() {
+      var n = Object.keys(state.asnIndex).length;
+      var e = state.links.length;
+      if (n === 0) {
+        $count.textContent = 'No graph loaded';
+      } else {
+        $count.textContent = n + ' ASN' + (n === 1 ? '' : 's') +
+          ' · ' + e + ' edge' + (e === 1 ? '' : 's');
+      }
+      if (state.focusAsn != null) {
+        $focusLabel.textContent = 'focus: AS' + state.focusAsn;
+      } else {
+        $focusLabel.textContent = '';
+      }
+    }
+
+    // ----- Render -----
+
+    function resizeSvg() {
+      var rect = $svg.getBoundingClientRect();
+      state.width = Math.max(320, rect.width || 800);
+      state.height = Math.max(240, rect.height || 480);
+    }
+
+    function nodeRadius(d) {
+      return d.asn === state.focusAsn ? 9 : 6;
+    }
+
+    function showTooltip(d, evt) {
+      // textContent / explicit element creation only — never innerHTML.
+      $tooltip.replaceChildren();
+      $tooltip.appendChild(el('div', { class: 'tt-title', text: 'AS' + d.asn }));
+      function row(k, v) {
+        if (v == null || v === '') return;
+        $tooltip.appendChild(el('div', { class: 'tt-row' }, [
+          el('span', { class: 'tt-k', text: k }),
+          el('span', { class: 'tt-v', text: String(v) }),
+        ]));
+      }
+      row('holder', d.name);
+      row('country', d.country);
+      if (d.rank != null) row('rank', d.rank);
+      // Edge count — derived not stored, so we can keep it fresh.
+      var degree = 0;
+      state.links.forEach(function (l) {
+        if (l.source === d || l.target === d) degree++;
+      });
+      row('degree', degree);
+      $tooltip.style.visibility = 'visible';
+      moveTooltip(evt);
+    }
+
+    function moveTooltip(evt) {
+      var rect = $svg.getBoundingClientRect();
+      var x = (evt.clientX - rect.left) + 12;
+      var y = (evt.clientY - rect.top) + 12;
+      $tooltip.style.left = x + 'px';
+      $tooltip.style.top = y + 'px';
+    }
+
+    function hideTooltip() {
+      $tooltip.style.visibility = 'hidden';
+    }
+
+    function expandNeighbours(d) {
+      // Issue a tool_call to fetch the clicked ASN's BGP neighbours
+      // (handled by the host's binding for ripestat-asn-neighbours).
+      callTool('ripestat-asn-neighbours', { resource: 'AS' + d.asn })
+        .then(function (payload) { ingestPayload(payload); })
+        .catch(function (err) { showError('expand failed: ' + err.message); });
+    }
+
+    function renderGraph() {
+      resizeSvg();
+      var nodes = Object.values(state.asnIndex);
+      var hasContent = nodes.length > 0;
+      $empty.style.display = hasContent ? 'none' : 'flex';
+
+      var svg = d3.select($svg)
+        .attr('viewBox', '0 0 ' + state.width + ' ' + state.height)
+        .attr('preserveAspectRatio', 'xMidYMid meet');
+
+      // Tear down any prior render — we rebuild on every ingest because
+      // the dataset is small (< a few thousand ASNs in any realistic
+      // single-hop expansion) and D3's enter/update/exit is over-engineered
+      // for a panel that swaps datasets entirely on user action.
+      svg.selectAll('*').remove();
+      if (!hasContent) {
+        if (state.simulation) state.simulation.stop();
+        state.simulation = null;
+        return;
+      }
+
+      var linkSel = svg.append('g')
+        .attr('class', 'links')
+        .selectAll('line')
+        .data(state.links)
+        .enter().append('line')
+          .attr('class', function (d) { return 'link ' + d.relationship; })
+          .attr('stroke-width', function (d) {
+            return Math.max(1, Math.min(4, d.weight || 1));
+          });
+
+      var nodeSel = svg.append('g')
+        .attr('class', 'nodes')
+        .selectAll('g.node')
+        .data(nodes, function (d) { return d.id; })
+        .enter().append('g')
+          .attr('class', 'node');
+
+      nodeSel.append('circle')
+        .attr('r', nodeRadius)
+        .attr('fill', function (d) {
+          return d.asn === state.focusAsn ? 'var(--node-focus-fill)' : 'var(--node-fill)';
+        })
+        .attr('stroke', function (d) {
+          return d.asn === state.focusAsn ? 'var(--node-focus-stroke)' : 'var(--node-stroke)';
+        })
+        .attr('stroke-width', function (d) {
+          return d.asn === state.focusAsn ? 2.5 : 1.25;
+        });
+
+      nodeSel.append('text')
+        .attr('dy', function (d) { return -nodeRadius(d) - 3; })
+        .text(function (d) { return 'AS' + d.asn; });
+
+      // Pin focus node near the centre to keep orientation stable across
+      // expansions — without this the layout drifts every time the user
+      // clicks a peripheral node and merges more neighbours.
+      if (state.focusAsn != null && state.asnIndex[state.focusAsn]) {
+        var focusNode = state.asnIndex[state.focusAsn];
+        focusNode.fx = state.width / 2;
+        focusNode.fy = state.height / 2;
+      }
+
+      nodeSel.on('mouseenter', function (evt, d) { showTooltip(d, evt); });
+      nodeSel.on('mousemove', function (evt) { moveTooltip(evt); });
+      nodeSel.on('mouseleave', hideTooltip);
+      nodeSel.on('click', function (_evt, d) { expandNeighbours(d); });
+
+      // Drag behaviour — D3's force layout supports it natively.
+      nodeSel.call(d3.drag()
+        .on('start', function (evt, d) {
+          if (!evt.active) state.simulation.alphaTarget(0.3).restart();
+          d.fx = d.x; d.fy = d.y;
+        })
+        .on('drag', function (evt, d) { d.fx = evt.x; d.fy = evt.y; })
+        .on('end', function (evt, d) {
+          if (!evt.active) state.simulation.alphaTarget(0);
+          // Don't unpin the focus node — keep it centred.
+          if (d.asn !== state.focusAsn) { d.fx = null; d.fy = null; }
+        }));
+
+      if (state.simulation) state.simulation.stop();
+      state.simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(state.links).id(function (d) { return d.id; }).distance(64))
+        .force('charge', d3.forceManyBody().strength(-180))
+        .force('center', d3.forceCenter(state.width / 2, state.height / 2))
+        .force('collide', d3.forceCollide().radius(function (d) { return nodeRadius(d) + 4; }))
+        .on('tick', function () {
+          linkSel
+            .attr('x1', function (d) { return d.source.x; })
+            .attr('y1', function (d) { return d.source.y; })
+            .attr('x2', function (d) { return d.target.x; })
+            .attr('y2', function (d) { return d.target.y; });
+          nodeSel.attr('transform', function (d) {
+            return 'translate(' + d.x + ',' + d.y + ')';
+          });
+        });
+    }
+
+    // ----- Actions -----
+
+    function loadFromInput() {
+      var asn = normaliseAsn($input.value);
+      if (asn == null) {
+        showError('Enter a valid ASN (e.g. 3333 or AS3333).');
+        return;
+      }
+      // Reset the graph so the user gets the new focus's neighbourhood
+      // rather than an accumulating mess from prior loads. Click-to-
+      // expand is the additive workflow.
+      resetGraph();
+      state.focusAsn = asn;
+      state.asnIndex[asn] = { id: 'as-' + asn, asn: asn, name: '', country: '', rank: null };
+      updateCount();
+      renderGraph();
+      callTool('ripestat-asn-neighbours', { resource: 'AS' + asn })
+        .then(function (payload) { ingestPayload(payload); })
+        .catch(function (err) { showError('load failed: ' + err.message); });
+    }
+
+    $loadBtn.addEventListener('click', loadFromInput);
+    $input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') loadFromInput();
+    });
+    $resetBtn.addEventListener('click', resetGraph);
+
+    // Resize handling — re-render preserves graph state and re-centres
+    // the force simulation when the iframe is resized by the host.
+    var resizeTimer;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(renderGraph, 150);
+    });
+
+    // ----- Bootstrap -----
+
+    var seed = loadFromUrl() || loadFromGlobal();
+    if (seed) ingestPayload(seed);
+    updateCount();
+    renderGraph();
+  })();
+  </script>
+</body>
+</html>
