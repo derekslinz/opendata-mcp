@@ -317,6 +317,14 @@ A few bundled plugins accept optional API keys for higher rate limits. Set these
 | `COURTLISTENER_API_TOKEN` | `us_courtlistener` | Anonymous access works at low volumes |
 | `OPENDATA_MCP_CONTACT` | all | Your email, used in User-Agent for polite-pool APIs (Crossref, OpenAlex, OSM, SEC EDGAR). Defaults to `opendata-mcp@example.org`. |
 
+### Server runtime flags
+
+| Variable | Purpose |
+|---|---|
+| `META_DATA_MCP_PRELOAD` | Comma-separated plugin ids to activate at startup, or `*` for all. Default unset = discovery-only (~13 meta tools). |
+| `META_DATA_MCP_AUTH_TOKEN` | When set on the SSE transport, requires `Authorization: Bearer <token>` on `/sse` and `/messages`. |
+| `META_DATA_MCP_PROVENANCE` | Truthy (`1`, `true`, `yes`, `on`) enables a `meta-data-mcp/provenance` entry on every tool-call result's first content block's `_meta`, carrying `sha256` (digest of the canonical content with `_meta` stripped) and `timestamp` (ISO 8601 UTC, ms precision). Default off — opt in when you need a tamper-evident audit trail. |
+
 ## Transports
 
 `run` defaults to **SSE** (HTTP, port 8000) so you can connect from the MCP Inspector or remote clients. For Claude Desktop (which the `setup` command targets), the spawned process uses **stdio**:
