@@ -28,6 +28,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_museum_v1 import URI as MUSEUM_APP_URI
 from meta_data_mcp.utils import http_get, serialize_for_llm
 
 # Initialize logging
@@ -136,6 +137,8 @@ TOOLS.append(
         name="met-get-object",
         description="Fetch the full metadata record for a Met Museum object by object ID.",
         inputSchema=MetGetObjectParams.model_json_schema(),
+        # MCP Apps binding: render via the museum app's detail modal.
+        _meta={"ui": {"resourceUri": MUSEUM_APP_URI}},
     )
 )
 TOOLS_HANDLERS["met-get-object"] = handle_met_get_object
@@ -211,6 +214,8 @@ TOOLS.append(
         name="met-search",
         description="Search the Met Museum collection by free text with optional faceted filters.",
         inputSchema=MetSearchParams.model_json_schema(),
+        # MCP Apps binding: render via the museum app's image grid.
+        _meta={"ui": {"resourceUri": MUSEUM_APP_URI}},
     )
 )
 TOOLS_HANDLERS["met-search"] = handle_met_search
