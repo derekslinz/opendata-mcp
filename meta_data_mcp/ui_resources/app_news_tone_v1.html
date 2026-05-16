@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>News Tone — meta-data-mcp app v1</title>
+  <!--
+    ui://meta-data-mcp/app/news-tone/v1 — Phase 5 news-tone app.
+
+    Synthesises the GDELT 2.0 DOC API event-stream into one panel:
+
+      - Volume + tone timeline (TimelineVolRaw and/or TimelineTone) shown
+        as a stacked SVG chart: bars for daily volume, overlay line for
+        average tone with a 0-line reference.
+      - Event lollipops on the timeline showing individual articles
+        (height = absolute tone, colour = tone polarity).
+      - Country chord diagram showing same-day co-occurrence between
+        source countries — when two countries publish on the same day for
+        the same query, they share a "story", and the chord weight is the
+        count of shared days.
+      - Hover preview pane for the most recent article under cursor.
+      - Click-through to article URL.
+
+    postMessage protocol (inherited from the Phase 3 discovery app):
+
+      host -> app:   { type: "tool_result"|"render", id?, tool?, payload }
+      app -> host:   { type: "tool_call", id, name, arguments }
+
+    Wraps gdelt-article-search (events + countries) and
+    gdelt-volume-timeline (tone overlay). Either tool's result can hydrate
+    the panel alone; both together fill it out.
+
+    Payload contract - caller may push either a raw GDELT response (which
+    we sniff by shape) or a unified envelope:
+
+      {
+        "events": [
+          {"date": "<ISO>", "tone": <number>, "title": "...",
+           "country": "<FIPS-or-name>", "url": "...", "domain": "..."},
+          ...
+        ],
+        "country_pairs": [
+          {"a": "US", "b": "GB", "weight": <number>}, ...
+        ],
+        "facets": {
+          "tone_timeline": [{"date":"<ISO>", "tone": <number>}, ...],
+          "volume_timeline": [{"date":"<ISO>", "value": <number>}, ...],
+          "query": "<echoed-query>"
+        }
+      }
+
+    Security note: this bundle never assigns to .innerHTML. All DOM
+    mutation goes through textContent / replaceChildren / explicit element
+    creation, so untrusted upstream JSON cannot inject markup. Inline SVG
+    is built via createElementNS for the same reason.
+
+    Dependency-free vanilla JS + inline SVG - no chart libraries, no CDN.
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e5e5e5;
+      --accent: #2563eb;
+      --accent-bg: #eff6ff;
+      --header-bg: #f8fafc;
+      --row-hover: #f1f5f9;
+      --tone-pos: #16a34a;
+      --tone-neg: #dc2626;
+      --tone-mid: #9aa3af;
+      --vol-bar:  #94a3b8;
+      --chord-fill: #2563eb;
+      --pill-bg:  #e2e8f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f17;
+        --fg: #e8edf3;
+        --muted: #9aa3af;
+        --border: #1f2937;
+        --accent: #60a5fa;
+        --accent-bg: #1e293b;
+        --header-bg: #111827;
+        --row-hover: #182030;
+        --tone-pos: #4ade80;
+        --tone-neg: #f87171;
+        --tone-mid: #6b7280;
+        --vol-bar: #475569;
+        --chord-fill: #60a5fa;
+        --pill-bg:  #1f2937;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+    header { padding: 12px 16px; border-bottom: 1px solid var(--border);
+      background: var(--header-bg); display: flex; gap: 12px; align-items: center; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    header .hint { color: var(--muted); font-size: 12px; }
+    header input { flex: 1; min-width: 180px; padding: 6px 8px;
+      border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--fg); font-family: inherit; }
+    main { display: grid; grid-template-columns: 1fr 320px; min-height: 0;
+      overflow: hidden; }
+    section.panel, aside { padding: 14px 16px; overflow-y: auto; }
+    aside { border-left: 1px solid var(--border); }
+    h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+    .empty { color: var(--muted); padding: 24px 8px; }
+    .err   { background: var(--tone-neg); color: white;
+      padding: 6px 10px; margin: 8px 16px; border-radius: 4px; }
+    .pill { display: inline-block; background: var(--pill-bg); color: var(--fg);
+      padding: 1px 8px; border-radius: 10px; font-size: 11px;
+      margin-right: 4px; margin-bottom: 4px; }
+    .preview { border: 1px solid var(--border); border-radius: 4px;
+      padding: 8px 10px; background: var(--accent-bg); font-size: 12px;
+      margin: 8px 0; }
+    .preview .title { font-weight: 600; margin-bottom: 4px; word-break: break-word; }
+    .preview .meta { color: var(--muted); font-size: 11px; }
+    .preview a { color: var(--accent); text-decoration: none; word-break: break-all; }
+    .preview a:hover { text-decoration: underline; }
+    dl.meta { display: grid; grid-template-columns: 120px 1fr; gap: 4px 12px;
+      margin: 8px 0; font-size: 12px; }
+    dl.meta dt { color: var(--muted); }
+    dl.meta dd { margin: 0; word-break: break-word; }
+    .timeline-wrap, .chord-wrap { padding: 4px 0; }
+    .timeline-wrap svg, .chord-wrap svg { max-width: 100%; height: auto;
+      display: block; }
+    .lollipop { cursor: pointer; }
+    .lollipop:hover circle { stroke: var(--fg); stroke-width: 1.5; }
+    .chord-arc { cursor: default; }
+    .chord-ribbon { transition: fill-opacity 0.15s; cursor: pointer; }
+    .chord-ribbon:hover { stroke-opacity: 0.85; }
+    .legend { display: flex; gap: 12px; flex-wrap: wrap;
+      color: var(--muted); font-size: 11px; margin-top: 4px; }
+    .legend .sw { display: inline-block; width: 10px; height: 10px;
+      border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    table.events { width: 100%; border-collapse: collapse; font-size: 12px;
+      margin-top: 4px; }
+    table.events td { padding: 3px 6px; border-bottom: 1px solid var(--border);
+      vertical-align: top; }
+    table.events tr { cursor: pointer; }
+    table.events tr:hover { background: var(--row-hover); }
+    .tone-dot { display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>News Tone</h1>
+      <input type="text" id="query-input"
+             placeholder='GDELT query - e.g. "supply chain" sourcelang:eng'
+             autocomplete="off" spellcheck="false">
+      <span class="hint" id="hint">Loads GDELT articles + tone timeline in parallel.</span>
+    </header>
+    <main>
+      <section class="panel" id="left">
+        <div class="empty" id="left-empty">Enter a GDELT query above to load events.</div>
+      </section>
+      <aside id="right">
+        <div class="empty" id="right-empty">Article preview appears here on hover.</div>
+      </aside>
+    </main>
+  </div>
+  <script>
+  (function () {
+    'use strict';
+
+    var SVG_NS = 'http://www.w3.org/2000/svg';
+
+    var state = {
+      query: null,
+      events: [],
+      countryPairs: [],
+      facets: { tone_timeline: [], volume_timeline: [], query: null },
+      hovered: null,
+      pendingCalls: {},
+    };
+
+    var $input = document.getElementById('query-input');
+    var $hint  = document.getElementById('hint');
+    var $left  = document.getElementById('left');
+    var $right = document.getElementById('right');
+
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      applyAttrs(node, attrs);
+      appendChildren(node, children);
+      return node;
+    }
+
+    function svg(tag, attrs, children) {
+      var node = document.createElementNS(SVG_NS, tag);
+      applyAttrs(node, attrs);
+      appendChildren(node, children);
+      return node;
+    }
+
+    function applyAttrs(node, attrs) {
+      if (!attrs) return;
+      for (var k in attrs) {
+        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+        var v = attrs[k];
+        if (k === 'class')     node.setAttribute('class', v);
+        else if (k === 'text') node.textContent = v;
+        else if (k === 'on') {
+          for (var ev in v) {
+            if (Object.prototype.hasOwnProperty.call(v, ev)) {
+              node.addEventListener(ev, v[ev]);
+            }
+          }
+        } else if (v !== null && v !== undefined) {
+          node.setAttribute(k, v);
+        }
+      }
+    }
+
+    function appendChildren(node, children) {
+      if (!children) return;
+      children.forEach(function (c) {
+        if (c == null) return;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      });
+    }
+
+    function clearNode(node) { node.replaceChildren(); }
+
+    function showError(msg) {
+      var div = el('div', { class: 'err', text: msg });
+      document.body.insertBefore(div, document.getElementById('app'));
+      setTimeout(function () { div.remove(); }, 6000);
+    }
+
+    function newCallId() {
+      return 'tc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function callTool(name, args) {
+      var id = newCallId();
+      var msg = { type: 'tool_call', id: id, name: name, arguments: args || {} };
+      return new Promise(function (resolve, reject) {
+        state.pendingCalls[id] = { resolve: resolve, reject: reject, name: name };
+        try {
+          window.parent.postMessage(msg, '*');
+        } catch (e) {
+          delete state.pendingCalls[id];
+          reject(e);
+          return;
+        }
+        setTimeout(function () {
+          if (state.pendingCalls[id]) {
+            delete state.pendingCalls[id];
+            reject(new Error('tool call timed out: ' + name));
+          }
+        }, 30000);
+      });
+    }
+
+    function handleIncomingMessage(ev) {
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type !== 'tool_result' && msg.type !== 'render') return;
+      var id = msg.id;
+      var payload = msg.payload;
+      if (id && state.pendingCalls[id]) {
+        var pending = state.pendingCalls[id];
+        delete state.pendingCalls[id];
+        pending.resolve(payload);
+        return;
+      }
+      var name = msg.tool || msg.name;
+      ingestUnsolicited(name, payload);
+    }
+    window.addEventListener('message', handleIncomingMessage);
+
+    function ingestUnsolicited(name, payload) {
+      if (!payload) return;
+      if (name === 'gdelt-article-search') {
+        ingestArticleSearch(payload);
+      } else if (name === 'gdelt-volume-timeline') {
+        ingestVolumeTimeline(payload);
+      } else if (payload.articles && Array.isArray(payload.articles)) {
+        ingestArticleSearch(payload);
+      } else if (payload.timeline && Array.isArray(payload.timeline)) {
+        ingestVolumeTimeline(payload);
+      } else if (payload.events || payload.country_pairs || payload.facets) {
+        if (Array.isArray(payload.events)) state.events = payload.events.slice();
+        if (Array.isArray(payload.country_pairs)) state.countryPairs = payload.country_pairs.slice();
+        if (payload.facets && typeof payload.facets === 'object') {
+          if (Array.isArray(payload.facets.tone_timeline)) {
+            state.facets.tone_timeline = payload.facets.tone_timeline.slice();
+          }
+          if (Array.isArray(payload.facets.volume_timeline)) {
+            state.facets.volume_timeline = payload.facets.volume_timeline.slice();
+          }
+          if (payload.facets.query) state.facets.query = String(payload.facets.query);
+        }
+      }
+      renderAll();
+    }
+
+    function ingestArticleSearch(payload) {
+      var articles = (payload && Array.isArray(payload.articles)) ? payload.articles : [];
+      var events = [];
+      articles.forEach(function (a) {
+        var iso = parseSeenDate(a.seendate || a.date || '');
+        var tone = parseNumberOrNull(a.tone);
+        if (!iso) return;
+        events.push({
+          date: iso,
+          tone: tone == null ? 0 : tone,
+          title: a.title || '(untitled)',
+          country: a.sourcecountry || a.country || '',
+          url: a.url || '',
+          domain: a.domain || extractDomain(a.url || ''),
+          language: a.language || '',
+        });
+      });
+      events.sort(function (x, y) { return x.date < y.date ? -1 : x.date > y.date ? 1 : 0; });
+      state.events = events;
+      state.countryPairs = derivePairsFromEvents(events);
+    }
+
+    function ingestVolumeTimeline(payload) {
+      if (!payload || !Array.isArray(payload.timeline)) return;
+      var tone = [];
+      var vol = [];
+      payload.timeline.forEach(function (series) {
+        if (!series || typeof series !== 'object') return;
+        if (Array.isArray(series.data)) {
+          var label = (series.series || series.name || '').toLowerCase();
+          var bucket = label.indexOf('tone') >= 0 ? tone : vol;
+          series.data.forEach(function (pt) {
+            var iso = parseSeenDate(pt.date || '');
+            var val = parseNumberOrNull(pt.value);
+            if (iso && val != null) bucket.push({ date: iso, value: val });
+          });
+        } else if (series.date && series.value !== undefined) {
+          var iso2 = parseSeenDate(series.date);
+          var val2 = parseNumberOrNull(series.value);
+          if (iso2 && val2 != null) vol.push({ date: iso2, value: val2 });
+        }
+      });
+      if (tone.length) state.facets.tone_timeline = sortByDate(tone)
+        .map(function (p) { return { date: p.date, tone: p.value }; });
+      if (vol.length) state.facets.volume_timeline = sortByDate(vol);
+    }
+
+    function parseSeenDate(s) {
+      if (!s || typeof s !== 'string') return null;
+      var compact = /^(\d{4})(\d{2})(\d{2})(?:T?(\d{2})(\d{2})(\d{2})Z?)?$/;
+      var m = compact.exec(s);
+      if (m) {
+        var iso = m[1] + '-' + m[2] + '-' + m[3];
+        if (m[4]) iso += 'T' + m[4] + ':' + m[5] + ':' + m[6] + 'Z';
+        return iso;
+      }
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s;
+      return null;
+    }
+
+    function parseNumberOrNull(v) {
+      if (v === null || v === undefined || v === '') return null;
+      var n = typeof v === 'number' ? v : parseFloat(v);
+      return isFinite(n) ? n : null;
+    }
+
+    function extractDomain(url) {
+      var m = /^https?:\/\/([^/]+)/i.exec(url || '');
+      return m ? m[1] : '';
+    }
+
+    function sortByDate(arr) {
+      return arr.slice().sort(function (a, b) {
+        return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+      });
+    }
+
+    function dayKey(iso) {
+      return (iso || '').slice(0, 10);
+    }
+
+    function derivePairsFromEvents(events) {
+      var byDay = {};
+      events.forEach(function (e) {
+        if (!e.country) return;
+        var d = dayKey(e.date);
+        if (!d) return;
+        if (!byDay[d]) byDay[d] = {};
+        byDay[d][e.country] = true;
+      });
+      var counts = {};
+      for (var day in byDay) {
+        if (!Object.prototype.hasOwnProperty.call(byDay, day)) continue;
+        var countries = Object.keys(byDay[day]).sort();
+        for (var i = 0; i < countries.length; i++) {
+          for (var j = i + 1; j < countries.length; j++) {
+            var k = countries[i] + '|' + countries[j];
+            counts[k] = (counts[k] || 0) + 1;
+          }
+        }
+      }
+      var pairs = [];
+      for (var key in counts) {
+        if (!Object.prototype.hasOwnProperty.call(counts, key)) continue;
+        var ab = key.split('|');
+        pairs.push({ a: ab[0], b: ab[1], weight: counts[key] });
+      }
+      pairs.sort(function (x, y) { return y.weight - x.weight; });
+      return pairs.slice(0, 24);
+    }
+
+    function loadFromUrl() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var b64 = params.get('data');
+        if (!b64) return null;
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join('=');
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      } catch (e) {
+        showError('Invalid ?data= URL parameter: ' + e.message);
+        return null;
+      }
+    }
+    function loadFromGlobal() {
+      return (typeof window.__app_data__ === 'object' && window.__app_data__) || null;
+    }
+    var seed = loadFromUrl() || loadFromGlobal();
+    if (seed) ingestUnsolicited(null, seed);
+
+    function lookupQuery(q) {
+      var query = (q || '').trim();
+      if (!query) {
+        showError('Enter a GDELT query, e.g. "supply chain" sourcelang:eng.');
+        return;
+      }
+      state.query = query;
+      $input.value = query;
+      state.events = [];
+      state.countryPairs = [];
+      state.facets = { tone_timeline: [], volume_timeline: [], query: query };
+      renderAll();
+      $hint.textContent = 'Fetching...';
+
+      var calls = [
+        callTool('gdelt-article-search',
+                 { query: query, timespan: '1w', maxrecords: 250, sort: 'DateDesc' })
+          .then(function (p) { ingestArticleSearch(p); renderAll(); })
+          .catch(function () {}),
+        callTool('gdelt-volume-timeline',
+                 { query: query, timespan: '1w', timeline_mode: 'TimelineTone' })
+          .then(function (p) { ingestVolumeTimeline(p); renderAll(); })
+          .catch(function () {}),
+      ];
+
+      Promise.all(calls).then(function () { $hint.textContent = 'Loaded.'; });
+    }
+
+    $input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') lookupQuery($input.value);
+    });
+
+    function renderAll() {
+      renderLeftPanel();
+      renderRightPanel();
+    }
+
+    function renderLeftPanel() {
+      clearNode($left);
+      if (!state.events.length && !state.facets.tone_timeline.length
+          && !state.facets.volume_timeline.length) {
+        $left.appendChild(el('div', { class: 'empty',
+          text: 'No events loaded. Enter a GDELT query above.' }));
+        return;
+      }
+
+      var header = el('div', null, [
+        el('span', { class: 'pill', text: 'events: ' + state.events.length }),
+        el('span', { class: 'pill', text: 'countries: ' + countCountries() }),
+        el('span', { class: 'pill', text: 'pairs: ' + state.countryPairs.length }),
+      ]);
+      $left.appendChild(header);
+
+      $left.appendChild(el('h2', { text: 'Tone timeline (red = negative, green = positive)' }));
+      $left.appendChild(renderTimeline());
+      $left.appendChild(renderLegend());
+
+      $left.appendChild(el('h2', { text: 'Country co-occurrence chord' }));
+      $left.appendChild(renderChord());
+
+      $left.appendChild(el('h2', { text: 'Recent articles' }));
+      $left.appendChild(renderEventTable());
+    }
+
+    function countCountries() {
+      var seen = {};
+      state.events.forEach(function (e) { if (e.country) seen[e.country] = true; });
+      return Object.keys(seen).length;
+    }
+
+    function renderLegend() {
+      var wrap = el('div', { class: 'legend' });
+      function entry(swatch, label) {
+        wrap.appendChild(el('span', null, [
+          el('span', { class: 'sw', style: 'background:' + swatch }),
+          label,
+        ]));
+      }
+      entry('var(--tone-neg)', 'tone <= -3 (negative)');
+      entry('var(--tone-mid)', 'tone ~ 0 (neutral)');
+      entry('var(--tone-pos)', 'tone >= 3 (positive)');
+      entry('var(--vol-bar)', 'daily article volume');
+      return wrap;
+    }
+
+    function renderRightPanel() {
+      clearNode($right);
+      if (!state.events.length) {
+        $right.appendChild(el('div', { class: 'empty',
+          text: 'Article preview appears here on hover.' }));
+        return;
+      }
+      var idx = state.hovered != null ? state.hovered : 0;
+      var ev = state.events[idx];
+      if (!ev) {
+        $right.appendChild(el('div', { class: 'empty', text: 'No article selected.' }));
+        return;
+      }
+      $right.appendChild(el('h2', { text: 'Article preview' }));
+      var card = el('div', { class: 'preview' });
+      card.appendChild(el('div', { class: 'title', text: ev.title }));
+      var dl = el('dl', { class: 'meta' });
+      function row(k, v) {
+        if (!v && v !== 0) return;
+        dl.appendChild(el('dt', { text: k }));
+        dl.appendChild(el('dd', { text: v }));
+      }
+      row('Date', ev.date);
+      row('Tone', ev.tone.toFixed(2));
+      row('Country', ev.country || '-');
+      row('Domain', ev.domain || '-');
+      row('Language', ev.language || '-');
+      card.appendChild(dl);
+      if (ev.url) {
+        card.appendChild(el('a', {
+          href: ev.url, target: '_blank', rel: 'noopener noreferrer',
+          text: ev.url,
+        }));
+      }
+      $right.appendChild(card);
+    }
+
+    function renderTimeline() {
+      var W = 760, H = 220, padL = 36, padR = 12, padT = 14, padB = 26;
+      var s = svg('svg', {
+        viewBox: '0 0 ' + W + ' ' + H, width: W, height: H,
+        preserveAspectRatio: 'xMidYMid meet',
+        role: 'img', 'aria-label': 'News-tone timeline',
+      });
+
+      var dayCount = {};
+      state.events.forEach(function (e) {
+        var d = dayKey(e.date);
+        if (!d) return;
+        dayCount[d] = (dayCount[d] || 0) + 1;
+      });
+      state.facets.volume_timeline.forEach(function (p) {
+        var d = dayKey(p.date);
+        if (!d) return;
+        if (!(d in dayCount)) dayCount[d] = 0;
+      });
+      state.facets.tone_timeline.forEach(function (p) {
+        var d = dayKey(p.date);
+        if (!d) return;
+        if (!(d in dayCount)) dayCount[d] = 0;
+      });
+      var days = Object.keys(dayCount).sort();
+      if (!days.length) {
+        return el('div', { class: 'empty', text: 'No timeline data yet.' });
+      }
+
+      var innerW = W - padL - padR;
+      var innerH = H - padT - padB;
+      var bandW = innerW / days.length;
+      var maxCount = 1;
+      days.forEach(function (d) { if (dayCount[d] > maxCount) maxCount = dayCount[d]; });
+      var midY = padT + innerH / 2;
+
+      s.appendChild(svg('line', {
+        x1: padL, y1: midY, x2: padL + innerW, y2: midY,
+        stroke: 'currentColor', 'stroke-opacity': 0.3, 'stroke-width': 1,
+      }));
+      s.appendChild(svg('line', {
+        x1: padL, y1: padT, x2: padL, y2: padT + innerH,
+        stroke: 'currentColor', 'stroke-opacity': 0.2, 'stroke-width': 1,
+      }));
+
+      [
+        { y: padT + 2, text: '+10 tone' },
+        { y: midY + 3, text: '0' },
+        { y: padT + innerH - 2, text: '-10 tone' },
+      ].forEach(function (t) {
+        s.appendChild(svg('text', {
+          x: padL - 4, y: t.y, 'text-anchor': 'end',
+          'font-size': 9, fill: 'currentColor', 'fill-opacity': 0.6,
+        }, [t.text]));
+      });
+
+      var labelIndices = days.length === 1 ? [0]
+        : days.length === 2 ? [0, days.length - 1]
+        : [0, Math.floor(days.length / 2), days.length - 1];
+      labelIndices.forEach(function (i) {
+        var cx = padL + bandW * (i + 0.5);
+        s.appendChild(svg('text', {
+          x: cx, y: padT + innerH + 14, 'text-anchor': 'middle',
+          'font-size': 9, fill: 'currentColor', 'fill-opacity': 0.6,
+        }, [days[i]]));
+      });
+
+      var dayIdx = {};
+      days.forEach(function (d, i) { dayIdx[d] = i; });
+      days.forEach(function (d, i) {
+        var c = dayCount[d];
+        if (!c) return;
+        var h = (c / maxCount) * (innerH / 2 - 4);
+        var x = padL + bandW * i + 1;
+        var w = Math.max(1, bandW - 2);
+        s.appendChild(svg('rect', {
+          x: x, y: midY, width: w, height: h,
+          fill: 'var(--vol-bar)', 'fill-opacity': 0.55,
+        }));
+      });
+
+      var maxAbsTone = 10;
+      state.events.forEach(function (ev, idx) {
+        var d = dayKey(ev.date);
+        var i = dayIdx[d];
+        if (i === undefined) return;
+        var cx = padL + bandW * (i + 0.5);
+        var tone = clamp(ev.tone, -maxAbsTone, maxAbsTone);
+        var y2 = midY - (tone / maxAbsTone) * (innerH / 2 - 6);
+        var colour = tone <= -3 ? 'var(--tone-neg)'
+                   : tone >=  3 ? 'var(--tone-pos)'
+                   : 'var(--tone-mid)';
+        var g = svg('g', { class: 'lollipop' });
+        g.appendChild(svg('line', {
+          x1: cx, y1: midY, x2: cx, y2: y2,
+          stroke: colour, 'stroke-opacity': 0.55, 'stroke-width': 1.2,
+        }));
+        g.appendChild(svg('circle', {
+          cx: cx, cy: y2, r: 3,
+          fill: colour, 'fill-opacity': 0.85,
+        }));
+        g.addEventListener('mouseenter', function () {
+          state.hovered = idx;
+          renderRightPanel();
+        });
+        g.addEventListener('click', function () {
+          if (ev.url) window.open(ev.url, '_blank', 'noopener,noreferrer');
+        });
+        var titleEl = svg('title');
+        titleEl.textContent = ev.date + ' - ' + (ev.country || '-') +
+          ' - tone ' + ev.tone.toFixed(2) + '\n' + ev.title;
+        g.appendChild(titleEl);
+        s.appendChild(g);
+      });
+
+      if (state.facets.tone_timeline.length) {
+        var path = state.facets.tone_timeline.map(function (p) {
+          var i = dayIdx[dayKey(p.date)];
+          if (i === undefined) return null;
+          var cx = padL + bandW * (i + 0.5);
+          var t = clamp(parseNumberOrNull(p.tone) || 0, -maxAbsTone, maxAbsTone);
+          var y = midY - (t / maxAbsTone) * (innerH / 2 - 6);
+          return { x: cx, y: y };
+        }).filter(Boolean);
+        if (path.length > 1) {
+          var d = path.map(function (p, i) {
+            return (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1);
+          }).join(' ');
+          s.appendChild(svg('path', {
+            d: d, fill: 'none', stroke: 'var(--accent)',
+            'stroke-width': 1.6, 'stroke-opacity': 0.85,
+          }));
+        }
+      }
+
+      return el('div', { class: 'timeline-wrap' }, [s]);
+    }
+
+    function clamp(v, lo, hi) {
+      return v < lo ? lo : v > hi ? hi : v;
+    }
+
+    function renderChord() {
+      if (!state.countryPairs.length) {
+        return el('div', { class: 'empty',
+          text: 'Country chord appears once two or more source countries co-occur.' });
+      }
+      var size = 360, cx = size / 2, cy = size / 2;
+      var rOuter = 150, rInner = 134;
+
+      var totals = {};
+      state.countryPairs.forEach(function (p) {
+        totals[p.a] = (totals[p.a] || 0) + p.weight;
+        totals[p.b] = (totals[p.b] || 0) + p.weight;
+      });
+      var countries = Object.keys(totals).sort(function (a, b) {
+        return totals[b] - totals[a];
+      });
+      if (countries.length < 2) {
+        return el('div', { class: 'empty',
+          text: 'Need at least two distinct source countries for a chord.' });
+      }
+      var gap = 0.02;
+      var totalWeight = countries.reduce(function (acc, c) { return acc + totals[c]; }, 0);
+      var availableArc = 2 * Math.PI - gap * countries.length;
+      var arcs = {};
+      var cursor = -Math.PI / 2;
+      countries.forEach(function (c) {
+        var span = (totals[c] / totalWeight) * availableArc;
+        arcs[c] = { start: cursor, end: cursor + span, mid: cursor + span / 2 };
+        cursor += span + gap;
+      });
+
+      var s = svg('svg', {
+        viewBox: '0 0 ' + size + ' ' + size,
+        width: size, height: size,
+        role: 'img', 'aria-label': 'Country co-occurrence chord diagram',
+      });
+
+      countries.forEach(function (c, i) {
+        var a = arcs[c];
+        s.appendChild(svg('path', {
+          class: 'chord-arc',
+          d: describeArc(cx, cy, rInner, rOuter, a.start, a.end),
+          fill: arcColour(i, countries.length),
+          'fill-opacity': 0.85,
+        }));
+        var lx = cx + (rOuter + 10) * Math.cos(a.mid);
+        var ly = cy + (rOuter + 10) * Math.sin(a.mid);
+        var anchor = Math.cos(a.mid) > 0.1 ? 'start'
+                   : Math.cos(a.mid) < -0.1 ? 'end' : 'middle';
+        s.appendChild(svg('text', {
+          x: lx, y: ly, 'text-anchor': anchor, 'dominant-baseline': 'middle',
+          'font-size': 10, fill: 'currentColor', 'fill-opacity': 0.85,
+        }, [c]));
+      });
+
+      var maxW = 1;
+      state.countryPairs.forEach(function (p) { if (p.weight > maxW) maxW = p.weight; });
+      state.countryPairs.forEach(function (p) {
+        var ax = arcs[p.a], bx = arcs[p.b];
+        if (!ax || !bx) return;
+        var x1 = cx + rInner * Math.cos(ax.mid);
+        var y1 = cy + rInner * Math.sin(ax.mid);
+        var x2 = cx + rInner * Math.cos(bx.mid);
+        var y2 = cy + rInner * Math.sin(bx.mid);
+        var d = 'M ' + x1.toFixed(1) + ' ' + y1.toFixed(1)
+              + ' Q ' + cx + ' ' + cy + ' ' + x2.toFixed(1) + ' ' + y2.toFixed(1);
+        var w = 1 + 4 * (Math.log(1 + p.weight) / Math.log(1 + maxW));
+        var ribbon = svg('path', {
+          class: 'chord-ribbon',
+          d: d, fill: 'none',
+          stroke: 'var(--chord-fill)',
+          'stroke-opacity': 0.35,
+          'stroke-width': w.toFixed(1),
+        });
+        var titleEl = svg('title');
+        titleEl.textContent = p.a + ' <-> ' + p.b + ' - co-occurred on ' + p.weight + ' day(s)';
+        ribbon.appendChild(titleEl);
+        s.appendChild(ribbon);
+      });
+
+      return el('div', { class: 'chord-wrap' }, [s]);
+    }
+
+    function describeArc(cx, cy, rIn, rOut, a0, a1) {
+      var x0o = cx + rOut * Math.cos(a0);
+      var y0o = cy + rOut * Math.sin(a0);
+      var x1o = cx + rOut * Math.cos(a1);
+      var y1o = cy + rOut * Math.sin(a1);
+      var x0i = cx + rIn * Math.cos(a1);
+      var y0i = cy + rIn * Math.sin(a1);
+      var x1i = cx + rIn * Math.cos(a0);
+      var y1i = cy + rIn * Math.sin(a0);
+      var large = (a1 - a0) > Math.PI ? 1 : 0;
+      return 'M ' + x0o.toFixed(1) + ' ' + y0o.toFixed(1)
+        + ' A ' + rOut + ' ' + rOut + ' 0 ' + large + ' 1 ' + x1o.toFixed(1) + ' ' + y1o.toFixed(1)
+        + ' L ' + x0i.toFixed(1) + ' ' + y0i.toFixed(1)
+        + ' A ' + rIn + ' ' + rIn + ' 0 ' + large + ' 0 ' + x1i.toFixed(1) + ' ' + y1i.toFixed(1)
+        + ' Z';
+    }
+
+    function arcColour(i, n) {
+      var hue = (200 + (i * 360 / Math.max(1, n))) % 360;
+      return 'hsl(' + hue.toFixed(0) + ', 55%, 55%)';
+    }
+
+    function renderEventTable() {
+      if (!state.events.length) {
+        return el('div', { class: 'empty', text: 'No articles yet.' });
+      }
+      var table = el('table', { class: 'events' });
+      var tbody = el('tbody');
+      state.events.slice(0, 20).forEach(function (ev, idx) {
+        var dot = el('span', { class: 'tone-dot',
+          style: 'background:' + (ev.tone <= -3 ? 'var(--tone-neg)'
+                                : ev.tone >=  3 ? 'var(--tone-pos)'
+                                : 'var(--tone-mid)') });
+        var tr = el('tr', null, [
+          el('td', null, [dot, document.createTextNode(ev.date.slice(0, 10))]),
+          el('td', { text: ev.country || '-' }),
+          el('td', { text: ev.title }),
+        ]);
+        tr.addEventListener('mouseenter', function () {
+          state.hovered = idx;
+          renderRightPanel();
+        });
+        tr.addEventListener('click', function () {
+          if (ev.url) window.open(ev.url, '_blank', 'noopener,noreferrer');
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      return table;
+    }
+
+    renderAll();
+  })();
+  </script>
+</body>
+</html>

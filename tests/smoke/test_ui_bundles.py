@@ -139,6 +139,43 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
             "attrs": {"method": "X-RAY DIFFRACTION", "resolution": 1.74},
         },
     },
+    "app_news_tone_v1.html": {
+        "events": [
+            {
+                "date": "2026-05-10",
+                "tone": -4.2,
+                "title": "smoke negative story",
+                "country": "US",
+                "url": "https://example.com/a",
+                "domain": "example.com",
+            },
+            {
+                "date": "2026-05-10",
+                "tone": 2.1,
+                "title": "smoke neutral story",
+                "country": "GB",
+                "url": "https://example.com/b",
+                "domain": "example.com",
+            },
+            {
+                "date": "2026-05-11",
+                "tone": 4.8,
+                "title": "smoke positive story",
+                "country": "US",
+                "url": "https://example.com/c",
+                "domain": "example.com",
+            },
+        ],
+        "country_pairs": [{"a": "GB", "b": "US", "weight": 1}],
+        "facets": {
+            "tone_timeline": [
+                {"date": "2026-05-10", "tone": -1.0},
+                {"date": "2026-05-11", "tone": 2.5},
+            ],
+            "volume_timeline": [],
+            "query": "smoke",
+        },
+    },
 }
 
 # At least one element matching the selector must be present after load. We
@@ -154,6 +191,7 @@ ROOT_SELECTORS: dict[str, str] = {
     "app_entity_graph_v1.html": "#app, #graph",
     "app_museum_v1.html": "#app, #grid",
     "app_molecular_v1.html": "#app, #viewer-pane",
+    "app_news_tone_v1.html": "#app",
 }
 
 # CDN origins to ignore in error filtering. Bundle's own inline JS has no

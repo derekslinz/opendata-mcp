@@ -19,11 +19,13 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_news_tone_v1 import URI as NEWS_TONE_APP_URI
 from meta_data_mcp.utils import (
+    MAX_RESPONSE_CHARS,
     create_mcp_server,
     http_get,
     run_server,
-    serialize_for_llm,
+    to_json_text,
 )
 
 log = logging.getLogger(__name__)
@@ -100,7 +102,11 @@ async def handle_gdelt_article_search(
     """Handle the gdelt-article-search tool call."""
     params = GdeltArticleSearchParams(**(arguments or {}))
     data = fetch_gdelt_article_search(params)
-    return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    return [
+        types.TextContent(
+            type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+        )
+    ]
 
 
 TOOLS.append(
@@ -113,6 +119,10 @@ TOOLS.append(
             "domain, tone) for precise filtering."
         ),
         inputSchema=GdeltArticleSearchParams.model_json_schema(),
+        # MCP Apps binding: render via the news-tone app. Use the alias
+        # keyword (``_meta=``) — ``meta=`` silently drops into extras; see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": NEWS_TONE_APP_URI}},
     )
 )
 TOOLS_HANDLERS["gdelt-article-search"] = handle_gdelt_article_search
@@ -167,7 +177,11 @@ async def handle_gdelt_volume_timeline(
     """Handle the gdelt-volume-timeline tool call."""
     params = GdeltVolumeTimelineParams(**(arguments or {}))
     data = fetch_gdelt_volume_timeline(params)
-    return [types.TextContent(type="text", text=serialize_for_llm(data))]
+    return [
+        types.TextContent(
+            type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+        )
+    ]
 
 
 TOOLS.append(
@@ -179,6 +193,7 @@ TOOLS.append(
             "coverage of a topic evolves and for spotting tone shifts."
         ),
         inputSchema=GdeltVolumeTimelineParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": NEWS_TONE_APP_URI}},
     )
 )
 TOOLS_HANDLERS["gdelt-volume-timeline"] = handle_gdelt_volume_timeline
