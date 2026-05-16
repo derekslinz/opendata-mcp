@@ -137,14 +137,26 @@ def test_met_get_object_tool_binds_to_museum_app():
     assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == MUSEUM_URI
 
 
+def test_met_search_by_artist_binds_to_museum_app():
+    """``met-search-by-artist`` returns the same ``{total, objectIDs}``
+    shape as ``met-search``, so it must bind to the same museum app —
+    otherwise the artist-search surface renders as plain text while the
+    free-text-search surface renders as an image grid, which is a
+    confusing inconsistency."""
+    tool = next(t for t in TOOLS if t.name == "met-search-by-artist")
+    assert tool.meta == {"ui": {"resourceUri": MUSEUM_URI}}, (
+        f"met-search-by-artist is not bound to {MUSEUM_URI}"
+    )
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == MUSEUM_URI
+
+
 def test_unbound_met_tools_have_no_ui_meta():
-    """The remaining Met tools (list-objects, list-departments,
-    search-by-artist) intentionally don't bind to the museum app —
-    list-objects / search-by-artist return raw id lists that hit the
-    same code path as met-search but without the user-friendly query
-    filters, and list-departments is a metadata helper, not a viewing
-    surface. Pin the absence so a future refactor that flips them
-    accidentally surfaces here."""
-    for name in ("met-list-objects", "met-list-departments", "met-search-by-artist"):
+    """list-objects and list-departments intentionally don't bind to the
+    museum app — list-objects returns a raw id list with no filter UX
+    and list-departments is a metadata helper, not a viewing surface.
+    Pin the absence so a future refactor that flips them accidentally
+    surfaces here."""
+    for name in ("met-list-objects", "met-list-departments"):
         tool = next(t for t in TOOLS if t.name == name)
         assert tool.meta is None, f"{name} has unexpected _meta binding: {tool.meta!r}"
