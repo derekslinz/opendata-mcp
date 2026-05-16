@@ -73,6 +73,26 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
         },
     },
     "app_discovery_v1.html": None,
+    "app_trade_flows_v1.html": {
+        "flows": [
+            {
+                "reporter": "USA",
+                "partner": "China",
+                "commodity": "10 — Cereals",
+                "value_usd": 1234567890,
+                "year": 2023,
+                "flow": "Exports",
+            },
+            {
+                "reporter": "Germany",
+                "partner": "France",
+                "commodity": "84 — Machinery",
+                "value_usd": 987654321,
+                "year": 2023,
+                "flow": "Exports",
+            },
+        ],
+    },
     "app_vulnerability_v1.html": None,
     "app_entity_graph_v1.html": {
         "nodes": [
@@ -129,6 +149,7 @@ ROOT_SELECTORS: dict[str, str] = {
     "shape_geofeatures_v1.html": "#gf-map, #gf-info",
     "shape_records_v1.html": "#app, #facets-list",
     "app_discovery_v1.html": "#app",
+    "app_trade_flows_v1.html": "#app",
     "app_vulnerability_v1.html": "#app",
     "app_entity_graph_v1.html": "#app, #graph",
     "app_museum_v1.html": "#app, #grid",

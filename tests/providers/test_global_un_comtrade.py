@@ -5,10 +5,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from meta_data_mcp.providers.global_un_comtrade import (
+    TOOLS,
     ComtradeTradeDataParams,
     fetch_comtrade_trade_data,
     handle_comtrade_trade_data,
 )
+from meta_data_mcp.ui_resources.app_trade_flows_v1 import URI as TRADE_FLOWS_URI
 
 
 @pytest.fixture
@@ -103,3 +105,23 @@ async def test_handle():
             {"period": "2022", "reporter_code": "840"}
         )
         assert "USA" in result[0].text
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: MCP Apps shape primitive binding (trade-flows app).
+# ---------------------------------------------------------------------------
+
+
+def test_comtrade_trade_data_tool_binds_to_trade_flows_app():
+    """comtrade-trade-data renders through the Phase 5 trade-flows app."""
+    tool = next(t for t in TOOLS if t.name == "comtrade-trade-data")
+    assert tool.meta == {"ui": {"resourceUri": TRADE_FLOWS_URI}}, (
+        f"comtrade-trade-data is not bound to {TRADE_FLOWS_URI}"
+    )
+    # Pin that the binding survives the wire-format round-trip — the
+    # _meta= alias keyword must reach the on-the-wire ``_meta`` field,
+    # not the silent ``meta=`` extras bucket. See tests/test_ui_resource.py
+    # ::test_tool_meta_constructor_kwarg_does_not_reach_wire for the
+    # underlying footgun this guards against.
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == TRADE_FLOWS_URI

@@ -20,6 +20,7 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
+from meta_data_mcp.ui_resources.app_trade_flows_v1 import URI as TRADE_FLOWS_APP_URI
 from meta_data_mcp.utils import (
     create_mcp_server,
     http_get,
@@ -169,6 +170,8 @@ TOOLS.append(
             "clCode (classification). Free tier returns up to 500 rows per call."
         ),
         inputSchema=ComtradeTradeDataParams.model_json_schema(),
+        # MCP Apps binding: render via the trade-flows app (Sankey + treemap).
+        _meta={"ui": {"resourceUri": TRADE_FLOWS_APP_URI}},
     )
 )
 TOOLS_HANDLERS["comtrade-trade-data"] = handle_comtrade_trade_data
