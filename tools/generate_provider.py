@@ -57,6 +57,49 @@ TYPE_MAP: dict[str, str] = {
 
 PATH_PARAM_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
+# MCP Apps (v2.0 Phase 6a) — declarative shape binding.
+#
+# When a tool's spec includes ``response_shape``, the generator emits:
+#   1. An import of the shape's URI constant from meta_data_mcp.ui_resources
+#   2. ``_meta={"ui": {"resourceUri": <URI_CONST>}}`` on the Tool(...) line
+#      so the MCP Apps host renders the result via the shape primitive
+#   3. A size-bounded serializer in the handler (records/geofeatures get
+#      their dedicated trim-by-list helpers; timeseries falls back to the
+#      generic ``to_json_text(max_chars=...)`` because the timeseries
+#      bundle accepts a wrapped truncation envelope)
+#   4. A TODO comment in the handler reminding the author to write the
+#      provider-specific ``_<provider>_<tool>_to_shape_payload`` adapter
+#      that maps the raw API response onto the shape contract.
+#
+# Why a TODO instead of an auto-generated adapter: the contract maps are
+# inherently provider-specific (SDMX observations vs JSON-stat vs the
+# Frankfurter/ECB native shape vs ...), and the generator deliberately
+# stays narrow rather than guess wrong and ship a broken adapter.
+RESPONSE_SHAPE_BINDINGS: dict[str, dict[str, str]] = {
+    "timeseries": {
+        "uri_module": "meta_data_mcp.ui_resources.shape_timeseries_v1",
+        "uri_alias": "TIMESERIES_URI",
+        "serializer_fn": "to_json_text",
+        "serializer_import": "to_json_text",
+        "needs_max_chars": "true",
+    },
+    "geofeatures": {
+        "uri_module": "meta_data_mcp.ui_resources.shape_geofeatures_v1",
+        "uri_alias": "GEOFEATURES_URI",
+        "serializer_fn": "to_geofeatures_text",
+        "serializer_import": "to_geofeatures_text",
+        "needs_max_chars": "",
+    },
+    "records": {
+        "uri_module": "meta_data_mcp.ui_resources.shape_records_v1",
+        "uri_alias": "RECORDS_URI",
+        "serializer_fn": "to_records_text",
+        "serializer_import": "to_records_text",
+        "needs_max_chars": "",
+    },
+}
+RESPONSE_SHAPE_NONE = "none"
+
 
 # ---------------------------------------------------------------------------
 # Spec parsing
@@ -98,10 +141,25 @@ def load_spec(path: Path) -> dict[str, Any]:
         # response_format defaults to 'json'
         tool.setdefault("response_format", "json")
         tool.setdefault("params", [])
+        tool.setdefault("response_shape", RESPONSE_SHAPE_NONE)
         if tool["response_format"] not in ("json", "text"):
             raise SpecError(
                 f"tools[{i}].response_format must be 'json' or 'text', "
                 f"got {tool['response_format']!r}"
+            )
+        valid_shapes = {RESPONSE_SHAPE_NONE, *RESPONSE_SHAPE_BINDINGS}
+        if tool["response_shape"] not in valid_shapes:
+            raise SpecError(
+                f"tools[{i}].response_shape {tool['response_shape']!r} must be "
+                f"one of {sorted(valid_shapes)}"
+            )
+        if (
+            tool["response_shape"] != RESPONSE_SHAPE_NONE
+            and tool["response_format"] != "json"
+        ):
+            raise SpecError(
+                f"tools[{i}].response_shape requires response_format='json'; "
+                f"text responses can't carry the shape envelope contract"
             )
         for j, p in enumerate(tool["params"]):
             if not isinstance(p, dict):
@@ -287,17 +345,44 @@ def _render_fetch_fn(tool: dict[str, Any], requires_env: list[str]) -> str:
 def _render_handler(tool: dict[str, Any]) -> str:
     snake = _kebab_to_snake(tool["name"])
     pascal = _kebab_to_pascal(tool["name"]) + "Params"
+    shape = tool.get("response_shape", RESPONSE_SHAPE_NONE)
+
+    adapter_lines: list[str] = []
     if tool["response_format"] == "json":
-        payload_line = (
-            "        return [types.TextContent("
-            'type="text", text=serialize_for_llm(data))]'
-        )
         data_line = f"        data = fetch_{snake}(params)"
+        if shape != RESPONSE_SHAPE_NONE:
+            # Provider-specific shape mapping varies too much to auto-generate;
+            # surface a TODO so the author writes the adapter explicitly.
+            adapter_lines.append(
+                f"        # TODO: write a _{snake}_to_shape_payload(data) adapter\n"
+                f"        # that maps the raw API response onto the "
+                f"ui://meta-data-mcp/shape/{shape}/v1 contract."
+            )
+            binding = RESPONSE_SHAPE_BINDINGS[shape]
+            serializer = binding["serializer_fn"]
+            if binding["needs_max_chars"]:
+                serializer_call = f"{serializer}(data, max_chars=MAX_RESPONSE_CHARS)"
+            else:
+                serializer_call = f"{serializer}(data)"
+            payload_line = (
+                f"        return [types.TextContent("
+                f'type="text", text={serializer_call})]'
+            )
+        else:
+            payload_line = (
+                "        return [types.TextContent("
+                'type="text", text=serialize_for_llm(data))]'
+            )
     else:
         payload_line = (
             '        return [types.TextContent(type="text", text=(data or "")[:20000])]'
         )
         data_line = f"        data = fetch_{snake}(params)"
+
+    body_lines = [data_line]
+    body_lines.extend(adapter_lines)
+    body_lines.append(payload_line)
+    body = "\n".join(body_lines)
 
     return (
         f"async def handle_{snake}(\n"
@@ -306,8 +391,7 @@ def _render_handler(tool: dict[str, Any]) -> str:
         f'    """Handle the {tool["name"]} tool call."""\n'
         f"    try:\n"
         f"        params = {pascal}(**(arguments or {{}}))\n"
-        f"{data_line}\n"
-        f"{payload_line}\n"
+        f"{body}\n"
         f"    except Exception as e:\n"
         f'        log.error(f"Error handling {tool["name"]}: {{e}}")\n'
         f"        raise"
@@ -317,12 +401,21 @@ def _render_handler(tool: dict[str, Any]) -> str:
 def _render_registration(tool: dict[str, Any]) -> str:
     snake = _kebab_to_snake(tool["name"])
     pascal = _kebab_to_pascal(tool["name"]) + "Params"
+    shape = tool.get("response_shape", RESPONSE_SHAPE_NONE)
+    meta_line = ""
+    if shape != RESPONSE_SHAPE_NONE:
+        uri_alias = RESPONSE_SHAPE_BINDINGS[shape]["uri_alias"]
+        # The SDK's Tool model doesn't enable populate_by_name, so passing
+        # ``meta=`` silently lands in extras and never reaches the wire as
+        # ``_meta``. Always emit the alias keyword.
+        meta_line = f'        _meta={{"ui": {{"resourceUri": {uri_alias}}}}},\n'
     return (
         "TOOLS.append(\n"
         "    types.Tool(\n"
         f"        name={_py_literal(tool['name'])},\n"
         f"        description={_py_literal(tool['description'])},\n"
         f"        inputSchema={pascal}.model_json_schema(),\n"
+        f"{meta_line}"
         "    )\n"
         ")\n"
         f"TOOLS_HANDLERS[{_py_literal(tool['name'])}] = handle_{snake}"
@@ -383,6 +476,23 @@ def render_provider(spec: dict[str, Any]) -> str:
     # because Pydantic V2's model_json_schema() needs runtime-resolvable
     # types when the model is constructed at import time (the same reason
     # the canonical us_nasa.py provider avoids the future import).
+
+    # MCP Apps bindings (Phase 6a) — collect every distinct shape used by
+    # any tool so we emit the right URI imports + size-bounded serializers.
+    used_shapes: list[str] = []
+    for tool in spec["tools"]:
+        shape = tool.get("response_shape", RESPONSE_SHAPE_NONE)
+        if shape != RESPONSE_SHAPE_NONE and shape not in used_shapes:
+            used_shapes.append(shape)
+    has_unbound_json_tool = any(
+        t.get("response_shape", RESPONSE_SHAPE_NONE) == RESPONSE_SHAPE_NONE
+        and t.get("response_format", "json") == "json"
+        for t in spec["tools"]
+    )
+    needs_max_chars = any(
+        RESPONSE_SHAPE_BINDINGS[s].get("needs_max_chars") for s in used_shapes
+    )
+
     import_lines = [
         "import logging",
     ]
@@ -395,14 +505,34 @@ def render_provider(spec: dict[str, Any]) -> str:
             "import mcp.types as types",
             "from pydantic import BaseModel, Field",
             "",
-            "from meta_data_mcp.utils import (",
-            "    create_mcp_server,",
-            "    http_get,",
-            "    run_server,",
-            "    serialize_for_llm,",
-            ")",
         ]
     )
+
+    # Shape-URI imports. One ``from ... import URI as <ALIAS>`` per shape,
+    # in deterministic alphabetical order so the diff stays stable.
+    for shape in sorted(used_shapes):
+        binding = RESPONSE_SHAPE_BINDINGS[shape]
+        import_lines.append(
+            f"from {binding['uri_module']} import URI as {binding['uri_alias']}"
+        )
+    if used_shapes:
+        import_lines.append("")
+
+    util_imports = ["create_mcp_server", "http_get", "run_server"]
+    if has_unbound_json_tool:
+        util_imports.append("serialize_for_llm")
+    if needs_max_chars:
+        util_imports.append("MAX_RESPONSE_CHARS")
+    for shape in sorted(used_shapes):
+        util_imports.append(RESPONSE_SHAPE_BINDINGS[shape]["serializer_import"])
+    # Dedupe while preserving order so MAX_RESPONSE_CHARS doesn't sort wrong.
+    seen: set[str] = set()
+    util_imports = [n for n in util_imports if not (n in seen or seen.add(n))]
+    util_imports = sorted(util_imports)
+    import_lines.append("from meta_data_mcp.utils import (")
+    for name in util_imports:
+        import_lines.append(f"    {name},")
+    import_lines.append(")")
 
     header = (
         "log = logging.getLogger(__name__)\n\n"

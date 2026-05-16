@@ -241,3 +241,146 @@ def test_invalid_spec_returns_nonzero(tmp_path):
     )
     assert result.returncode != 0
     assert "error" in result.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 6a — MCP Apps response_shape binding
+# ---------------------------------------------------------------------------
+
+
+_SHAPE_SPEC_YAML = """
+id: shape_demo
+server_name: shape-demo
+base_url: https://api.example.com
+description: Phase 6a shape-binding smoke test.
+tools:
+  - name: sd-records
+    description: Records-shape tool.
+    endpoint: /records
+    response_shape: records
+    params: []
+  - name: sd-features
+    description: Geofeatures-shape tool.
+    endpoint: /features
+    response_shape: geofeatures
+    params: []
+  - name: sd-series
+    description: Timeseries-shape tool.
+    endpoint: /series
+    response_shape: timeseries
+    params: []
+  - name: sd-plain
+    description: Unbound tool.
+    endpoint: /plain
+    params: []
+"""
+
+
+@pytest.fixture(scope="module")
+def shape_spec(generator, tmp_path_factory):
+    path = tmp_path_factory.mktemp("specs") / "shape_demo.yaml"
+    path.write_text(_SHAPE_SPEC_YAML)
+    return generator.load_spec(path)
+
+
+@pytest.fixture(scope="module")
+def shape_rendered(generator, shape_spec):
+    return generator.render_provider(shape_spec)
+
+
+def test_response_shape_validates_against_known_shapes(generator, tmp_path):
+    """Unknown shapes are rejected at spec-load time, not at runtime."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "id: bad\nserver_name: bad\nbase_url: https://x\n"
+        "description: x\ntools:\n"
+        "  - name: bad-tool\n    description: x\n    endpoint: /x\n"
+        "    response_shape: bogus\n"
+    )
+    with pytest.raises(generator.SpecError, match="response_shape"):
+        generator.load_spec(bad)
+
+
+def test_response_shape_rejects_text_response_format(generator, tmp_path):
+    """A shape needs JSON to carry the envelope contract; text responses
+    can't be re-shaped without losing bytes."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "id: bad\nserver_name: bad\nbase_url: https://x\n"
+        "description: x\ntools:\n"
+        "  - name: bad-tool\n    description: x\n    endpoint: /x\n"
+        "    response_shape: records\n    response_format: text\n"
+    )
+    with pytest.raises(generator.SpecError, match="response_format='json'"):
+        generator.load_spec(bad)
+
+
+def test_response_shape_emits_uri_imports(shape_rendered):
+    """Each shape used in the spec adds its URI import line."""
+    assert (
+        "from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI"
+        in shape_rendered
+    )
+    assert (
+        "from meta_data_mcp.ui_resources.shape_geofeatures_v1 "
+        "import URI as GEOFEATURES_URI" in shape_rendered
+    )
+    assert (
+        "from meta_data_mcp.ui_resources.shape_timeseries_v1 "
+        "import URI as TIMESERIES_URI" in shape_rendered
+    )
+
+
+def test_response_shape_emits_meta_binding(shape_rendered):
+    """Each shape-bound tool gets ``_meta={"ui": {"resourceUri": …}}``
+    on its registration — and only those tools."""
+    assert '_meta={"ui": {"resourceUri": RECORDS_URI}}' in shape_rendered
+    assert '_meta={"ui": {"resourceUri": GEOFEATURES_URI}}' in shape_rendered
+    assert '_meta={"ui": {"resourceUri": TIMESERIES_URI}}' in shape_rendered
+    # The unbound tool's registration must NOT carry a _meta line.
+    plain_block = shape_rendered.split('name="sd-plain"', 1)[1].split(
+        "TOOLS.append", 1
+    )[0]
+    assert "_meta=" not in plain_block
+
+
+def test_response_shape_emits_size_bounded_serializer(shape_rendered):
+    """Records → to_records_text. Geofeatures → to_geofeatures_text.
+    Timeseries → to_json_text(max_chars=MAX_RESPONSE_CHARS). Unbound →
+    serialize_for_llm (unchanged)."""
+    assert "to_records_text(data)" in shape_rendered
+    assert "to_geofeatures_text(data)" in shape_rendered
+    assert "to_json_text(data, max_chars=MAX_RESPONSE_CHARS)" in shape_rendered
+    assert "serialize_for_llm(data)" in shape_rendered  # the sd-plain path
+
+
+def test_response_shape_emits_adapter_todo(shape_rendered):
+    """Each shape-bound handler carries the adapter TODO comment so the
+    author doesn't forget to write the provider-specific shape-mapping
+    function."""
+    for snake in ("sd_records", "sd_features", "sd_series"):
+        assert f"_{snake}_to_shape_payload(data)" in shape_rendered
+
+
+def test_response_shape_default_is_unbound(generator, tmp_path):
+    """Specs that omit response_shape still generate working providers
+    (backward compat with all existing specs in tools/specs/)."""
+    path = tmp_path / "noop.yaml"
+    path.write_text(
+        "id: noop\nserver_name: noop\nbase_url: https://x\n"
+        "description: x\ntools:\n"
+        "  - name: noop\n    description: x\n    endpoint: /x\n"
+    )
+    spec = generator.load_spec(path)
+    assert spec["tools"][0]["response_shape"] == "none"
+    src = generator.render_provider(spec)
+    # No _meta binding, no shape URI imports.
+    assert "_meta=" not in src
+    assert "ui_resources.shape_" not in src
+    # Default serializer is still serialize_for_llm.
+    assert "serialize_for_llm(data)" in src
+
+
+def test_response_shape_output_is_valid_python(shape_rendered):
+    """Shape-binding emissions must produce a parseable module."""
+    ast.parse(shape_rendered)
