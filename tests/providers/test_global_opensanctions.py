@@ -1,17 +1,21 @@
 """Tests for the global-opensanctions provider."""
 
+import json
 from unittest.mock import Mock, patch
 
 import httpx
 import pytest
 
 from meta_data_mcp.providers.global_opensanctions import (
+    TOOLS,
     OpenSanctionsGetEntityParams,
     OpenSanctionsSearchParams,
+    _opensanctions_search_to_entity_graph_payload,
     fetch_opensanctions_get_entity,
     fetch_opensanctions_search,
     handle_opensanctions_search,
 )
+from meta_data_mcp.ui_resources.app_entity_graph_v1 import URI as ENTITY_GRAPH_URI
 
 
 @pytest.fixture
@@ -75,7 +79,10 @@ async def test_handle_search_accepts_schema_alias_from_mcp_args():
         result = await handle_opensanctions_search(
             {"query": "putin", "schema": "Person", "countries": "ru"}
         )
-        assert "results" in result[0].text
+        # Handler now adapts the response to the entity-graph payload —
+        # the test's goal is to assert the wire received the right params
+        # under the 'schema' alias, NOT to lock the response shape.
+        assert "nodes" in result[0].text
         assert mock_get.call_args[1]["params"]["schema"] == "Person"
         assert mock_get.call_args[1]["params"]["countries"] == "ru"
 
@@ -143,3 +150,95 @@ async def test_handle_search_translates_404():
                 {"query": "x", "dataset": "no_such_dataset"}
             )
         assert exc_info.value.provider == "global-opensanctions"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: MCP Apps entity-graph adapter + binding.
+# ---------------------------------------------------------------------------
+
+
+def test_opensanctions_entity_graph_adapter_top_level_results():
+    """Each search result becomes a node; the schema drives node type
+    (Person → ``author`` slot for color contrast against ``entity``)."""
+    raw = {
+        "results": [
+            {
+                "id": "NK-1",
+                "caption": "Vladimir Putin",
+                "schema": "Person",
+                "topics": ["sanction"],
+                "countries": ["ru"],
+            },
+            {
+                "id": "NK-2",
+                "caption": "ACME Co",
+                "schema": "Company",
+            },
+        ]
+    }
+    payload = _opensanctions_search_to_entity_graph_payload(raw)
+    node_ids = {n["id"] for n in payload["nodes"]}
+    assert "NK-1" in node_ids and "NK-2" in node_ids
+    person = next(n for n in payload["nodes"] if n["id"] == "NK-1")
+    company = next(n for n in payload["nodes"] if n["id"] == "NK-2")
+    assert person["type"] == "author"  # Person maps to author palette slot.
+    assert company["type"] == "entity"
+    # Topics are preserved on attrs for the side-panel.
+    assert person["attrs"]["topics"] == ["sanction"]
+
+
+def test_opensanctions_entity_graph_adapter_emits_property_edges():
+    """Nested entity references in ``properties`` (familyMembers,
+    associates, directorOf, …) become edges back to the parent. That's
+    what gives the bundle its relationship surface."""
+    raw = {
+        "results": [
+            {
+                "id": "NK-1",
+                "caption": "Person A",
+                "schema": "Person",
+                "properties": {
+                    "familyMembers": [
+                        {"id": "NK-2", "caption": "Person B", "schema": "Person"},
+                    ],
+                    "directorOf": [
+                        {"id": "NK-3", "caption": "Some Co", "schema": "Company"},
+                    ],
+                    # Scalar property values (dates, strings) should be skipped.
+                    "birthDate": ["1952-10-07"],
+                },
+            }
+        ]
+    }
+    payload = _opensanctions_search_to_entity_graph_payload(raw)
+    edge_pairs = {(e["source"], e["target"], e["label"]) for e in payload["edges"]}
+    assert ("NK-1", "NK-2", "familyMembers") in edge_pairs
+    assert ("NK-1", "NK-3", "directorOf") in edge_pairs
+    # Scalar properties must not create stray nodes.
+    node_ids = {n["id"] for n in payload["nodes"]}
+    assert node_ids == {"NK-1", "NK-2", "NK-3"}
+
+
+def test_opensanctions_entity_graph_adapter_handles_empty():
+    """No results → empty graph, no exceptions."""
+    assert _opensanctions_search_to_entity_graph_payload({})["nodes"] == []
+    assert _opensanctions_search_to_entity_graph_payload({"results": []})["edges"] == []
+
+
+def test_opensanctions_search_tool_binds_to_entity_graph():
+    tool = next(t for t in TOOLS if t.name == "opensanctions-search")
+    assert tool.meta == {"ui": {"resourceUri": ENTITY_GRAPH_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == ENTITY_GRAPH_URI
+
+
+@pytest.mark.anyio
+async def test_opensanctions_search_returns_entity_graph_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value = _ok(
+            {"results": [{"id": "NK-x", "caption": "X", "schema": "Person"}]}
+        )
+        result = await handle_opensanctions_search({"query": "x"})
+        parsed = json.loads(result[0].text)
+        assert "nodes" in parsed and "edges" in parsed
+        assert any(n["id"] == "NK-x" for n in parsed["nodes"])

@@ -614,6 +614,64 @@ def to_geofeatures_text(payload: Any, max_chars: int = MAX_RESPONSE_CHARS) -> st
     return to_json_text(payload, max_chars=max_chars)
 
 
+def to_entity_graph_text(payload: Any, max_chars: int = MAX_RESPONSE_CHARS) -> str:
+    """Serialize an entity-graph payload while preserving valid shape JSON.
+
+    Mirrors :func:`to_records_text` / :func:`to_geofeatures_text` for the
+    ``ui://meta-data-mcp/app/entity-graph/v1`` and
+    ``ui://meta-data-mcp/app/network-topology/v1`` envelopes
+    (``{"nodes": [...], "edges": [...]}``). When the serialized payload
+    exceeds ``max_chars``, trims ``nodes`` to the largest prefix that
+    still fits, then drops any ``edges`` referencing dropped nodes so
+    the graph stays internally consistent.
+
+    Why: ``serialize_for_llm`` truncates by mid-string slice, producing
+    invalid JSON that the host can't parse and the bundle can't render.
+    ``to_json_text(max_chars=...)`` produces valid JSON but wraps the
+    payload in ``{"truncated": true, "preview": "..."}``, dropping the
+    ``nodes``/``edges`` keys the bundle needs.
+
+    Falls back to ``to_json_text`` only when the payload is not a
+    graph-shape dict.
+    """
+    text = _json_dumps(payload)
+    if len(text) <= max_chars:
+        return text
+    if not isinstance(payload, dict):
+        return to_json_text(payload, max_chars=max_chars)
+
+    nodes = payload.get("nodes")
+    edges = payload.get("edges")
+    if not isinstance(nodes, list):
+        return to_json_text(payload, max_chars=max_chars)
+
+    edge_list: list[Any] = edges if isinstance(edges, list) else []
+
+    def _build(bounded_nodes: Sequence[Any]) -> dict[str, Any]:
+        kept_ids = {
+            n.get("id")
+            for n in bounded_nodes
+            if isinstance(n, dict) and n.get("id") is not None
+        }
+        bounded_edges = [
+            e
+            for e in edge_list
+            if isinstance(e, dict)
+            and e.get("source") in kept_ids
+            and e.get("target") in kept_ids
+        ]
+        result = {**payload, "nodes": list(bounded_nodes)}
+        if isinstance(edges, list):
+            result["edges"] = bounded_edges
+        return result
+
+    bounded_text = _max_prefix_json_text(nodes, _build, max_chars)
+    if bounded_text is not None:
+        return bounded_text
+
+    return to_json_text(payload, max_chars=max_chars)
+
+
 # ---------------------------------------------------------------------------
 # MCP Apps (`ui://`) resource helper
 # ---------------------------------------------------------------------------

@@ -74,6 +74,13 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
     },
     "app_discovery_v1.html": None,
     "app_vulnerability_v1.html": None,
+    "app_entity_graph_v1.html": {
+        "nodes": [
+            {"id": "n1", "label": "smoke author", "type": "author", "attrs": {}},
+            {"id": "n2", "label": "smoke work", "type": "work", "attrs": {}},
+        ],
+        "edges": [{"source": "n2", "target": "n1", "label": "authored", "weight": 1}],
+    },
 }
 
 # At least one element matching the selector must be present after load. We
@@ -85,6 +92,7 @@ ROOT_SELECTORS: dict[str, str] = {
     "shape_records_v1.html": "#app, #facets-list",
     "app_discovery_v1.html": "#app",
     "app_vulnerability_v1.html": "#app",
+    "app_entity_graph_v1.html": "#app, #graph",
 }
 
 # CDN origins to ignore in error filtering. Bundle's own inline JS has no
@@ -93,6 +101,7 @@ ROOT_SELECTORS: dict[str, str] = {
 CDN_ORIGINS_TO_IGNORE = (
     "cdn.plot.ly",
     "unpkg.com",
+    "cdn.jsdelivr.net",
 )
 
 

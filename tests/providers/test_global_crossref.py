@@ -6,6 +6,7 @@ import httpx
 
 from meta_data_mcp.providers.global_crossref import (
     TOOLS,
+    _crossref_works_by_author_to_entity_graph_payload,
     _crossref_works_to_shape_payload,
     handle_crossref_works_search,
     handle_crossref_get_work,
@@ -15,6 +16,7 @@ from meta_data_mcp.providers.global_crossref import (
     handle_crossref_get_journal,
     handle_crossref_funders_search,
 )
+from meta_data_mcp.ui_resources.app_entity_graph_v1 import URI as ENTITY_GRAPH_URI
 from meta_data_mcp.ui_resources.shape_records_v1 import URI as RECORDS_URI
 
 
@@ -230,3 +232,131 @@ async def test_crossref_works_search_returns_shape_payload():
         body = json.loads(result[0].text)
         assert body["rows"][0]["DOI"] == "10.1038/nature12373"
         assert "schema" in body
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: MCP Apps entity-graph adapter + binding (works-by-author).
+# Note: crossref-works-search remains on the records primitive — different
+# tool, different shape. We pin BOTH bindings here so a refactor that
+# accidentally rebinds works-search to entity-graph blows up loudly.
+# ---------------------------------------------------------------------------
+
+
+def test_crossref_entity_graph_adapter_flattens_works_and_authors():
+    """Co-author overlay: each work in the response is a ``work`` node;
+    each author is an ``author`` node; an ``authored`` edge connects
+    each work to each of its authors. Authors dedupe across works."""
+    raw = {
+        "message": {
+            "items": [
+                {
+                    "DOI": "10.1/abc",
+                    "title": ["Paper A"],
+                    "container-title": ["Nature"],
+                    "publisher": "Springer",
+                    "type": "journal-article",
+                    "author": [
+                        {"given": "Alice", "family": "Smith"},
+                        {"given": "Bob", "family": "Jones"},
+                    ],
+                },
+                {
+                    "DOI": "10.2/def",
+                    "title": ["Paper B"],
+                    "author": [
+                        {"given": "Alice", "family": "Smith"},
+                    ],
+                },
+            ]
+        }
+    }
+    payload = _crossref_works_by_author_to_entity_graph_payload(raw, "alice")
+    work_nodes = [n for n in payload["nodes"] if n["type"] == "work"]
+    author_nodes = [n for n in payload["nodes"] if n["type"] == "author"]
+    assert {n["id"] for n in work_nodes} == {"doi:10.1/abc", "doi:10.2/def"}
+    # Alice appears twice but should dedupe to one node.
+    alice_nodes = [n for n in author_nodes if n["label"] == "Alice Smith"]
+    assert len(alice_nodes) == 1, "Alice must dedupe across works"
+    # Two authored edges should fan out from doi:10.1/abc.
+    edges_from_a = [e for e in payload["edges"] if e["source"] == "doi:10.1/abc"]
+    assert len(edges_from_a) == 2
+    # Alice's edge weight should reflect 2 shared works.
+    alice_id = alice_nodes[0]["id"]
+    alice_edges = [e for e in payload["edges"] if e["target"] == alice_id]
+    assert all(e["weight"] == 2 for e in alice_edges)
+
+
+def test_crossref_entity_graph_adapter_orcid_id_preferred():
+    """Where ORCID is available we use it as the stable node id; only
+    fall back to a name-derived id when ORCID is missing."""
+    raw = {
+        "message": {
+            "items": [
+                {
+                    "DOI": "10.1/a",
+                    "title": ["P"],
+                    "author": [
+                        {
+                            "given": "Z",
+                            "family": "Q",
+                            "ORCID": "https://orcid.org/0000-0001",
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+    payload = _crossref_works_by_author_to_entity_graph_payload(raw, "z")
+    author_node = next(n for n in payload["nodes"] if n["type"] == "author")
+    assert author_node["id"].startswith("orcid:")
+
+
+def test_crossref_entity_graph_adapter_handles_empty_items():
+    """No items → empty graph, no exceptions."""
+    assert _crossref_works_by_author_to_entity_graph_payload({}, "x")["nodes"] == []
+    assert (
+        _crossref_works_by_author_to_entity_graph_payload(
+            {"message": {"items": []}}, "x"
+        )["edges"]
+        == []
+    )
+
+
+def test_works_search_stays_bound_to_records_after_entity_graph_landed():
+    """Regression guard: ``crossref-works-search`` MUST remain on the
+    records primitive. Phase 4 bound it there; Phase 5's entity-graph
+    binding is on a DIFFERENT tool (``works-by-author``). If a refactor
+    accidentally cross-wires them this fires."""
+    tool = next(t for t in TOOLS if t.name == "crossref-works-search")
+    assert tool.meta == {"ui": {"resourceUri": RECORDS_URI}}
+
+
+def test_crossref_works_by_author_tool_binds_to_entity_graph():
+    tool = next(t for t in TOOLS if t.name == "crossref-works-by-author")
+    assert tool.meta == {"ui": {"resourceUri": ENTITY_GRAPH_URI}}
+    wire = tool.model_dump(by_alias=True, exclude_none=True)
+    assert wire.get("_meta", {}).get("ui", {}).get("resourceUri") == ENTITY_GRAPH_URI
+
+
+@pytest.mark.anyio
+async def test_crossref_works_by_author_returns_entity_graph_payload():
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {
+            "message": {
+                "items": [
+                    {
+                        "DOI": "10.1/x",
+                        "title": ["A paper"],
+                        "author": [
+                            {"given": "X", "family": "Y"},
+                        ],
+                    }
+                ]
+            }
+        }
+        mock_get.return_value.raise_for_status = Mock()
+        result = await handle_crossref_works_by_author({"author": "Y"})
+        parsed = json.loads(result[0].text)
+        assert "nodes" in parsed and "edges" in parsed
+        assert any(n["type"] == "work" for n in parsed["nodes"])
+        assert any(n["type"] == "author" for n in parsed["nodes"])

@@ -31,7 +31,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.app_entity_graph_v1 import URI as ENTITY_GRAPH_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_entity_graph_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -131,16 +132,86 @@ def fetch_wikidata_search_entities(params: WikidataSearchEntitiesParams) -> dict
     return response.json()
 
 
+def _wikidata_search_to_entity_graph_payload(data: dict, query: str = "") -> dict:
+    """Adapt Wikidata's ``wbsearchentities`` response to entity-graph.
+
+    ``wbsearchentities`` returns a flat list of matches. Without an
+    extra round-trip for each result's claims there's no real edge
+    structure to surface, so the adapter emits a "hub-and-spoke"
+    graph: a synthetic ``anchor`` node representing the query string,
+    with a "matches" edge to every result. This still gives the bundle
+    something meaningful to lay out and makes the result set visually
+    rank-orderable (concept-rich queries fan out further).
+    """
+    results = data.get("search", []) if isinstance(data, dict) else []
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    anchor_id = "wd-query::" + (query or "search")
+    nodes.append(
+        {
+            "id": anchor_id,
+            "label": "Search: " + (query or ""),
+            "type": "anchor",
+            "attrs": {"query": query, "source": "wikidata-search-entities"},
+        }
+    )
+
+    for idx, entry in enumerate(results):
+        if not isinstance(entry, dict):
+            continue
+        entity_id = entry.get("id") or entry.get("concepturi")
+        if not entity_id:
+            continue
+        entity_id = str(entity_id)
+        if entity_id in seen:
+            continue
+        seen.add(entity_id)
+        label = entry.get("label") or entry.get("title") or entity_id
+        nodes.append(
+            {
+                "id": entity_id,
+                "label": str(label),
+                "type": "entity",
+                "attrs": {
+                    "description": entry.get("description"),
+                    "concepturi": entry.get("concepturi"),
+                    "url": entry.get("url"),
+                    "match": entry.get("match"),
+                },
+            }
+        )
+        # Edge weight degrades with rank so the layout pulls the top
+        # match toward the anchor — visually communicates relevance.
+        edges.append(
+            {
+                "source": anchor_id,
+                "target": entity_id,
+                "label": "matches",
+                "weight": max(0.25, 1.0 - (idx * 0.05)),
+            }
+        )
+
+    return {"nodes": nodes, "edges": edges}
+
+
 async def handle_wikidata_search_entities(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the wikidata-search-entities tool call."""
+    """Handle the wikidata-search-entities tool call.
+
+    Returns the response shaped for the entity-graph app primitive so
+    the bound bundle can render the result set as a fan-out from the
+    query.
+    """
     try:
         if not arguments or "search" not in arguments:
             raise ValueError("search is required")
         params = WikidataSearchEntitiesParams(**arguments)
         data = fetch_wikidata_search_entities(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _wikidata_search_to_entity_graph_payload(data, params.search)
+        return [types.TextContent(type="text", text=to_entity_graph_text(payload))]
     except Exception as e:
         log.error(f"Error searching Wikidata entities: {e}")
         raise
@@ -151,6 +222,9 @@ TOOLS.append(
         name="wikidata-search-entities",
         description="Free-text search for Wikidata item entities (Q-ids).",
         inputSchema=WikidataSearchEntitiesParams.model_json_schema(),
+        # MCP Apps binding: render via entity-graph app as a fan-out
+        # from the query anchor. Use the alias keyword (``_meta=``).
+        _meta={"ui": {"resourceUri": ENTITY_GRAPH_URI}},
     )
 )
 TOOLS_HANDLERS["wikidata-search-entities"] = handle_wikidata_search_entities

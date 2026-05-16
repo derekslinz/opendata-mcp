@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entity Graph — meta-data-mcp app v1</title>
+  <!--
+    ui://meta-data-mcp/app/entity-graph/v1 — Phase 5 entity-graph app.
+
+    Renders a force-directed graph of entities and their relationships
+    from any of four providers:
+
+      - OpenAlex (global_openalex): work↔author↔concept relationships
+        for scholarly research.
+      - Wikidata (global_wikidata): item entities returned from a
+        free-text search (each is a labelled node; the query is the
+        center "anchor" node).
+      - OpenSanctions (global_opensanctions): persons / companies /
+        vessels and their cross-references.
+      - Crossref (global_crossref): co-author overlay for a named
+        author (work↔author edges).
+
+    Payload contract (host→app):
+
+      {
+        "nodes": [
+          {"id": "...", "label": "...", "type": "author|work|entity|...",
+           "attrs": {...optional metadata...}}
+        ],
+        "edges": [
+          {"source": "<node-id>", "target": "<node-id>",
+           "label": "...", "weight": <optional number>}
+        ],
+        "facets": [...]   // optional, currently unused
+      }
+
+    Ingress paths (in priority order):
+
+      1. ``window.postMessage`` from the parent host frame (the MCP host
+         calls the bound tool and forwards the result here). The bundle
+         guards ``ev.source === window.parent`` so cross-origin pages
+         can't spoof state.
+      2. ``?data=<base64-JSON>`` query param — for dev previews. UTF-8
+         safe decode (TextDecoder; same pattern as the records bundle).
+      3. ``window.__app_data__`` global — for the Phase 6c headless
+         smoke tests, which can't easily synthesize messages but can
+         inject a global before script load.
+
+    Visualization: D3.js v7 force-directed graph (CDN). D3 is the
+    canonical force-directed layout library and pulling it from
+    ``cdn.jsdelivr.net`` keeps the bundle itself small (<100KB) without
+    re-implementing simulation maths inline. The bundle degrades to a
+    plain node list if D3 fails to load — see ``renderFallback`` below.
+
+    Security: NO assignment to ``.innerHTML`` anywhere; every DOM node
+    is built via ``createElement`` / ``createElementNS`` + ``textContent``
+    so untrusted upstream JSON (labels, attrs) cannot inject markup.
+    Edge / node labels are length-clamped to keep tooltips usable.
+
+    postMessage envelope (host↔app) — same as Phase 3 / Phase 5
+    vulnerability app:
+
+      host → app:   {type: "tool_result"|"render", id?, tool?, payload}
+      app → host:   {type: "tool_call", id, name, arguments}
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e5e5e5;
+      --accent: #2563eb;
+      --accent-bg: #eff6ff;
+      --header-bg: #f8fafc;
+      --row-hover: #f1f5f9;
+      --pill-bg: #e2e8f0;
+      --node-author: #2563eb;
+      --node-work:   #ea580c;
+      --node-entity: #16a34a;
+      --node-concept: #9333ea;
+      --node-anchor: #0f172a;
+      --node-other:  #6b7280;
+      --edge: #cbd5e1;
+      --edge-hi: #0f172a;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f17;
+        --fg: #e8edf3;
+        --muted: #9aa3af;
+        --border: #1f2937;
+        --accent: #60a5fa;
+        --accent-bg: #1e293b;
+        --header-bg: #111827;
+        --row-hover: #182030;
+        --pill-bg: #1f2937;
+        --node-author: #60a5fa;
+        --node-work:   #fb923c;
+        --node-entity: #4ade80;
+        --node-concept: #c084fc;
+        --node-anchor: #f8fafc;
+        --node-other:  #9ca3af;
+        --edge: #334155;
+        --edge-hi: #f8fafc;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+    header { padding: 10px 14px; border-bottom: 1px solid var(--border);
+      background: var(--header-bg); display: flex; gap: 10px; align-items: center;
+      flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    header input { flex: 1; min-width: 180px; padding: 5px 8px;
+      border: 1px solid var(--border); border-radius: 4px;
+      background: var(--bg); color: var(--fg); font-family: inherit; }
+    header .hint { color: var(--muted); font-size: 12px; }
+    header .legend { display: flex; gap: 10px; font-size: 11px; color: var(--muted); }
+    header .legend span.swatch { display: inline-block; width: 9px; height: 9px;
+      border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+    main { display: grid; grid-template-columns: 1fr 280px; min-height: 0;
+      overflow: hidden; }
+    #graph { position: relative; overflow: hidden; background: var(--bg); }
+    #graph svg { width: 100%; height: 100%; display: block; cursor: grab; }
+    #graph svg:active { cursor: grabbing; }
+    #graph .empty { position: absolute; inset: 0; display: flex;
+      align-items: center; justify-content: center; color: var(--muted);
+      font-size: 13px; padding: 24px; text-align: center; }
+    aside { border-left: 1px solid var(--border); padding: 12px 14px;
+      overflow-y: auto; }
+    aside h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+    .err { background: #dc2626; color: white; padding: 6px 10px;
+      margin: 8px 14px; border-radius: 4px; }
+    dl.meta { display: grid; grid-template-columns: 90px 1fr; gap: 3px 8px;
+      margin: 4px 0 8px; font-size: 12px; }
+    dl.meta dt { color: var(--muted); }
+    dl.meta dd { margin: 0; word-break: break-word; }
+    .pill { display: inline-block; background: var(--pill-bg); color: var(--fg);
+      padding: 1px 7px; border-radius: 10px; font-size: 11px;
+      margin-right: 3px; margin-bottom: 3px; }
+    .stats { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
+    .neighbor-list { list-style: none; padding: 0; margin: 4px 0;
+      font-size: 12px; }
+    .neighbor-list li { padding: 3px 4px; border-radius: 3px;
+      word-break: break-word; cursor: pointer; }
+    .neighbor-list li:hover { background: var(--row-hover); }
+    .fallback-list { list-style: none; padding: 12px; margin: 0;
+      font-size: 12px; max-height: 100%; overflow-y: auto; }
+    .fallback-list li { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    text.node-label { pointer-events: none; font-size: 10px;
+      fill: var(--fg); user-select: none; }
+    line.edge { stroke: var(--edge); stroke-opacity: 0.55; }
+    line.edge.hi { stroke: var(--edge-hi); stroke-opacity: 0.9; }
+    circle.node { stroke: var(--bg); stroke-width: 1.5; cursor: pointer; }
+    circle.node.dim { fill-opacity: 0.2; stroke-opacity: 0.2; }
+    text.node-label.dim { fill-opacity: 0.25; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Entity Graph</h1>
+      <input type="text" id="filter-input"
+             placeholder="Filter nodes by label (substring)…"
+             autocomplete="off" spellcheck="false">
+      <span class="hint" id="hint">Awaiting graph payload.</span>
+      <span class="legend">
+        <span><span class="swatch" style="background:var(--node-author)"></span>author</span>
+        <span><span class="swatch" style="background:var(--node-work)"></span>work</span>
+        <span><span class="swatch" style="background:var(--node-entity)"></span>entity</span>
+        <span><span class="swatch" style="background:var(--node-concept)"></span>concept</span>
+        <span><span class="swatch" style="background:var(--node-anchor)"></span>anchor</span>
+      </span>
+    </header>
+    <main>
+      <div id="graph">
+        <div class="empty" id="graph-empty">No graph data. Call a bound tool
+          (e.g. openalex-search-works, opensanctions-search) to populate this view.</div>
+      </div>
+      <aside id="side">
+        <h2>Details</h2>
+        <div id="details">
+          <div class="stats" id="stats">No nodes loaded.</div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7" crossorigin="anonymous"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var SVG_NS = 'http://www.w3.org/2000/svg';
+
+    // ----- State -----
+    var state = {
+      raw: null,        // last payload received
+      nodes: [],        // {id, label, type, attrs}
+      edges: [],        // {source, target, label, weight}
+      simulation: null, // D3 force simulation
+      selected: null,   // currently-selected node id
+      filterText: '',
+      pendingCalls: {},
+    };
+
+    // ----- DOM refs -----
+    var $filter = document.getElementById('filter-input');
+    var $hint   = document.getElementById('hint');
+    var $graph  = document.getElementById('graph');
+    var $empty  = document.getElementById('graph-empty');
+    var $details = document.getElementById('details');
+    var $stats   = document.getElementById('stats');
+
+    // ----- DOM helpers (no innerHTML anywhere) -----
+
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      applyAttrs(node, attrs);
+      appendChildren(node, children);
+      return node;
+    }
+
+    function applyAttrs(node, attrs) {
+      if (!attrs) return;
+      for (var k in attrs) {
+        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+        var v = attrs[k];
+        if (k === 'class')     node.setAttribute('class', v);
+        else if (k === 'text') node.textContent = v;
+        else if (k === 'on') {
+          for (var ev in v) {
+            if (Object.prototype.hasOwnProperty.call(v, ev)) {
+              node.addEventListener(ev, v[ev]);
+            }
+          }
+        } else if (v !== null && v !== undefined) {
+          node.setAttribute(k, v);
+        }
+      }
+    }
+
+    function appendChildren(node, children) {
+      if (!children) return;
+      children.forEach(function (c) {
+        if (c == null) return;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      });
+    }
+
+    function clearNode(node) { node.replaceChildren(); }
+
+    function showError(msg) {
+      var div = el('div', { class: 'err', text: msg });
+      document.body.insertBefore(div, document.getElementById('app'));
+      setTimeout(function () { div.remove(); }, 6000);
+    }
+
+    function clamp(str, max) {
+      if (str == null) return '';
+      var s = String(str);
+      if (s.length <= max) return s;
+      return s.slice(0, Math.max(0, max - 1)) + '…';
+    }
+
+    // ----- postMessage transport -----
+
+    function handleIncomingMessage(ev) {
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type !== 'tool_result' && msg.type !== 'render') return;
+      var id = msg.id;
+      var payload = msg.payload;
+      if (id && state.pendingCalls[id]) {
+        var pending = state.pendingCalls[id];
+        delete state.pendingCalls[id];
+        pending.resolve(payload);
+        return;
+      }
+      ingestPayload(payload);
+    }
+    window.addEventListener('message', handleIncomingMessage);
+
+    function ingestPayload(payload) {
+      if (!payload || typeof payload !== 'object') return;
+      state.raw = payload;
+      var nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+      var edges = Array.isArray(payload.edges) ? payload.edges : [];
+      // Defensive copy + canonical fields. We never mutate caller data.
+      state.nodes = nodes.map(function (n) {
+        return {
+          id: String(n.id != null ? n.id : ''),
+          label: String(n.label != null ? n.label : (n.id != null ? n.id : '')),
+          type: String(n.type != null ? n.type : 'other'),
+          attrs: (n.attrs && typeof n.attrs === 'object') ? n.attrs : {},
+        };
+      }).filter(function (n) { return n.id; });
+      // Build a quick lookup so we can drop dangling edges. Force layouts
+      // throw when a link references a missing node.
+      var byId = {};
+      state.nodes.forEach(function (n) { byId[n.id] = n; });
+      state.edges = edges.map(function (e) {
+        var src = String(e.source != null ? e.source : '');
+        var tgt = String(e.target != null ? e.target : '');
+        return {
+          source: src,
+          target: tgt,
+          label: String(e.label != null ? e.label : ''),
+          weight: typeof e.weight === 'number' ? e.weight : 1,
+        };
+      }).filter(function (e) { return byId[e.source] && byId[e.target]; });
+
+      $hint.textContent = state.nodes.length + ' nodes, ' +
+                          state.edges.length + ' edges.';
+      state.selected = null;
+      renderGraph();
+      renderDetails();
+    }
+
+    // ----- Dev-mode ingress -----
+
+    function loadFromUrl() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var b64 = params.get('data');
+        if (!b64) return null;
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join('=');
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      } catch (e) {
+        showError('Invalid ?data= URL parameter: ' + e.message);
+        return null;
+      }
+    }
+    function loadFromGlobal() {
+      return (typeof window.__app_data__ === 'object' && window.__app_data__) || null;
+    }
+
+    // ----- Node coloring -----
+
+    var TYPE_COLORS = {
+      'author':  'var(--node-author)',
+      'work':    'var(--node-work)',
+      'entity':  'var(--node-entity)',
+      'concept': 'var(--node-concept)',
+      'anchor':  'var(--node-anchor)',
+    };
+
+    function colorForType(t) {
+      return TYPE_COLORS[t] || 'var(--node-other)';
+    }
+
+    // ----- D3 force-directed render -----
+
+    function renderGraph() {
+      clearNode($graph);
+      if (!state.nodes.length) {
+        $graph.appendChild(el('div', { class: 'empty',
+          text: 'No graph data. Call a bound tool to populate this view.' }));
+        return;
+      }
+      if (typeof window.d3 !== 'object' || typeof window.d3.forceSimulation !== 'function') {
+        renderFallback();
+        return;
+      }
+
+      // Dimensions are inferred from the container. The simulation runs
+      // unconstrained within those bounds; nodes can drift offscreen
+      // during interaction but they're always reachable via the zoom
+      // controls below.
+      var rect = $graph.getBoundingClientRect();
+      var W = Math.max(320, rect.width);
+      var H = Math.max(240, rect.height);
+
+      var svg = window.d3.select($graph).append('svg')
+        .attr('viewBox', '0 0 ' + W + ' ' + H)
+        .attr('preserveAspectRatio', 'xMidYMid meet');
+
+      var g = svg.append('g').attr('class', 'zoom-root');
+
+      // Pan/zoom. Pin range so users can't lose the graph by zooming out.
+      var zoom = window.d3.zoom()
+        .scaleExtent([0.2, 5])
+        .on('zoom', function (event) {
+          g.attr('transform', event.transform);
+        });
+      svg.call(zoom);
+
+      // Make working copies — d3-force MUTATES the nodes / links arrays
+      // (assigning x/y/vx/vy + replacing string ids with refs). Keep
+      // pristine state objects so renders can re-build safely.
+      var sim_nodes = state.nodes.map(function (n) {
+        return { id: n.id, label: n.label, type: n.type, attrs: n.attrs };
+      });
+      var sim_edges = state.edges.map(function (e) {
+        return { source: e.source, target: e.target, label: e.label, weight: e.weight };
+      });
+
+      var linkSel = g.append('g').attr('class', 'links')
+        .selectAll('line')
+        .data(sim_edges)
+        .enter().append('line')
+        .attr('class', 'edge')
+        .attr('stroke-width', function (d) {
+          return Math.max(1, Math.min(4, Math.sqrt(d.weight || 1)));
+        });
+
+      var nodeSel = g.append('g').attr('class', 'nodes')
+        .selectAll('circle')
+        .data(sim_nodes)
+        .enter().append('circle')
+        .attr('class', 'node')
+        .attr('r', function (d) {
+          return d.type === 'anchor' ? 9 : 6;
+        })
+        .attr('fill', function (d) { return colorForType(d.type); })
+        .on('click', function (event, d) {
+          state.selected = d.id;
+          highlightNeighbors(d.id, sim_nodes, sim_edges, nodeSel, linkSel, labelSel);
+          renderDetails();
+        })
+        .on('mouseover', function (event, d) {
+          // Hover tooltip: a <title> child element is the only safe way
+          // to surface attrs without rolling our own positioned div.
+          var title = window.d3.select(this).select('title');
+          if (title.empty()) {
+            window.d3.select(this).append('title')
+              .text(buildTooltip(d));
+          }
+        })
+        .call(window.d3.drag()
+          .on('start', function (event, d) {
+            if (!event.active) sim.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+          })
+          .on('drag', function (event, d) {
+            d.fx = event.x; d.fy = event.y;
+          })
+          .on('end', function (event, d) {
+            if (!event.active) sim.alphaTarget(0);
+            d.fx = null; d.fy = null;
+          }));
+
+      var labelSel = g.append('g').attr('class', 'labels')
+        .selectAll('text')
+        .data(sim_nodes)
+        .enter().append('text')
+        .attr('class', 'node-label')
+        .attr('dx', 8)
+        .attr('dy', '0.32em')
+        .text(function (d) { return clamp(d.label, 32); });
+
+      var sim = window.d3.forceSimulation(sim_nodes)
+        .force('link', window.d3.forceLink(sim_edges).id(function (d) { return d.id; })
+          .distance(function (d) {
+            return 40 + 20 / Math.max(1, d.weight || 1);
+          })
+          .strength(0.6))
+        .force('charge', window.d3.forceManyBody().strength(-180))
+        .force('center', window.d3.forceCenter(W / 2, H / 2))
+        .force('collide', window.d3.forceCollide().radius(14))
+        .on('tick', function () {
+          linkSel
+            .attr('x1', function (d) { return d.source.x; })
+            .attr('y1', function (d) { return d.source.y; })
+            .attr('x2', function (d) { return d.target.x; })
+            .attr('y2', function (d) { return d.target.y; });
+          nodeSel
+            .attr('cx', function (d) { return d.x; })
+            .attr('cy', function (d) { return d.y; });
+          labelSel
+            .attr('x', function (d) { return d.x; })
+            .attr('y', function (d) { return d.y; });
+        });
+
+      state.simulation = sim;
+
+      // Apply current filter (if any) after the simulation kicks off.
+      applyFilter(nodeSel, linkSel, labelSel);
+    }
+
+    function renderFallback() {
+      // Degrade gracefully if D3 didn't load (offline, CSP block, etc).
+      // The host can still see the nodes / edges as plain lists; we
+      // never render an empty screen with no signal.
+      $graph.appendChild(el('div', { class: 'empty',
+        text: 'D3 unavailable — falling back to flat list.' }));
+      var ul = el('ul', { class: 'fallback-list' });
+      state.nodes.slice(0, 200).forEach(function (n) {
+        ul.appendChild(el('li', null, [
+          el('span', { class: 'pill', text: n.type }),
+          ' ',
+          document.createTextNode(n.label || n.id),
+        ]));
+      });
+      $graph.appendChild(ul);
+    }
+
+    function buildTooltip(d) {
+      var lines = [d.label, '(' + d.type + ') id=' + d.id];
+      if (d.attrs && typeof d.attrs === 'object') {
+        var keys = Object.keys(d.attrs).slice(0, 6);
+        keys.forEach(function (k) {
+          var v = d.attrs[k];
+          if (v == null) return;
+          if (typeof v === 'object') v = JSON.stringify(v);
+          lines.push(k + ': ' + clamp(String(v), 80));
+        });
+      }
+      return lines.join('\n');
+    }
+
+    function highlightNeighbors(nodeId, simNodes, simEdges, nodeSel, linkSel, labelSel) {
+      var neighbors = {};
+      neighbors[nodeId] = true;
+      simEdges.forEach(function (e) {
+        var sId = typeof e.source === 'object' ? e.source.id : e.source;
+        var tId = typeof e.target === 'object' ? e.target.id : e.target;
+        if (sId === nodeId) neighbors[tId] = true;
+        if (tId === nodeId) neighbors[sId] = true;
+      });
+      nodeSel.classed('dim', function (d) { return !neighbors[d.id]; });
+      labelSel.classed('dim', function (d) { return !neighbors[d.id]; });
+      linkSel.classed('hi', function (d) {
+        var sId = typeof d.source === 'object' ? d.source.id : d.source;
+        var tId = typeof d.target === 'object' ? d.target.id : d.target;
+        return sId === nodeId || tId === nodeId;
+      });
+    }
+
+    function applyFilter(nodeSel, linkSel, labelSel) {
+      var q = (state.filterText || '').toLowerCase().trim();
+      if (!q) {
+        nodeSel.classed('dim', false);
+        labelSel.classed('dim', false);
+        linkSel.classed('hi', false);
+        return;
+      }
+      var matched = {};
+      state.nodes.forEach(function (n) {
+        if (n.label.toLowerCase().indexOf(q) !== -1) matched[n.id] = true;
+      });
+      nodeSel.classed('dim', function (d) { return !matched[d.id]; });
+      labelSel.classed('dim', function (d) { return !matched[d.id]; });
+      linkSel.classed('hi', false);
+    }
+
+    $filter.addEventListener('input', function () {
+      state.filterText = $filter.value;
+      // We need the selections to re-apply. Cheap path: re-render.
+      // For interactive smoothness with large graphs we'd cache, but
+      // current targets are <500 nodes so a re-render is fine.
+      renderGraph();
+    });
+
+    // ----- Side panel: stats + selected-node details -----
+
+    function renderDetails() {
+      clearNode($details);
+      var stats = el('div', { class: 'stats' });
+      stats.textContent = state.nodes.length + ' nodes · ' +
+                          state.edges.length + ' edges';
+      $details.appendChild(stats);
+
+      if (!state.selected) {
+        $details.appendChild(el('div', { class: 'empty',
+          text: 'Click a node to see its neighbors.' }));
+        renderTypeBreakdown();
+        return;
+      }
+      var node = null;
+      for (var i = 0; i < state.nodes.length; i++) {
+        if (state.nodes[i].id === state.selected) { node = state.nodes[i]; break; }
+      }
+      if (!node) return;
+
+      $details.appendChild(el('div', null, [
+        el('span', { class: 'pill', text: node.type }),
+      ]));
+      var heading = el('div', { text: node.label });
+      heading.style.fontWeight = '600';
+      heading.style.margin = '4px 0 6px';
+      heading.style.wordBreak = 'break-word';
+      $details.appendChild(heading);
+
+      // Attrs as a compact dl.
+      if (node.attrs && typeof node.attrs === 'object') {
+        var dl = el('dl', { class: 'meta' });
+        var keys = Object.keys(node.attrs).slice(0, 10);
+        keys.forEach(function (k) {
+          var v = node.attrs[k];
+          if (v == null) return;
+          if (typeof v === 'object') v = JSON.stringify(v);
+          dl.appendChild(el('dt', { text: k }));
+          dl.appendChild(el('dd', { text: clamp(String(v), 200) }));
+        });
+        if (dl.childNodes.length) $details.appendChild(dl);
+      }
+
+      // Neighbors.
+      var neighbors = [];
+      var byId = {};
+      state.nodes.forEach(function (n) { byId[n.id] = n; });
+      state.edges.forEach(function (e) {
+        if (e.source === node.id && byId[e.target]) {
+          neighbors.push({ node: byId[e.target], label: e.label, dir: '→' });
+        } else if (e.target === node.id && byId[e.source]) {
+          neighbors.push({ node: byId[e.source], label: e.label, dir: '←' });
+        }
+      });
+      if (neighbors.length) {
+        $details.appendChild(el('h2', { text: 'Neighbors (' + neighbors.length + ')' }));
+        var ul = el('ul', { class: 'neighbor-list' });
+        neighbors.slice(0, 40).forEach(function (n) {
+          var item = el('li', null, [
+            el('span', { class: 'pill', text: n.node.type }),
+            ' ',
+            document.createTextNode(n.dir + ' ' + clamp(n.node.label, 80) +
+              (n.label ? ' (' + n.label + ')' : '')),
+          ]);
+          item.addEventListener('click', function () {
+            state.selected = n.node.id;
+            renderDetails();
+          });
+          ul.appendChild(item);
+        });
+        $details.appendChild(ul);
+      }
+    }
+
+    function renderTypeBreakdown() {
+      var byType = {};
+      state.nodes.forEach(function (n) {
+        byType[n.type] = (byType[n.type] || 0) + 1;
+      });
+      var types = Object.keys(byType).sort();
+      if (!types.length) return;
+      $details.appendChild(el('h2', { text: 'Node types' }));
+      var wrap = el('div');
+      types.forEach(function (t) {
+        wrap.appendChild(el('span', { class: 'pill',
+          text: t + ' (' + byType[t] + ')' }));
+      });
+      $details.appendChild(wrap);
+    }
+
+    // ----- Boot: seed from URL or window global -----
+
+    var seed = loadFromUrl() || loadFromGlobal();
+    if (seed) ingestPayload(seed);
+
+    // Initial render — guarantees the side panel + stats reflect state
+    // even when no payload arrived yet.
+    renderDetails();
+  })();
+  </script>
+</body>
+</html>

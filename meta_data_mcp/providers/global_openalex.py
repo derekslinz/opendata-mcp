@@ -34,7 +34,8 @@ from typing import Any, List, Optional, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.app_entity_graph_v1 import URI as ENTITY_GRAPH_URI
+from meta_data_mcp.utils import http_get, serialize_for_llm, to_entity_graph_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -109,14 +110,147 @@ def fetch_openalex_search_works(params: OpenAlexSearchWorksParams) -> dict:
     return response.json()
 
 
+def _openalex_works_to_entity_graph_payload(data: dict) -> dict:
+    """Adapt OpenAlex ``/works`` response to the entity-graph payload.
+
+    Each work becomes a ``work`` node; each authorship becomes an
+    ``author`` node connected to its work by an "authored" edge; each
+    concept becomes a ``concept`` node connected to the work by an
+    "about" edge. Authors and concepts dedupe across works — that's
+    what surfaces the co-authorship overlay (two works sharing an
+    author show up as a triangle in the force layout).
+
+    Author nodes are weighted by how many works in the response they
+    appear on; the force layout uses ``weight`` to shorten edges so
+    frequent co-authors cluster visibly.
+    """
+    results = data.get("results", []) if isinstance(data, dict) else []
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    def _add_node(
+        node_id: str, label: str, ntype: str, attrs: dict | None = None
+    ) -> None:
+        if not node_id or node_id in seen_ids:
+            return
+        seen_ids.add(node_id)
+        nodes.append(
+            {
+                "id": node_id,
+                "label": label or node_id,
+                "type": ntype,
+                "attrs": attrs or {},
+            }
+        )
+
+    # Track co-author frequency so edge weights communicate clustering.
+    author_work_counts: dict[str, int] = {}
+
+    for work in results:
+        if not isinstance(work, dict):
+            continue
+        work_id = work.get("id") or work.get("doi")
+        if not work_id:
+            continue
+        work_id = str(work_id)
+        title = work.get("title") or work.get("display_name") or work_id
+        _add_node(
+            work_id,
+            str(title),
+            "work",
+            {
+                "doi": work.get("doi"),
+                "publication_year": work.get("publication_year"),
+                "cited_by_count": work.get("cited_by_count"),
+                "type": work.get("type"),
+            },
+        )
+
+        authorships = work.get("authorships") or []
+        if isinstance(authorships, list):
+            for ship in authorships:
+                if not isinstance(ship, dict):
+                    continue
+                author = ship.get("author") or {}
+                if not isinstance(author, dict):
+                    continue
+                author_id = author.get("id") or author.get("orcid")
+                if not author_id:
+                    continue
+                author_id = str(author_id)
+                author_work_counts[author_id] = author_work_counts.get(author_id, 0) + 1
+                _add_node(
+                    author_id,
+                    str(author.get("display_name") or author_id),
+                    "author",
+                    {
+                        "orcid": author.get("orcid"),
+                        "institutions": [
+                            inst.get("display_name")
+                            for inst in (ship.get("institutions") or [])
+                            if isinstance(inst, dict) and inst.get("display_name")
+                        ]
+                        or None,
+                    },
+                )
+                edges.append(
+                    {
+                        "source": work_id,
+                        "target": author_id,
+                        "label": "authored",
+                        "weight": 1,
+                    }
+                )
+
+        concepts = work.get("concepts") or []
+        if isinstance(concepts, list):
+            # Restrict to top-3 concepts per work — beyond that the
+            # graph gets dominated by generic taxonomy terms.
+            for concept in concepts[:3]:
+                if not isinstance(concept, dict):
+                    continue
+                concept_id = concept.get("id")
+                if not concept_id:
+                    continue
+                concept_id = str(concept_id)
+                _add_node(
+                    concept_id,
+                    str(concept.get("display_name") or concept_id),
+                    "concept",
+                    {"level": concept.get("level"), "score": concept.get("score")},
+                )
+                edges.append(
+                    {
+                        "source": work_id,
+                        "target": concept_id,
+                        "label": "about",
+                        "weight": max(1.0, float(concept.get("score") or 0.0) * 2.0),
+                    }
+                )
+
+    # Promote author edge weights by works-shared count so the force
+    # layout pulls prolific co-authors closer to their works cluster.
+    for e in edges:
+        if e["label"] == "authored":
+            e["weight"] = author_work_counts.get(e["target"], 1)
+
+    return {"nodes": nodes, "edges": edges}
+
+
 async def handle_openalex_search_works(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
-    """Handle the openalex-search-works tool call."""
+    """Handle the openalex-search-works tool call.
+
+    Returns the response shaped for the entity-graph app primitive so
+    the bound bundle can render works↔authors↔concepts directly.
+    """
     try:
         params = OpenAlexSearchWorksParams(**(arguments or {}))
         data = fetch_openalex_search_works(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        payload = _openalex_works_to_entity_graph_payload(data)
+        return [types.TextContent(type="text", text=to_entity_graph_text(payload))]
     except Exception as e:
         log.error(f"Error searching OpenAlex works: {e}")
         raise
@@ -127,6 +261,10 @@ TOOLS.append(
         name="openalex-search-works",
         description="Search OpenAlex works with free text, filters, sort, and paging.",
         inputSchema=OpenAlexSearchWorksParams.model_json_schema(),
+        # MCP Apps binding: works↔authors↔concepts surface for the
+        # entity-graph app. Use the alias keyword (``_meta=``) — ``meta=``
+        # silently drops into extras; see tests/test_ui_resource.py.
+        _meta={"ui": {"resourceUri": ENTITY_GRAPH_URI}},
     )
 )
 TOOLS_HANDLERS["openalex-search-works"] = handle_openalex_search_works
