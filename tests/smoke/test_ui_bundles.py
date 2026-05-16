@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-playwright = pytest.importorskip(
+pytest.importorskip(
     "playwright.sync_api",
     reason="Playwright not installed — run `uv sync --group smoke` to enable smoke tests.",
 )
