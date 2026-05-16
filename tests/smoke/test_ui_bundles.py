@@ -139,7 +139,6 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
             "attrs": {"method": "X-RAY DIFFRACTION", "resolution": 1.74},
         },
     },
-<<<<<<< HEAD
     "app_news_tone_v1.html": {
         "events": [
             {
@@ -176,7 +175,7 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
             "volume_timeline": [],
             "query": "smoke",
         },
-=======
+    },
     # Network-topology app: rendered idle when no payload is provided,
     # populated when a topology payload is pushed in. The sample payload
     # exercises the focus-node highlight + all three relationship edge
@@ -194,7 +193,6 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
             {"source_asn": 3333, "target_asn": 9999, "relationship": "downstream"},
         ],
         "focus_asn": 3333,
->>>>>>> 9b7eaab (feat(v2/phase5): network-topology app — ASN graph across RIPEstat + BGPView)
     },
 }
 
@@ -211,11 +209,8 @@ ROOT_SELECTORS: dict[str, str] = {
     "app_entity_graph_v1.html": "#app, #graph",
     "app_museum_v1.html": "#app, #grid",
     "app_molecular_v1.html": "#app, #viewer-pane",
-<<<<<<< HEAD
     "app_news_tone_v1.html": "#app",
-=======
     "app_network_topology_v1.html": "#app, #graph",
->>>>>>> 9b7eaab (feat(v2/phase5): network-topology app — ASN graph across RIPEstat + BGPView)
 }
 
 # CDN origins to ignore in error filtering. Bundle's own inline JS has no

@@ -36,7 +36,13 @@ from meta_data_mcp.ui_resources.app_network_topology_v1 import (
     URI as NETWORK_TOPOLOGY_URI,
 )
 from meta_data_mcp.ui_resources.shape_geofeatures_v1 import URI as GEOFEATURES_URI
-from meta_data_mcp.utils import http_get, serialize_for_llm, to_geofeatures_text
+from meta_data_mcp.utils import (
+    MAX_RESPONSE_CHARS,
+    http_get,
+    to_entity_graph_text,
+    to_geofeatures_text,
+    to_json_text,
+)
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +91,11 @@ async def handle_ripestat_network_info(
             raise ValueError("resource is required")
         params = RIPEStatNetworkInfoParams(**arguments)
         data = fetch_ripestat_network_info(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat network info: {e}")
         raise
@@ -144,7 +154,11 @@ async def handle_ripestat_bgp_state(
             raise ValueError("resource is required")
         params = RIPEStatBGPStateParams(**arguments)
         data = fetch_ripestat_bgp_state(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat BGP state: {e}")
         raise
@@ -196,7 +210,11 @@ async def handle_ripestat_prefix_overview(
             raise ValueError("resource is required")
         params = RIPEStatPrefixOverviewParams(**arguments)
         data = fetch_ripestat_prefix_overview(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat prefix overview: {e}")
         raise
@@ -269,7 +287,11 @@ async def handle_ripestat_announced_prefixes(
             raise ValueError("resource is required")
         params = RIPEStatAnnouncedPrefixesParams(**arguments)
         data = fetch_ripestat_announced_prefixes(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat announced prefixes: {e}")
         raise
@@ -334,7 +356,11 @@ async def handle_ripestat_routing_history(
             raise ValueError("resource is required")
         params = RIPEStatRoutingHistoryParams(**arguments)
         data = fetch_ripestat_routing_history(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat routing history: {e}")
         raise
@@ -511,7 +537,7 @@ async def handle_ripestat_asn_neighbours(
         params = RIPEStatASNNeighboursParams(**arguments)
         data = fetch_ripestat_asn_neighbours(params)
         payload = _ripestat_asn_neighbours_to_topology_payload(data, params.resource)
-        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+        return [types.TextContent(type="text", text=to_entity_graph_text(payload))]
     except Exception as e:
         log.error(f"Error fetching RIPEstat ASN neighbours: {e}")
         raise
@@ -587,7 +613,11 @@ async def handle_ripestat_asn_neighbours_history(
             raise ValueError("resource is required")
         params = RIPEStatASNNeighboursHistoryParams(**arguments)
         data = fetch_ripestat_asn_neighbours_history(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching RIPEstat ASN neighbours history: {e}")
         raise
