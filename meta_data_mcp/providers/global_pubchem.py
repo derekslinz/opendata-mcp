@@ -16,7 +16,8 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.app_molecular_v1 import URI as MOLECULAR_APP_URI
+from meta_data_mcp.utils import MAX_RESPONSE_CHARS, http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -61,7 +62,11 @@ async def handle_pubchem_compound(
     try:
         params = PubChemCompoundParams(**(arguments or {}))
         data = fetch_pubchem_compound(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching PubChem compound: {e}")
         raise
@@ -72,6 +77,13 @@ TOOLS.append(
         name="pubchem-compound",
         description="Fetch chemical compound data from PubChem by name, CID, etc.",
         inputSchema=PubChemCompoundParams.model_json_schema(),
+        # MCP Apps binding: render via the molecular structure app. The
+        # compound endpoint returns CID + properties; the app derives a
+        # /cid/<CID>/SDF?record_type=3d URL for the actual 3D coordinates.
+        # pubchem-substance is intentionally NOT bound: substances are
+        # depositor-supplied records that often lack 3D coordinates, and
+        # the viewer would render an empty canvas.
+        _meta={"ui": {"resourceUri": MOLECULAR_APP_URI}},
     )
 )
 TOOLS_HANDLERS["pubchem-compound"] = handle_pubchem_compound
@@ -102,7 +114,11 @@ async def handle_pubchem_substance(
     try:
         params = PubChemSubstanceParams(**(arguments or {}))
         data = fetch_pubchem_substance(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching PubChem substance: {e}")
         raise

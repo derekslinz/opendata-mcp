@@ -102,6 +102,23 @@ SAMPLE_PAYLOADS: dict[str, dict[str, Any] | None] = {
             {"id": 999999, "title": "Untitled (no image)"},
         ],
     },
+    # Molecular app: a seed envelope with a structure.url avoids a real
+    # network fetch during smoke. WebGL is disabled in headless Chromium
+    # by default so 3Dmol.js may not paint, but the UI shell still mounts
+    # and the metadata pane renders — that's what the smoke test checks.
+    "app_molecular_v1.html": {
+        "structure": {
+            "format": "pdb",
+            "url": "https://files.rcsb.org/download/4HHB.pdb",
+            "identifier": "4HHB",
+        },
+        "metadata": {
+            "name": "4HHB",
+            "title": "Hemoglobin (smoke)",
+            "source": "RCSB PDB",
+            "attrs": {"method": "X-RAY DIFFRACTION", "resolution": 1.74},
+        },
+    },
 }
 
 # At least one element matching the selector must be present after load. We
@@ -115,15 +132,23 @@ ROOT_SELECTORS: dict[str, str] = {
     "app_vulnerability_v1.html": "#app",
     "app_entity_graph_v1.html": "#app, #graph",
     "app_museum_v1.html": "#app, #grid",
+    "app_molecular_v1.html": "#app, #viewer-pane",
 }
 
 # CDN origins to ignore in error filtering. Bundle's own inline JS has no
 # source URL on its errors; CDN scripts identify themselves via the URL in
 # the error's stack/location.
+#
+# ``3dmol.org`` is here because 3Dmol.js needs WebGL to initialise and
+# headless Chromium ships with WebGL disabled by default — when the
+# library tries to create a GL context it logs a console.error from the
+# CDN script. That's a property of the headless env, not our bundle.
+# We pin the bundle's #app shell mounting via ROOT_SELECTORS instead.
 CDN_ORIGINS_TO_IGNORE = (
     "cdn.plot.ly",
     "unpkg.com",
     "cdn.jsdelivr.net",
+    "3dmol.org",
 )
 
 

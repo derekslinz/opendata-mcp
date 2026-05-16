@@ -16,7 +16,8 @@ from typing import Any, List, Sequence
 import mcp.types as types
 from pydantic import BaseModel, Field
 
-from meta_data_mcp.utils import http_get, serialize_for_llm
+from meta_data_mcp.ui_resources.app_molecular_v1 import URI as MOLECULAR_APP_URI
+from meta_data_mcp.utils import MAX_RESPONSE_CHARS, http_get, to_json_text
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -57,7 +58,11 @@ async def handle_pdb_entry(
     try:
         params = PDBEntryParams(**(arguments or {}))
         data = fetch_pdb_entry(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching PDB entry: {e}")
         raise
@@ -68,6 +73,14 @@ TOOLS.append(
         name="pdb-entry",
         description="Fetch 3D macromolecular structure metadata from RCSB PDB by entry ID.",
         inputSchema=PDBEntryParams.model_json_schema(),
+        # MCP Apps binding: render via the molecular structure app. The
+        # entry endpoint returns metadata (title, resolution, method); the
+        # app derives a files.rcsb.org/download/<ID>.pdb URL for the atoms.
+        # pdb-polymer-entity is intentionally NOT bound: it returns one
+        # chain's metadata only, with no separable structure URL — the
+        # viewer would have nothing to render that the parent entry
+        # doesn't already provide.
+        _meta={"ui": {"resourceUri": MOLECULAR_APP_URI}},
     )
 )
 TOOLS_HANDLERS["pdb-entry"] = handle_pdb_entry
@@ -100,7 +113,11 @@ async def handle_pdb_polymer(
     try:
         params = PDBPolymerParams(**(arguments or {}))
         data = fetch_pdb_polymer(params)
-        return [types.TextContent(type="text", text=serialize_for_llm(data))]
+        return [
+            types.TextContent(
+                type="text", text=to_json_text(data, max_chars=MAX_RESPONSE_CHARS)
+            )
+        ]
     except Exception as e:
         log.error(f"Error fetching PDB polymer entity: {e}")
         raise
