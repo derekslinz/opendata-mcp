@@ -24,6 +24,8 @@ from mcp.server import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
 
+from meta_data_mcp import provenance
+
 log = logging.getLogger(__name__)
 
 
@@ -226,10 +228,14 @@ def create_mcp_server(
             raise AttributeError(f"Tool {name} not found")
 
         try:
-            return await _tools_handlers[name](arguments)
+            result = await _tools_handlers[name](arguments)
         except Exception as e:
             log.error(f"Error calling tool {name}: {e}")
             raise
+
+        if provenance.is_enabled():
+            result = provenance.attach(result, tool_name=name, arguments=arguments)
+        return result
 
     # register the prompts
     @server.list_prompts()
