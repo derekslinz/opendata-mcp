@@ -62,6 +62,5 @@ def test_uris_has_no_duplicate_values() -> None:
     """No two catalog entries point at the same URI."""
     values = list(URIS.values())
     assert len(values) == len(set(values)), (
-        "Duplicate URI in URIS catalog: "
-        f"{[u for u in values if values.count(u) > 1]}"
+        f"Duplicate URI in URIS catalog: {[u for u in values if values.count(u) > 1]}"
     )
