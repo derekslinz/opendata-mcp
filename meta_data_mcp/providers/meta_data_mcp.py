@@ -29,6 +29,7 @@ import mcp.types as types
 from pydantic import AnyUrl, BaseModel, Field
 
 from meta_data_mcp import health
+
 # Re-export the activation state + loader plumbing. Architecture review §H2
 # moved these into meta_data_mcp.discovery.{state,loader} but the surface
 # stays importable from this module so existing call sites and the ~30
