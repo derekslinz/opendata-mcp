@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Discovery — meta-data-mcp app v1</title>
+  <!--
+    ui://meta-data-mcp/app/discovery/v1 — Phase 3 discovery app.
+
+    Wraps the five meta tools (opendata-find-providers, opendata-list-domains,
+    opendata-list-regions, opendata-list-active-providers,
+    opendata-activate-provider) plus the new opendata-health-snapshot into one
+    panel: faceted filter (domain × region × text), ranked provider list with
+    score breakdown + health badge, click-to-activate, and a bottom "active
+    providers" tray.
+
+    Postmessage protocol (host ⇄ app):
+
+      host → app  (passive renders, payload pushed in)
+        { type: "tool_result", tool: <name>, id?: <correlation>, payload: <body> }
+        { type: "render",      payload: <body> }                       (legacy)
+
+      app → host  (active tool calls — Phase 3 invention; the MCP Apps spec
+                    hasn't ratified an app→host call envelope yet, so we pick
+                    a shape that mirrors the JSON-RPC tools/call request and
+                    document it here for downstream adopters.)
+        { type: "tool_call", id: <uuid>, name: <tool-name>, arguments: {...} }
+
+    Dependency-free vanilla JS. The discovery panel is text + buttons — no
+    chart libraries. This is the simplest possible app and also the
+    pipeline's end-to-end smoke test; see Plans/linear-swimming-pond.md §3.
+
+    Security note: this bundle never assigns to ``.innerHTML``. All DOM
+    mutation goes through ``textContent`` / ``replaceChildren`` / explicit
+    element creation, so untrusted upstream JSON cannot inject markup.
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e5e5e5;
+      --accent: #2563eb;
+      --accent-bg: #eff6ff;
+      --header-bg: #f8fafc;
+      --row-hover: #f1f5f9;
+      --good: #16a34a;
+      --warn: #d97706;
+      --bad:  #dc2626;
+      --pill-bg: #e2e8f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f17;
+        --fg: #e8edf3;
+        --muted: #9aa3af;
+        --border: #1f2937;
+        --accent: #60a5fa;
+        --accent-bg: #1e293b;
+        --header-bg: #111827;
+        --row-hover: #182030;
+        --good: #4ade80;
+        --warn: #fbbf24;
+        --bad:  #f87171;
+        --pill-bg: #1f2937;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
+    header { padding: 12px 16px; border-bottom: 1px solid var(--border);
+      background: var(--header-bg); display: flex; gap: 12px; align-items: center; }
+    header h1 { margin: 0; font-size: 14px; font-weight: 600; }
+    header .count { color: var(--muted); font-size: 12px; }
+    main { display: grid; grid-template-columns: 240px 1fr; min-height: 0; }
+    #facets { border-right: 1px solid var(--border); padding: 12px; overflow-y: auto; }
+    #facets section { margin-bottom: 16px; }
+    #facets h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--muted); }
+    #facets label { display: flex; align-items: center; gap: 6px; padding: 2px 0;
+      cursor: pointer; }
+    #facets input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(--border);
+      border-radius: 4px; background: var(--bg); color: var(--fg); }
+    #facets input[type=checkbox], #facets input[type=radio] { accent-color: var(--accent); }
+    #facets button.clear { margin-top: 6px; background: none; border: 1px solid var(--border);
+      color: var(--muted); padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    #facets button.clear:hover { color: var(--fg); }
+    #results { overflow-y: auto; padding: 8px 16px; }
+    #results .empty { color: var(--muted); padding: 24px 8px; }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 12px;
+      padding: 10px 8px; border-bottom: 1px solid var(--border); align-items: start; }
+    .row:hover { background: var(--row-hover); }
+    .row .title { font-weight: 600; }
+    .row .id { color: var(--muted); font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .row .desc { color: var(--muted); margin-top: 4px; }
+    .row .meta { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .pill { background: var(--pill-bg); color: var(--fg); padding: 1px 8px;
+      border-radius: 10px; font-size: 11px; }
+    .pill.score { background: var(--accent-bg); color: var(--accent); }
+    .health { display: inline-flex; gap: 4px; align-items: center; font-size: 11px;
+      color: var(--muted); }
+    .health::before { content: ""; display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--good); }
+    .health.warn::before { background: var(--warn); }
+    .health.bad::before  { background: var(--bad); }
+    .row .activate { padding: 4px 10px; border: 1px solid var(--accent); color: var(--accent);
+      background: transparent; border-radius: 4px; cursor: pointer; font-size: 12px;
+      white-space: nowrap; }
+    .row .activate:hover { background: var(--accent-bg); }
+    .row .activate.active { color: var(--good); border-color: var(--good); cursor: default; }
+    .row .breakdown { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .row .breakdown .seg { font-size: 10px; color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    footer { border-top: 1px solid var(--border); background: var(--header-bg);
+      padding: 8px 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+      font-size: 12px; color: var(--muted); }
+    .error { background: var(--bad); color: white; padding: 6px 10px; margin: 8px 16px;
+      border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>OpenData Provider Discovery</h1>
+      <span class="count" id="count">Loading…</span>
+    </header>
+    <main>
+      <aside id="facets">
+        <section>
+          <h3>Search</h3>
+          <input type="text" id="qbox" placeholder="weather, climate, FX…" autocomplete="off">
+        </section>
+        <section id="domains-section">
+          <h3>Domain</h3>
+          <div id="domains"></div>
+        </section>
+        <section id="regions-section">
+          <h3>Region</h3>
+          <div id="regions"></div>
+        </section>
+        <button class="clear" id="clearbtn">Clear filters</button>
+      </aside>
+      <section id="results"></section>
+    </main>
+    <footer id="active-tray">
+      <span>Active:</span>
+      <span class="count" id="active-count">0 providers</span>
+    </footer>
+  </div>
+  <script>
+  (function () {
+    'use strict';
+
+    // ----- State -----
+    var state = {
+      query: '',
+      domain: null,
+      region: null,
+      domains: [],     // [{name, count?}]
+      regions: [],     // [{name, count?}]
+      providers: [],   // [ProviderEntry]
+      breakdowns: {},  // { provider_id: {strategy: score} }
+      health: {},      // { provider_id: {score, failure_mass, last_update_ts} }
+      activeIds: new Set(),
+      pendingCalls: {}, // correlation id → resolver
+    };
+
+    // ----- DOM refs -----
+    var $count = document.getElementById('count');
+    var $qbox = document.getElementById('qbox');
+    var $domains = document.getElementById('domains');
+    var $regions = document.getElementById('regions');
+    var $results = document.getElementById('results');
+    var $clear = document.getElementById('clearbtn');
+    var $activeCount = document.getElementById('active-count');
+
+    // ----- Helpers -----
+
+    function el(tag, attrs, children) {
+      var node = document.createElement(tag);
+      if (attrs) {
+        for (var k in attrs) {
+          if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+          if (k === 'class') node.className = attrs[k];
+          else if (k === 'text') node.textContent = attrs[k];
+          else if (k === 'on') {
+            for (var ev in attrs[k]) {
+              if (Object.prototype.hasOwnProperty.call(attrs[k], ev)) {
+                node.addEventListener(ev, attrs[k][ev]);
+              }
+            }
+          } else if (k === 'disabled') {
+            if (attrs[k]) node.setAttribute('disabled', 'disabled');
+          } else {
+            node.setAttribute(k, attrs[k]);
+          }
+        }
+      }
+      if (children) {
+        children.forEach(function (c) {
+          if (c == null) return;
+          node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+        });
+      }
+      return node;
+    }
+
+    function clearNode(node) {
+      // replaceChildren() with no args removes all children safely without
+      // triggering innerHTML.
+      node.replaceChildren();
+    }
+
+    // ----- Postmessage transport -----
+
+    function newCallId() {
+      // RFC4122-ish, sufficient for correlation; not security-sensitive.
+      return 'tc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function callTool(name, args) {
+      // Fire an app→host tool_call message. Returns a Promise resolved
+      // when the host pushes back a tool_result with the same id.
+      // If the host doesn't echo the id back we fall back to matching
+      // by tool name (best-effort).
+      var id = newCallId();
+      var msg = { type: 'tool_call', id: id, name: name, arguments: args || {} };
+      return new Promise(function (resolve, reject) {
+        state.pendingCalls[id] = { resolve: resolve, reject: reject, name: name, t: Date.now() };
+        try {
+          window.parent.postMessage(msg, '*');
+        } catch (e) {
+          delete state.pendingCalls[id];
+          reject(e);
+        }
+        // 30s timeout — long enough for slow upstreams, short enough to
+        // surface a "host didn't respond" hint in the UI.
+        setTimeout(function () {
+          if (state.pendingCalls[id]) {
+            delete state.pendingCalls[id];
+            reject(new Error('tool call timed out: ' + name));
+          }
+        }, 30000);
+      });
+    }
+
+    function handleIncomingMessage(ev) {
+      if (ev.source !== window.parent) return;
+      var msg = ev.data;
+      if (!msg || typeof msg !== 'object') return;
+
+      // tool_result: an answer to a previous tool_call (or an unsolicited push).
+      if (msg.type === 'tool_result' || msg.type === 'render') {
+        var id = msg.id;
+        var name = msg.tool || msg.name;
+        var payload = msg.payload;
+
+        if (id && state.pendingCalls[id]) {
+          var pending = state.pendingCalls[id];
+          delete state.pendingCalls[id];
+          pending.resolve(payload);
+          return;
+        }
+
+        // Unsolicited push (e.g. initial render). Dispatch by tool name when
+        // present, otherwise treat as a generic find-providers payload — the
+        // host preloads this app via opendata-find-providers, so that's the
+        // most likely shape.
+        if (name === 'opendata-list-domains') {
+          if (payload && Array.isArray(payload.domains)) {
+            state.domains = payload.domains.slice();
+            renderFacetDomains();
+          }
+        } else if (name === 'opendata-list-regions') {
+          if (payload && Array.isArray(payload.regions)) {
+            state.regions = payload.regions.slice();
+            renderFacetRegions();
+          }
+        } else if (name === 'opendata-list-active-providers') {
+          if (payload && Array.isArray(payload.active_providers)) {
+            state.activeIds = new Set(payload.active_providers);
+            renderActiveTray();
+            renderResults();
+          }
+        } else if (name === 'opendata-health-snapshot') {
+          if (payload && payload.snapshot && typeof payload.snapshot === 'object') {
+            state.health = payload.snapshot;
+            renderResults();
+          }
+        } else {
+          // Default: assume find-providers shape.
+          ingestFindProvidersPayload(payload);
+        }
+      }
+    }
+
+    window.addEventListener('message', handleIncomingMessage);
+
+    // ----- Develop-mode ingress (matches the shape-primitive pattern) -----
+
+    function loadFromUrl() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var b64 = params.get('data');
+        if (!b64) return null;
+        var s = b64.replace(/ /g, '+').replace(/-/g, '+').replace(/_/g, '/');
+        var pad = s.length % 4;
+        if (pad) s += new Array(5 - pad).join('=');
+        var binary = atob(s);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      } catch (e) {
+        showError('Invalid ?data= URL parameter: ' + e.message);
+        return null;
+      }
+    }
+
+    function loadFromGlobal() {
+      return (typeof window.__app_data__ === 'object' && window.__app_data__) || null;
+    }
+
+    var seed = loadFromUrl() || loadFromGlobal();
+    if (seed) ingestFindProvidersPayload(seed);
+
+    // ----- Ingest -----
+
+    function ingestFindProvidersPayload(payload) {
+      if (!payload || typeof payload !== 'object') return;
+      if (Array.isArray(payload.providers)) {
+        state.providers = payload.providers;
+      }
+      if (payload.breakdowns && typeof payload.breakdowns === 'object') {
+        state.breakdowns = payload.breakdowns;
+      }
+      if (Array.isArray(payload.auto_activated)) {
+        payload.auto_activated.forEach(function (a) {
+          if (a && a.provider_id) state.activeIds.add(a.provider_id);
+        });
+      }
+      renderResults();
+      renderActiveTray();
+      // After we know which providers were returned, fetch a health snapshot
+      // for them so the badges populate. Don't block rendering on this.
+      refreshHealth();
+    }
+
+    // ----- Render -----
+
+    function renderFacetDomains() {
+      clearNode($domains);
+      state.domains.forEach(function (d) {
+        var name = typeof d === 'string' ? d : d.name;
+        if (!name) return;
+        var cb = el('input', { type: 'radio', name: 'domain', value: name });
+        if (state.domain === name) cb.checked = true;
+        cb.addEventListener('change', function () {
+          state.domain = cb.checked ? name : null;
+          search();
+        });
+        $domains.appendChild(el('label', null, [cb, ' ' + name]));
+      });
+    }
+
+    function renderFacetRegions() {
+      clearNode($regions);
+      state.regions.forEach(function (r) {
+        var name = typeof r === 'string' ? r : r.name;
+        if (!name) return;
+        var cb = el('input', { type: 'radio', name: 'region', value: name });
+        if (state.region === name) cb.checked = true;
+        cb.addEventListener('change', function () {
+          state.region = cb.checked ? name : null;
+          search();
+        });
+        $regions.appendChild(el('label', null, [cb, ' ' + name]));
+      });
+    }
+
+    function renderResults() {
+      clearNode($results);
+      if (!state.providers.length) {
+        var msg = state.query || state.domain || state.region
+          ? 'No matching providers.'
+          : 'Search or pick a filter to see providers.';
+        $results.appendChild(el('div', { class: 'empty', text: msg }));
+        $count.textContent = '0 results';
+        return;
+      }
+      $count.textContent = state.providers.length + ' result' +
+        (state.providers.length === 1 ? '' : 's');
+      state.providers.forEach(function (p) {
+        $results.appendChild(renderRow(p));
+      });
+    }
+
+    function renderRow(p) {
+      var left = el('div', null, [
+        el('div', { class: 'title', text: p.title || p.id }),
+        el('div', { class: 'id', text: p.id }),
+      ]);
+      if (p.description) {
+        left.appendChild(el('div', { class: 'desc', text: p.description }));
+      }
+
+      var meta = el('div', { class: 'meta' });
+      (p.domains || []).forEach(function (d) {
+        meta.appendChild(el('span', { class: 'pill', text: d }));
+      });
+      (p.regions || []).forEach(function (r) {
+        meta.appendChild(el('span', { class: 'pill', text: r }));
+      });
+      var health = state.health[p.id];
+      if (health) {
+        var score = typeof health.score === 'number' ? health.score : 1.0;
+        var cls = 'health' + (score < 0.5 ? ' bad' : (score < 0.9 ? ' warn' : ''));
+        meta.appendChild(el('span', { class: cls, text: 'health ' + score.toFixed(2) }));
+      }
+      left.appendChild(meta);
+
+      var breakdown = state.breakdowns[p.id];
+      if (breakdown && typeof breakdown === 'object') {
+        var bd = el('div', { class: 'breakdown' });
+        Object.keys(breakdown).forEach(function (k) {
+          var v = breakdown[k];
+          if (typeof v !== 'number') return;
+          bd.appendChild(el('span', { class: 'seg', text: k + ':' + v.toFixed(2) }));
+        });
+        if (bd.childNodes.length) left.appendChild(bd);
+      }
+
+      var btn;
+      if (state.activeIds.has(p.id)) {
+        btn = el('button', { class: 'activate active', text: '✓ active', disabled: true });
+      } else {
+        btn = el('button', { class: 'activate', text: 'Activate' });
+        btn.addEventListener('click', function () { activateProvider(p.id, btn); });
+      }
+
+      return el('div', { class: 'row' }, [left, btn]);
+    }
+
+    function renderActiveTray() {
+      var n = state.activeIds.size;
+      $activeCount.textContent = n + ' provider' + (n === 1 ? '' : 's');
+    }
+
+    function showError(text) {
+      var div = el('div', { class: 'error', text: text });
+      document.body.insertBefore(div, document.getElementById('app'));
+      setTimeout(function () { div.remove(); }, 6000);
+    }
+
+    // ----- Actions -----
+
+    function debounce(fn, ms) {
+      var t;
+      return function () {
+        clearTimeout(t);
+        var args = arguments, ctx = this;
+        t = setTimeout(function () { fn.apply(ctx, args); }, ms);
+      };
+    }
+
+    var search = debounce(function () {
+      var args = { limit: 20 };
+      if (state.query) args.query = state.query;
+      if (state.domain) args.domain = state.domain;
+      if (state.region) args.region = state.region;
+      callTool('opendata-find-providers', args).then(function (payload) {
+        ingestFindProvidersPayload(payload);
+      }).catch(function (err) {
+        showError('find-providers failed: ' + err.message);
+      });
+    }, 250);
+
+    function activateProvider(pid, btn) {
+      btn.disabled = true;
+      btn.textContent = '…';
+      callTool('opendata-activate-provider', { provider_id: pid }).then(function (payload) {
+        if (payload && (payload.status === 'activated' || payload.status === 'already_active')) {
+          state.activeIds.add(pid);
+        }
+        renderActiveTray();
+        renderResults();
+      }).catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Activate';
+        showError('activate failed: ' + err.message);
+      });
+    }
+
+    function refreshHealth() {
+      var ids = state.providers.map(function (p) { return p.id; });
+      if (!ids.length) return;
+      callTool('opendata-health-snapshot', { provider_ids: ids }).then(function (payload) {
+        if (payload && payload.snapshot) {
+          state.health = payload.snapshot;
+          renderResults();
+        }
+      }).catch(function () {
+        // Health is advisory — silently ignore failures so the panel
+        // remains usable even if the snapshot endpoint isn't wired yet.
+      });
+    }
+
+    $qbox.addEventListener('input', function () {
+      state.query = $qbox.value.trim();
+      search();
+    });
+    $clear.addEventListener('click', function () {
+      state.query = ''; state.domain = null; state.region = null;
+      $qbox.value = '';
+      renderFacetDomains(); renderFacetRegions();
+      search();
+    });
+
+    // ----- Bootstrap -----
+
+    // Kick off the discovery flow: parallel-load domains, regions, active list,
+    // and an initial provider list. Each lands via the postMessage handler.
+    function boot() {
+      callTool('opendata-list-domains', {}).then(function (payload) {
+        if (payload && Array.isArray(payload.domains)) {
+          state.domains = payload.domains.slice();
+          renderFacetDomains();
+        }
+      }).catch(function () { /* non-fatal */ });
+      callTool('opendata-list-regions', {}).then(function (payload) {
+        if (payload && Array.isArray(payload.regions)) {
+          state.regions = payload.regions.slice();
+          renderFacetRegions();
+        }
+      }).catch(function () { /* non-fatal */ });
+      callTool('opendata-list-active-providers', {}).then(function (payload) {
+        if (payload && Array.isArray(payload.active_providers)) {
+          state.activeIds = new Set(payload.active_providers);
+          renderActiveTray();
+        }
+      }).catch(function () { /* non-fatal */ });
+      // Empty initial query → show top 20 providers (no relevance filter needed).
+      search();
+    }
+
+    // Only auto-boot when we don't already have seed data — keeps the
+    // ?data= dev path predictable and lets tests pin state externally.
+    if (!seed) boot();
+
+    // Initial empty render so the panel isn't blank pre-first-tool-call.
+    renderResults();
+  })();
+  </script>
+</body>
+</html>

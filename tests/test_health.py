@@ -174,15 +174,146 @@ async def test_routing_engine_combined_score_penalizes_unhealthy_provider():
     for _ in range(3):
         health.record_failure("flaky-1")
 
-    healthy_score, _ = await engine._combined_score("weather data", healthy, False)
-    flaky_score, _ = await engine._combined_score("weather data", flaky, False)
+    healthy_score, _, _ = await engine._combined_score("weather data", healthy, False)
+    flaky_score, _, _ = await engine._combined_score("weather data", flaky, False)
 
     assert healthy_score > flaky_score
 
 
 @pytest.mark.anyio
-async def test_default_engine_health_weight_is_zero():
-    """Default engine must not change behavior — health weight is 0."""
+async def test_default_engine_health_weight_is_nonzero():
+    """Phase 3 activation: the routing engine's health weight is no longer 0.
+
+    Pre-Phase-3 the weight was 0.0 because the kernel ``http_get`` health
+    feed hadn't been wired through every provider yet. After Phase 4
+    shipped the binding sweep the baseline is reliable, so Phase 3 bumps
+    the weight to a low but non-zero value (``0.05`` raw, normalized
+    proportionally). This test pins that decision so a future revert is
+    intentional rather than accidental.
+    """
     engine = RoutingEngine()
-    # After normalization (weights sum to 1), health weight stays 0.
-    assert engine.weights["health"] == 0.0
+    # After normalization (weights sum to 1), health weight is the raw
+    # weight (0.05) divided by the raw total (1.05) ≈ 0.0476.
+    assert engine.weights["health"] > 0.0
+    assert engine.weights["health"] < 0.1
+
+
+# ---------- snapshot() helper (Phase 3) ----------
+
+
+def test_snapshot_unknown_provider_defaults_to_healthy():
+    """When a caller asks for a provider that's never been recorded, the
+    snapshot returns the fully-healthy baseline rather than omitting the
+    entry. This keeps the discovery app's UI free of "missing badge"
+    edge cases."""
+    snap = health.snapshot(["never-seen"])
+    assert snap == {
+        "never-seen": {
+            "score": 1.0,
+            "failure_mass": 0.0,
+            "last_update_ts": None,
+        }
+    }
+
+
+def test_snapshot_reflects_recorded_failures():
+    health._clock = lambda: 1000.0
+    health.record_failure("p1")
+    snap = health.snapshot(["p1"], now=1000.0)
+    assert snap["p1"]["score"] < 1.0
+    assert snap["p1"]["failure_mass"] > 0.0
+    assert snap["p1"]["last_update_ts"] == 1000.0
+
+
+def test_snapshot_consistent_with_health_score():
+    """The snapshot's score field MUST equal what health_score() would
+    return at the same instant — otherwise the UI badge and the scorer
+    disagree about which providers are 'healthy enough to route to'."""
+    health._clock = lambda: 0.0
+    health.record_failure("p2")
+    health.record_failure("p2")
+    health._clock = lambda: 60.0
+    snap = health.snapshot(["p2"], now=60.0)
+    assert snap["p2"]["score"] == pytest.approx(health.health_score("p2", now=60.0))
+
+
+def test_snapshot_without_ids_returns_all_recorded_providers():
+    health._clock = lambda: 0.0
+    health.record_failure("alpha")
+    health.record_success("beta")
+    snap = health.snapshot()
+    assert set(snap.keys()) == {"alpha", "beta"}
+
+
+def test_snapshot_returns_fresh_dict_caller_mutation_safe():
+    """The caller must be able to mutate the returned dict without
+    corrupting the in-memory registry."""
+    health._clock = lambda: 0.0
+    health.record_failure("p")
+    snap = health.snapshot(["p"])
+    snap["p"]["score"] = -999.0  # caller stomps the value
+    # Internal state is unaffected.
+    again = health.snapshot(["p"])
+    assert again["p"]["score"] >= 0.0
+
+
+# ---------- V12 fix: 401/403 must not degrade health (Phase 3) ----------
+
+
+def test_record_failure_skipped_for_401_403(monkeypatch):
+    """``utils.http_get`` and ``http_post`` should NOT call
+    ``health.record_failure`` for 401/403 responses — those indicate
+    caller-side credential misconfig, not upstream fault. Penalizing the
+    provider would bias routing away from a provider that's actually
+    healthy. This test pins the wiring at the call-site, where the
+    decision is made.
+    """
+    import httpx
+
+    from meta_data_mcp import utils as utils_module
+    from meta_data_mcp.errors import AuthError
+
+    request = httpx.Request("GET", "https://example.test/auth")
+    response = httpx.Response(status_code=401, request=request)
+
+    # Build a fake httpx.get that returns a 401 response. ``raise_for_status``
+    # on the real Response object will raise HTTPStatusError, which is the
+    # path that exercises the V12 branch.
+    def fake_get(url, **kwargs):
+        return response
+
+    monkeypatch.setattr(utils_module.httpx, "get", fake_get)
+
+    # Make sure health starts clean for this provider.
+    health.reset("auth-provider")
+
+    with pytest.raises(AuthError):
+        utils_module.http_get("https://example.test/auth", provider="auth-provider")
+
+    # No failure should have been recorded — score remains a baseline 1.0.
+    assert health.health_score("auth-provider") == 1.0
+
+
+def test_record_failure_still_fires_for_500(monkeypatch):
+    """Sanity counterpart: non-auth status codes (e.g. 500) DO degrade health.
+    Without this the V12 branch could silently swallow all failures."""
+    import httpx
+
+    from meta_data_mcp import utils as utils_module
+    from meta_data_mcp.errors import UpstreamError
+
+    request = httpx.Request("GET", "https://example.test/svc")
+    response = httpx.Response(status_code=500, request=request)
+
+    def fake_get(url, **kwargs):
+        return response
+
+    monkeypatch.setattr(utils_module.httpx, "get", fake_get)
+
+    # Disable retries for this test so we get one shot at the failure.
+    monkeypatch.setenv("OPENDATA_MCP_HTTP_RETRIES", "0")
+
+    health.reset("svc-provider")
+    with pytest.raises(UpstreamError):
+        utils_module.http_get("https://example.test/svc", provider="svc-provider")
+    assert health.health_score("svc-provider") < 1.0

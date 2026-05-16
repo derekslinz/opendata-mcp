@@ -217,12 +217,14 @@ class RoutingEngine:
             "fuzzy": FuzzyScorer(),
             "metadata": MetadataScorer(),
             "semantic": SimpleSemanticScorer(),
-            # Health is now fed by ``http_get`` whenever callers pass
-            # ``provider=``. Default weight stays 0.0 until enough providers
-            # are migrated to the kernel feed — otherwise the 1.0 baseline
-            # for unrecorded providers would lift no-match scores above
-            # find-providers thresholds. Callers can opt in by passing a
-            # non-zero ``health`` weight in ``weights``.
+            # Health is fed by ``http_get`` / ``http_post`` whenever callers
+            # pass ``provider=``. After the Phase 4 sweep every shipped
+            # provider routes through the kernel, so the unrecorded-provider
+            # 1.0 baseline is now an accurate "no known failures" signal
+            # rather than a no-data fallback. Phase 3 raises the default
+            # weight from 0.0 to a small non-zero value so routing can
+            # de-prioritise providers in active failure without dominating
+            # the score. Callers can still override via ``weights``.
             "health": HealthScorer(),
         }
 
@@ -231,7 +233,10 @@ class RoutingEngine:
             "fuzzy": 0.2,
             "metadata": 0.25,
             "semantic": 0.25,
-            "health": 0.0,
+            # Phase 3: bumped from 0.0 → 0.05. Pinned by
+            # tests/test_health.py::test_default_engine_health_weight_is_nonzero
+            # so a future revert is intentional.
+            "health": 0.05,
         }
 
         # Normalize weights
@@ -299,11 +304,19 @@ class RoutingEngine:
             p for p in iter_registry() if self._passes_filters(p, domain, region)
         ]
 
-        # Score each provider
+        # Score each provider. ``has_relevance`` tracks whether any *non-health*
+        # scorer produced a positive signal; this is the inclusion gate. Without
+        # it the Phase-3 health-weight bump (0.0 → 0.05) would lift no-match
+        # queries above zero (every provider gets a 1.0 health baseline, so
+        # combined ≈ 0.05 * health_weight_normalized > 0). That regressed the
+        # "find-providers returns 0 for nonsense queries" contract — pinned by
+        # tests/providers/test_meta_data_mcp.py::test_find_providers_no_match_returns_empty.
         scored: list[ScoredProvider] = []
         for provider in filtered:
             if query and query.strip():
-                score, breakdown = await self._combined_score(query, provider, explain)
+                score, breakdown, has_relevance = await self._combined_score(
+                    query, provider, explain
+                )
             else:
                 score = 1.0
                 breakdown = (
@@ -311,7 +324,9 @@ class RoutingEngine:
                     if explain
                     else None
                 )
-            if score > 0:
+                # No query means "list everything" — every provider is relevant.
+                has_relevance = True
+            if score > 0 and has_relevance:
                 scored.append(
                     ScoredProvider(
                         entry=provider,
@@ -354,10 +369,18 @@ class RoutingEngine:
         query: str | None,
         provider: ProviderEntry,
         explain: bool,
-    ) -> tuple[float, dict[str, float] | None]:
-        """Compute weighted combined score across all strategies."""
+    ) -> tuple[float, dict[str, float] | None, bool]:
+        """Compute weighted combined score across all strategies.
+
+        Returns ``(score, breakdown, has_relevance)`` where ``has_relevance``
+        is True iff at least one *non-health* scorer produced a positive
+        score. Health is excluded from the relevance signal because its
+        baseline for unrecorded providers is 1.0 — it carries no information
+        about whether the query matches a provider.
+        """
         breakdown = {} if explain else None
         combined = 0.0
+        has_relevance = False
 
         for strategy_name, scorer in self.scorers.items():
             weight = self.weights.get(strategy_name, 0.0)
@@ -371,7 +394,12 @@ class RoutingEngine:
             if explain:
                 breakdown[strategy_name] = strategy_score
 
-        return combined, breakdown
+            # Health is the baseline-positive scorer; don't let it forge
+            # relevance. Every other scorer's positive output counts.
+            if strategy_name != "health" and strategy_score > 0.0:
+                has_relevance = True
+
+        return combined, breakdown, has_relevance
 
 
 # Backward-compatible wrapper

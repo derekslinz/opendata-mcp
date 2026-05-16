@@ -22,21 +22,25 @@ server.
 import importlib
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, Sequence
 
 import mcp.types as types
 from pydantic import AnyUrl, BaseModel, Field
 
+from meta_data_mcp import health
 from meta_data_mcp.utils import serialize_for_llm
 
 from meta_data_mcp.registry import (
     REGISTRY,
     get_provider,
+    iter_registry,
     list_domains,
     list_regions,
 )
 from meta_data_mcp.routing import RoutingEngine
+from meta_data_mcp.ui_resources.app_discovery_v1 import URI as DISCOVERY_APP_URI
 
 log = logging.getLogger(__name__)
 
@@ -149,6 +153,11 @@ async def handle_find_providers(
 
     Uses sophisticated multi-criteria routing for intelligent provider ranking.
     Falls back to original token-based search if needed.
+
+    Phase 3: routes with ``explain=True`` and surfaces a ``breakdowns`` field
+    in the payload (``{provider_id: {strategy: score}}``) so the discovery
+    app can render the per-strategy bars in each row. LLM consumers may
+    ignore the extra field.
     """
     try:
         params = FindProvidersParams(**(arguments or {}))
@@ -158,15 +167,20 @@ async def handle_find_providers(
             domain=params.domain,
             region=params.region,
             limit=params.limit,
-            explain=False,
+            explain=True,
         )
 
         # Extract entries for compatibility
         matches = [result.entry for result in scored_results]
+        breakdowns: dict[str, dict[str, float]] = {}
+        for result in scored_results:
+            if result.breakdown:
+                breakdowns[result.entry.id] = dict(result.breakdown)
 
         payload: dict[str, Any] = {
             "count": len(matches),
             "providers": [entry.to_dict() for entry in matches],
+            "breakdowns": breakdowns,
         }
 
         # When the user supplied a query but nothing matched, hand the LLM
@@ -227,6 +241,11 @@ TOOLS.append(
             "`opendata-create-plugin`."
         ),
         inputSchema=FindProvidersParams.model_json_schema(),
+        # Phase 3: bind to the discovery app so MCP Apps hosts render the
+        # result in the faceted panel. Use the alias keyword (``_meta=``) —
+        # ``meta=`` silently drops into extras; see
+        # tests/test_ui_resource.py::test_tool_meta_constructor_kwarg_does_not_reach_wire.
+        _meta={"ui": {"resourceUri": DISCOVERY_APP_URI}},
     )
 )
 TOOLS_HANDLERS["opendata-find-providers"] = handle_find_providers
@@ -960,6 +979,7 @@ TOOLS.append(
         name="opendata-list-domains",
         description="List the controlled domain vocabulary used by the provider registry (e.g. 'health', 'legal', 'finance', 'earth-science').",
         inputSchema=ListDomainsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": DISCOVERY_APP_URI}},
     )
 )
 TOOLS_HANDLERS["opendata-list-domains"] = handle_list_domains
@@ -995,6 +1015,7 @@ TOOLS.append(
         name="opendata-list-regions",
         description="List the controlled region vocabulary used by the provider registry (e.g. 'us', 'eu', 'uk', 'global').",
         inputSchema=ListRegionsParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": DISCOVERY_APP_URI}},
     )
 )
 TOOLS_HANDLERS["opendata-list-regions"] = handle_list_regions
@@ -1129,14 +1150,15 @@ RESOURCES_HANDLERS["registry://all-providers"] = handle_read_all_providers
 # UI resources (MCP Apps shape primitives — v2.0 Phase 2)
 ###################
 
-# Register the reusable ``ui://meta-data-mcp/shape/*`` bundles. Phase 4
-# provider sweeps bind individual tools to a primitive by setting
-# ``Tool._meta = {"ui": {"resourceUri": <URI>}}``. The bundles
-# themselves live under ``meta_data_mcp/ui_resources/``; this single
-# call is the only wiring the discovery provider owns.
-from meta_data_mcp.ui_resources import register_shapes  # noqa: E402
+# Register the reusable ``ui://meta-data-mcp/shape/*`` bundles plus the
+# Phase-3 ``ui://meta-data-mcp/app/*`` panels. Phase 4 provider sweeps
+# bind individual tools to a primitive by setting
+# ``Tool._meta = {"ui": {"resourceUri": <URI>}}``; the discovery meta
+# tools above bind to the discovery app the same way.
+from meta_data_mcp.ui_resources import register_apps, register_shapes  # noqa: E402
 
 register_shapes(RESOURCES, RESOURCES_HANDLERS)
+register_apps(RESOURCES, RESOURCES_HANDLERS)
 
 
 ###################
@@ -1274,6 +1296,7 @@ TOOLS.append(
             "client refetches its catalog. Idempotent."
         ),
         inputSchema=ActivateProviderParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": DISCOVERY_APP_URI}},
     )
 )
 TOOLS_HANDLERS["opendata-activate-provider"] = handle_activate_provider
@@ -1362,9 +1385,95 @@ TOOLS.append(
             "particular tool is (or isn't) advertised."
         ),
         inputSchema=ListActiveProvidersParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": DISCOVERY_APP_URI}},
     )
 )
 TOOLS_HANDLERS["opendata-list-active-providers"] = handle_list_active_providers
+
+
+###################
+# health-snapshot (Phase 3)
+###################
+
+
+class HealthSnapshotParams(BaseModel):
+    """Parameters for opendata-health-snapshot."""
+
+    provider_ids: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Optional list of provider ids to query. When omitted, returns "
+            "snapshots for every provider in the static + dynamic registry. "
+            "Providers with no recorded failures default to a fully-healthy "
+            "baseline (score 1.0)."
+        ),
+    )
+
+
+async def handle_health_snapshot(
+    arguments: dict[str, Any] | None = None,
+) -> Sequence[types.TextContent]:
+    """Handle the opendata-health-snapshot tool call.
+
+    Returns a per-provider health snapshot for the discovery app's live
+    health badges. The payload follows the shape:
+
+    .. code-block:: json
+
+        {
+          "snapshot": {
+            "<provider_id>": {
+              "score": <float in [0.0, 1.0]>,
+              "failure_mass": <float>,
+              "last_update_ts": <float | null>
+            },
+            ...
+          },
+          "generated_at": <unix epoch seconds>
+        }
+
+    The ``score`` field is what :class:`HealthScorer` would return for
+    that provider at the same instant — so the UI badge and the routing
+    score never disagree. See ``health.snapshot()`` for the underlying
+    helper.
+    """
+    try:
+        params = HealthSnapshotParams(**(arguments or {}))
+        # Default to every registered provider so an empty call from the
+        # discovery app gets a useful response. Use iter_registry to also
+        # cover hot-loaded plugins from opendata-create-plugin.
+        if params.provider_ids is None:
+            ids = [entry.id for entry in iter_registry()]
+        else:
+            ids = list(params.provider_ids)
+        snap = health.snapshot(ids)
+        payload = {
+            "snapshot": snap,
+            "generated_at": time.time(),
+        }
+        return [types.TextContent(type="text", text=serialize_for_llm(payload))]
+    except Exception as e:
+        log.error(f"Error in opendata-health-snapshot: {e}")
+        raise
+
+
+TOOLS.append(
+    types.Tool(
+        name="opendata-health-snapshot",
+        description=(
+            "Snapshot the in-memory provider health registry. Returns a "
+            "score in [0.0, 1.0] for each requested provider (or every "
+            "registered provider when called without arguments). Health "
+            "degrades on recent 5xx / 429 / network failures and decays "
+            "back toward 1.0 over ~5 minutes; 401/403 are excluded as "
+            "caller misconfig. The discovery app uses this to paint live "
+            "health badges next to each search result."
+        ),
+        inputSchema=HealthSnapshotParams.model_json_schema(),
+        _meta={"ui": {"resourceUri": DISCOVERY_APP_URI}},
+    )
+)
+TOOLS_HANDLERS["opendata-health-snapshot"] = handle_health_snapshot
 
 
 # ---------------------------------------------------------------------------

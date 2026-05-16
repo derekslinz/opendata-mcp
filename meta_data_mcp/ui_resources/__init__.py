@@ -1,15 +1,20 @@
-"""MCP Apps shape primitives (v2.0 Phase 2).
+"""MCP Apps shape primitives and apps (v2.0 Phases 2 & 3).
 
-Each shape primitive is a self-contained HTML+JS bundle served as a
-``ui://meta-data-mcp/shape/<name>/<version>`` resource. The MCP Apps
-extension (https://modelcontextprotocol.io/docs/extensions/apps) lets
-the host render the bundle in a sandboxed iframe alongside a tool's
-result; providers bind to a primitive by declaring
-``_meta={"ui": {"resourceUri": <URI>}}`` on the Tool.
+Two flavors of UI resource live here:
 
-The single public entry point is :func:`register_shapes`, called once
-from the discovery provider during server boot. It registers every
-shape primitive against the server's ``RESOURCES`` / ``RESOURCES_HANDLERS``.
+- ``ui://meta-data-mcp/shape/<name>/<version>`` — *primitives*: passive
+  renderers for the three canonical payload contracts (timeseries,
+  geofeatures, records). Phase 2.
+
+- ``ui://meta-data-mcp/app/<name>/<version>`` — *apps*: interactive
+  panels that issue outbound ``tool_call`` messages back to the host.
+  Phase 3+ (discovery; Phase 5 will add vulnerability / entity-graph /
+  trade-flows / etc.).
+
+The two public entry points are :func:`register_shapes` and
+:func:`register_apps`, called once from the discovery provider during
+server boot. Each registers its resources against the server's shared
+``RESOURCES`` / ``RESOURCES_HANDLERS`` collections.
 """
 
 from __future__ import annotations
@@ -19,11 +24,12 @@ from typing import Callable
 from mcp import types
 from pydantic import AnyUrl
 
+from .app_discovery_v1 import register as _register_discovery_app
 from .shape_geofeatures_v1 import register as _register_geofeatures
 from .shape_records_v1 import register as _register_records
 from .shape_timeseries_v1 import register as _register_timeseries
 
-__all__ = ["register_shapes"]
+__all__ = ["register_apps", "register_shapes"]
 
 
 def register_shapes(
@@ -43,4 +49,23 @@ def register_shapes(
         "timeseries/v1": _register_timeseries(resources, resources_handlers),
         "geofeatures/v1": _register_geofeatures(resources, resources_handlers),
         "records/v1": _register_records(resources, resources_handlers),
+    }
+
+
+def register_apps(
+    resources: list[types.Resource],
+    resources_handlers: dict[str, Callable[[AnyUrl], str | bytes]],
+) -> dict[str, str]:
+    """Register all v2 apps on the given server state.
+
+    Apps are split from shapes because they're conceptually different:
+    shapes render passively, apps issue outbound ``tool_call`` messages
+    back to the host. Splitting the registration entry points makes it
+    obvious which discovery-provider tools should bind to which class
+    of resource.
+
+    Returns a dict mapping app name → URI; the return value is advisory.
+    """
+    return {
+        "discovery/v1": _register_discovery_app(resources, resources_handlers),
     }
