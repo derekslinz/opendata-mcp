@@ -2,410 +2,258 @@
 
 ## Overview
 
-Meta-data-mcp is evolving from a simple provider registry into an intelligent discovery and routing platform. This roadmap outlines the vision for the next 3 versions.
-
-## Version History
-
-### v1.0
-- ✅ Basic provider registry
-- ✅ find-providers (token-based matching)
-- ✅ list-domains, list-regions, describe-provider tools
-- ✅ CLI integration
-
-### v1.1 (Current - Merged)
-- ✅ Sophisticated multi-criteria routing (`RoutingEngine` in `meta_data_mcp/routing.py`)
-- ✅ 4 scoring strategies: `TokenScorer`, `FuzzyScorer`, `MetadataScorer`, `SimpleSemanticScorer`
-- ✅ LRU caching with TTL (`OrderedDict` in `RoutingEngine`, default `cache_size=1000`, `cache_ttl_seconds=3600`)
-- ✅ Explanation tool: `opendata-explain-choice` (`providers/meta_data_mcp.py:825`)
-- ✅ Discovery tools: `opendata-find-providers`, `opendata-list-domains`, `opendata-list-regions`, `opendata-describe-provider`, `opendata-list-providers`, `opendata-create-plugin`, `opendata-draft-spec`, `opendata-activate-provider`, `opendata-deactivate-provider`, `opendata-list-active-providers`
-- ✅ CLI: `run`, `version`, `list`, `info`, `setup`, `remove`, `clients`, `cleanup`, `inspect` (`meta_data_mcp/cli.py`)
-- ✅ Backward compatibility maintained
-- ✅ Provider rename: `opendata_mcp_meta` → `meta_data_mcp`
-
-### v1.1.x — Infrastructure landed since v1.1 (Merged, not previously tracked here)
-
-These shipped via PRs #40–#44 and are not yet reflected in any version label.
-They are dependencies for v1.3's reliability story and are partially active today.
-
-- ✅ **HTTP retry + auth-aware response cache** (`meta_data_mcp/utils.py`, PR #40)
-  - Exponential backoff with `Retry-After` header parsing (RFC 7231 HTTP-date + delta-seconds)
-  - Case-insensitive auth header detection; TTL response cache keyed by a `has_auth` boolean so anonymous and authenticated responses don't collide (note: not partitioned per-token — different tokens still share an entry)
-- ✅ **`ProviderConfig` dataclass scaffold** (`meta_data_mcp/provider_config.py`, PR #41)
-  - Consolidates `base_url`, `auth_env_var`, `contact_required`, `default_accept`, `rate_limit_per_minute`
-  - **Adoption: 1 / 66 providers** (`au_data_gov`). Migrating the rest is tracked under v1.2 below.
-- ✅ **Provider health registry + `HealthScorer`** (`meta_data_mcp/health.py`, `routing.py:179`, PR #42)
-  - Thread-safe failure/success tracking with time-decay back to 1.0
-  - Wired into `RoutingEngine.scorers`
-  - Feed: `http_get` now invokes `translate_http_error` and `health.record_failure` / `health.record_success` automatically when callers pass `provider=` (kernel wiring landed; see "Kernel wiring" below)
-  - **Default weight = 0.0** until enough providers feed the registry — bumping it before the migration sweep would lift unrecorded-but-healthy providers above no-match thresholds. Raised once the sweep below progresses.
-- ✅ **`ProviderError` hierarchy + http→domain translator** (`meta_data_mcp/errors.py`, PR #43)
-  - Subclasses: `BadRequestError` (400/422), `NotFoundError` (404), `AuthError` (401/403), `RateLimitError` (429 with `retry_after`), `UpstreamError` (5xx), `NetworkError` (httpx connect/read failures)
-  - `translate_http_error(provider, exc)` maps `httpx.HTTPStatusError` / `httpx.RequestError` to the right subclass; `str(err)` is URL-free for safe LLM-client exposure
-  - **Adoption: 1 / 66 providers** (`us_data_gov`). Sweep tracked under v1.2 below.
-- ✅ **Shared Pydantic parameter types** (`meta_data_mcp/fields.py`, PR #44)
-  - `NonEmptyStr`, `Slug` (`^[a-z0-9-]+$`), `PageInt` (`default=1, ge=1`), `PageSize` (`default=20, ge=1, le=1000`)
-  - Project-wide validation policy: providers stop re-declaring `min_length=1` and `ge=1` inline
-  - **Adoption: 4 / 66 providers** (`us_noaa_awc`, `us_federal_register`, `us_courtlistener`, `global_overpass`). Sweep tracked under v1.2 below.
-- ✅ **Kernel wiring: `http_get` → `translate_http_error` + health feed** (`meta_data_mcp/utils.py`)
-  - Added `provider: str | None = None` kwarg to `http_get`. When set, the kernel translates `httpx.HTTPStatusError` / `RequestError` into the appropriate `ProviderError` subclass and calls `health.record_success` / `health.record_failure` automatically. When unset, legacy raw-httpx behavior is preserved.
-  - Migrated `us_data_gov.py` (the existing error-aware provider) onto `http_get(..., provider=PROVIDER_ID)`, removing its now-redundant handler-level `translate_http_error` calls.
-  - Activates the dormant `HealthScorer` feed end-to-end; with `health` weight still `0.0`, routing behavior is unchanged until the sweep below progresses.
-- ✅ **Kernel addition: `http_post`** (`meta_data_mcp/utils.py`)
-  - Mirrors `http_get`'s defaults (User-Agent, Accept, retry on 429/5xx with `Retry-After`, follow_redirects, `provider=` translation + health feed) for POST requests with a JSON body. Does NOT cache (POST is non-idempotent).
-  - Unlocks providers whose APIs require POST queries (e.g. OSV.dev's `/v1/query`).
-- ✅ **Security domain expansion: 3 new providers** (registry +3 → 69 total)
-  - `global_epss` — FIRST.org Exploit Prediction Scoring System; daily 30-day exploitation probability and percentile rank per CVE. No auth.
-  - `us_cisa_kev` — CISA Known Exploited Vulnerabilities catalog; authoritative US-CISA list of actively-exploited vulns under BOD 22-01. No auth.
-  - `global_osv_dev` — Google's Open Source Vulnerabilities database; aggregated advisories across GHSA, PYSEC, RustSec, Go, npm, Maven, etc. No auth. First provider to use the new `http_post` helper.
-  - All three pass `provider=` to `http_get` / `http_post`, so they feed the health registry and receive translated `ProviderError` exceptions out of the box.
-- ✅ **Lazy plugin activation (default tool surface 357 → 11)** (`meta_data_mcp/providers/meta_data_mcp.py`)
-  - Previously, `meta-data-mcp run` eagerly imported every registered plugin and merged ~357 tool schemas into the catalog — ~210K tokens of overhead per MCP connection.
-  - Now: server starts in **discovery-only mode**. Only the 11 meta tools (`opendata-find-providers`, `opendata-list-domains`, etc., plus the new activate/deactivate/list-active triad) are advertised at startup.
-  - New tools: `opendata-activate-provider(provider_id)` and `opendata-deactivate-provider(provider_id)` hot-load and unload individual plugins at runtime, then send a `tools/list_changed` notification so clients refetch their tool catalogs.
-  - `opendata-list-active-providers` reports which providers are currently advertised and which tools each contributes.
-  - `opendata-find-providers` gains an opt-in `activate_top: int = Field(default=0, ge=0, le=10)` knob — when set, the top-N matches are auto-activated and the response describes what was loaded. Default 0 preserves the read-only semantics of discovery.
-  - `META_DATA_MCP_PRELOAD` environment variable selects which providers to preload at startup: comma-separated ids, `*` for "load all" (legacy behavior, full escape hatch), or unset/empty for pure discovery (the new default).
-  - `opendata-create-plugin` now uses the same shared activation tracker, so newly-generated plugins also send `tools/list_changed`.
-  - Tests: `tests/providers/test_lazy_activation.py` (+15 cases) cover default startup state, activate/deactivate semantics, id-form normalization, `activate_top` opt-in behavior, and the `META_DATA_MCP_PRELOAD` env var.
-- ✅ **Coverage gap closure: 5 new providers across 5 verticals** (registry +5 → 75 total; DOMAINS +3 → 30)
-  - `global_openaq` — open global air-quality data (PM2.5, PM10, NO2, O3, etc.) from government monitors and low-cost sensors. Closes the *air-quality* vertical (no auth; optional `OPENAQ_API_KEY`).
-  - `global_gdelt` — GDELT 2.0 news/events monitoring; article search and tone/volume time-series across 100+ languages. Closes the *news* vertical (no auth; new `news` domain).
-  - `global_faostat` — UN FAO statistics: crop/livestock production, trade, food balances, prices, land use, fisheries, forestry, emissions since 1961. Closes the *agriculture* vertical (no auth; new `agriculture` domain).
-  - `global_un_comtrade` — UN Comtrade bilateral merchandise/services trade (HS/SITC/BEC/EBOPS) since 1962. Closes the *trade* vertical (free anonymous tier; optional `UN_COMTRADE_API_KEY`; new `trade` domain).
-  - `global_opensanctions` — sanctions/PEP/watchlist screening from 200+ official sources (OFAC SDN, UN, EU, UK HMT, national PEPs, ICIJ). Deepens the *security* vertical (no auth for low-volume; optional `OPENSANCTIONS_API_KEY`).
-  - All five pass `provider=` to `http_get`, raising kernel-feedback adoption to **10 / 75 providers**.
-
-## v1.2: Hierarchical Discovery + Health Activation (Planned, in design)
-
-**Status as of 2026-05-15: 0% implemented.** Original ship-date estimate (2026-06-03)
-is no longer realistic — design has not produced code. Re-baseline below.
-
-### Goals
-1. Enable structured browsing of providers by domain → subcategory → provider for users who don't know what they need.
-2. Finish the v1.1.x infrastructure rollout so the v1.3 reliability story can land cleanly.
-
-### Carry-over work from v1.1.x
-
-- [x] Wire `translate_http_error` (from `errors.py`, PR #43) into `http_get`'s error path in `utils.py` so it classifies responses and calls `health.record_failure` / `health.record_success`, feeding the dormant `HealthScorer` *(landed via `provider=` kwarg in `http_get`; see v1.1.x "Kernel wiring" above)*
-- [ ] Migrate the remaining 65 providers to pass `provider=` to `http_get` so the health feed reflects fleet-wide reliability (1/66 today: `us_data_gov`)
-- [ ] Raise the default `health` weight in `RoutingEngine.weights` once enough providers feed the registry (currently `0.0` — see explanatory comment in `routing.py`)
-- [ ] Migrate the remaining 65 providers to `ProviderConfig` (1/66 today: `au_data_gov`)
-- [ ] Migrate the remaining 62 providers to use `NonEmptyStr` / `Slug` / `PageInt` / `PageSize` from `fields.py` (4/66 today: providers from PR #36 follow-up)
-- [ ] Have `http_get` consume `ProviderConfig` directly instead of accepting `base_url`/auth per-call (noted as "future work" in `provider_config.py:6`)
-
-### Scope
-
-#### Data Model Enhancement
-- **Subcategories**: Define domain-specific subcategories
-  ```
-  health/
-    ├── epidemiology (disease tracking, outbreak data)
-    ├── genomics (DNA, protein sequences)
-    ├── clinical (clinical trials, adverse events)
-    └── public-health (CDC, WHO datasets)
-  
-  finance/
-    ├── markets (stocks, crypto, FX)
-    ├── economic (GDP, inflation, employment)
-    └── corporate (SEC filings, balance sheets)
-  ```
-
-- **Provider Hierarchy Mapping**: Assign each provider to domain + subcategory(ies)
-  - Auto-mapping via description analysis
-  - Manual refinement for edge cases
-
-#### New Tools
-
-1. **opendata-list-domains** (enhanced)
-   - Input: (optional filters)
-   - Output: List of domains with descriptions + subcategory counts
-   ```json
-   {
-     "domains": [
-       {
-         "name": "health",
-         "description": "Medical, epidemiological, and public health data",
-         "subcategory_count": 4,
-         "provider_count": 12
-       }
-     ]
-   }
-   ```
-
-2. **opendata-list-subcategories** (new)
-   - Input: domain
-   - Output: Subcategories within that domain
-   ```json
-   {
-     "domain": "health",
-     "subcategories": [
-       {
-         "name": "epidemiology",
-         "description": "Disease tracking and outbreak data",
-         "provider_count": 3
-       }
-     ]
-   }
-   ```
-
-3. **opendata-browse-providers** (new)
-   - Input: domain, subcategory
-   - Output: All providers in that subcategory with brief info
-   ```json
-   {
-     "domain": "health",
-     "subcategory": "epidemiology",
-     "providers": [
-       {
-         "id": "global_disease_sh",
-         "title": "disease.sh",
-         "description": "COVID-19, influenza, vaccine aggregator"
-       }
-     ]
-   }
-   ```
-
-#### UX Flow (Example)
-
-```
-User: "I need health data but don't know what's available"
-↓
-LLM calls opendata-list-domains
-↓
-LLM shows user domains (health, finance, earth-science, etc.)
-↓
-User: "Show me health"
-↓
-LLM calls opendata-list-subcategories("health")
-↓
-LLM shows subcategories (epidemiology, genomics, clinical, public-health)
-↓
-User: "Epidemiology, please"
-↓
-LLM calls opendata-browse-providers("health", "epidemiology")
-↓
-LLM shows disease.sh, disease tracking database, etc.
-↓
-User: "I'll use disease.sh"
-↓
-LLM installs and queries it
-```
-
-#### Implementation
-
-1. **Extend ProviderEntry** in registry.py:
-   ```python
-   @dataclass(frozen=True)
-   class ProviderEntry:
-       # ... existing fields ...
-       domain: str                    # Primary domain
-       subdomain: str | None = None   # Subcategory within domain
-       rank_in_domain: int = 999      # Popularity/recency ranking
-   ```
-
-2. **Hierarchical Index** in routing.py:
-   ```python
-   class HierarchicalIndex:
-       domains: dict[str, list[str]]  # domain → [provider_ids]
-       subdomains: dict[str, dict[str, list[str]]]  # domain → {subdomain → [provider_ids]}
-   ```
-
-3. **New RoutingEngine methods**:
-   ```python
-   async def browse_domain(domain: str) -> DomainInfo
-   async def browse_subdomain(domain: str, subdomain: str) -> SubdomainInfo
-   ```
-
-### Testing
-- Unit tests for hierarchy index
-- Integration tests for browse workflows
-- Verify backward compatibility with v1.1 tools
-
-### Timeline (re-baselined 2026-05-15)
-- Carry-over infra (health feed + ProviderConfig migration): 1 week
-- Hierarchical discovery design: 1 week
-- Implementation: 2 weeks
-- Testing & docs: 1 week
-- **Estimated ship date**: 2026-06-26
+Meta-data-mcp evolved from a simple provider registry into an
+intelligent discovery and routing platform, then a structured-data
+**presentation layer** built on the MCP Apps protocol extension. This
+roadmap captures actual shipped history (v1.0 → v2.1) and what's next.
 
 ---
 
-## v1.3: Agent-Driven Provider Generation (Planned, in design)
+## Shipped
 
-**Status as of 2026-05-15: 0% implemented.**
+### v1.0 — Provider registry
+- ✅ Basic provider registry + static seed list
+- ✅ `opendata-find-providers` (token-based matching)
+- ✅ `opendata-list-domains`, `-list-regions`, `-describe-provider`
+- ✅ CLI integration (`meta-data-mcp` binary, `run` / `setup` / `inspect`)
 
-### Goal
-Automatically create new providers when users ask for data that doesn't exist, closing gaps in coverage transparently.
+### v1.1 — Sophisticated routing
+- ✅ Multi-criteria `RoutingEngine` (`meta_data_mcp/routing.py`)
+- ✅ Five scorers: `TokenScorer`, `FuzzyScorer`, `MetadataScorer`, `SimpleSemanticScorer`, `HealthScorer`
+- ✅ LRU + TTL cache (OrderedDict, default `cache_size=1000`, `cache_ttl=3600s`)
+- ✅ `opendata-explain-choice` (score-breakdown introspection)
+- ✅ Full meta-tool surface: find / list-domains / list-regions / describe / list-providers / activate / deactivate / list-active / draft-spec / create-plugin
 
-### Prerequisites
-- Provider generation tool must be hardened (consistent output, test generation)
-- Needs agent framework for orchestration
+### v1.1.x — Infrastructure landed (PRs #40–#44, plus follow-ups)
+- ✅ **HTTP retry + auth-aware response cache** (`transport.py`) — exponential backoff with RFC 7231 `Retry-After`, TTL response cache keyed by auth-presence
+- ✅ **`ProviderConfig` dataclass scaffold** (`provider_config.py`) — adoption stayed at 1/75 and was deferred (see "Abandoned scope" below)
+- ✅ **Provider health registry + `HealthScorer`** (`health.py`) — thread-safe failure/success tracking with exp-decay (τ=300s) back to 1.0, wired into `RoutingEngine.scorers`
+- ✅ **`ProviderError` hierarchy + `translate_http_error`** (`errors.py`) — `BadRequestError`, `NotFoundError`, `AuthError`, `RateLimitError`, `UpstreamError`, `NetworkError`; URL-redacted messages safe for LLM exposure
+- ✅ **Shared Pydantic parameter types** (`fields.py`) — `NonEmptyStr`, `Slug`, `PageInt`, `PageSize`
+- ✅ **Kernel wiring: `http_get(provider=)`** — mandatory contract; automatic error translation + health feed when set
+- ✅ **`http_post` kernel addition** — same retries/translation/health feed; **not cached** (POST is non-idempotent)
+- ✅ **Security-domain expansion** — +3 providers (`global_epss`, `us_cisa_kev`, `global_osv_dev`)
+- ✅ **Lazy plugin activation** — default tool surface 357 → 11; `opendata-activate-provider` / `-deactivate` triad; `tools/list_changed` notification; `META_DATA_MCP_PRELOAD` env var
+- ✅ **Coverage-gap closure** — +5 providers (`global_openaq`, `global_gdelt`, `global_faostat`, `global_un_comtrade`, `global_opensanctions`) closing air-quality, news, agriculture, trade, and sanctions verticals
 
-### Scope
+### v1.2 — Absorbed into v2.0
 
-#### Hook Points in RoutingEngine
-```python
-class RoutingEngine:
-    on_no_match: Optional[Callable[[Query], Coroutine[ProviderEntry]]]
-    on_low_confidence: Optional[Callable[[Query, float], Coroutine[ProviderEntry]]]
-```
+The originally-planned v1.2 ("hierarchical discovery") **was not
+shipped as planned**. Its UX goal — browse providers by domain →
+subcategory → provider — was delivered differently via the v2.0
+**Discovery App** (`ui://meta-data-mcp/app/discovery/v1`), which
+renders the same browse experience as an interactive panel rather
+than as new tools. The carry-over migration sweep (`provider=`,
+`ProviderConfig`, `fields.py`) ran opportunistically and partially —
+see "Migration adoption" in metrics below.
 
-#### Workflow
+### v1.3 — Partial / absorbed
 
-```
-User: "Give me dark skies observatory data"
-↓
-RoutingEngine.route() → no matches, score = 0
-↓
-IF on_no_match configured:
-  ├─ Detect intent: "dark skies" = astronomy + geography
-  ├─ Call agent: generate_provider(intent)
-  │  ├─ Search for dark sky observatories API
-  │  ├─ Create provider module (dark_sky_observatories.py)
-  │  ├─ Generate test cases
-  │  ├─ Run consistency checks
-  │  └─ Register in registry
-  │
-  └─ Re-run RoutingEngine.route()
-     └─ Return new provider
-↓
-LLM: "I found dark sky observatory data! Installing now..."
-↓
-User gets results
-```
+The originally-planned v1.3 ("agent-driven provider generation") was
+shipped in **runtime form** as two meta tools that let an LLM scaffold
+new providers at conversation time:
 
-#### Implementation
+- ✅ `opendata-draft-spec` — LLM-assisted YAML spec scaffolding
+- ✅ `opendata-create-plugin` — generates the provider module from a spec, hot-loads it, registers it dynamically, emits `tools/list_changed`
 
-1. **Agent Orchestration**:
-   ```python
-   async def generate_provider(
-       query: str,
-       intent: Intent,
-       registry: Registry
-   ) -> ProviderEntry:
-       # 1. Search for APIs matching intent
-       # 2. Generate provider module code
-       # 3. Generate test cases
-       # 4. Validate (consistency, test coverage)
-       # 5. Register + return
-   ```
+The "no-match hook" with autonomous background generation was not
+shipped — the LLM driving the meta tools provides the orchestration
+loop directly. The version bump to 1.3.0 covered these two tools.
 
-2. **Provider Generation Agent** (separate from meta-data-mcp):
-   - Takes: intent, data requirements
-   - Outputs: provider module code + tests
-   - Validates: API accessibility, consistency
+### v2.0 — MCP Apps presentation layer
+**Released as `v2.0.0`** (commit `deb863d`).
 
-3. **Integration in meta_data_mcp.py**:
-   ```python
-   async def handle_find_providers(...):
-       engine = RoutingEngine(
-           on_no_match=generate_provider  # Hook
-       )
-       results = await engine.route(...)
-       if not results:
-           results = await engine.on_no_match(query)
-       return results
-   ```
+v1.x was a structured-data dispenser. v2.0 turned it into a
+structured-data **presentation layer** via the [MCP Apps protocol
+extension](https://modelcontextprotocol.io/docs/extensions/apps):
+tools declare `_meta.ui.resourceUri` pointing at a `ui://` resource
+the host renders in a sandboxed iframe alongside the tool's result.
 
-#### New Tool
+- ✅ **Phase 1 — Foundation primitives**
+  - `register_ui_resource()` helper in `server.py`
+  - `_meta=` constructor-kwarg pattern documented (the `populate_by_name=False` footgun is pinned by regression test)
+- ✅ **Phase 2 — Three shape primitives**
+  - `ui://meta-data-mcp/shape/timeseries/v1` (Plotly via CDN)
+  - `ui://meta-data-mcp/shape/geofeatures/v1` (Leaflet self-hosted)
+  - `ui://meta-data-mcp/shape/records/v1` (dependency-free table + facets)
+- ✅ **Phase 3 — Discovery App**
+  - `ui://meta-data-mcp/app/discovery/v1` — interactive discovery panel
+  - Closes the v1.2 hierarchical-browse UX gap (this is why v1.2 was absorbed)
+  - Activates HealthScorer end-to-end: `errors.translate_http_error` no longer penalizes 401/403 (V12 fix); `RoutingEngine.weights["health"]` raised from 0.0 to **0.05**
+- ✅ **Phase 4 — Provider shape adoption**
+  - 71 of 75 plugins bind to a shape primitive via `ui_resources.shape_*` URI
+- ✅ **Phase 5 — Custom apps for special-shape providers** (7 apps)
+  - `app/vulnerability/v1` (NVD + CISA KEV + OSV + EPSS — CVSS radar, severity heatmap)
+  - `app/museum/v1` (Met Museum image grid + provenance)
+  - `app/molecular/v1` (PubChem + RCSB PDB 3Dmol viewer)
+  - `app/news-tone/v1` (GDELT tone timeline)
+  - `app/entity-graph/v1` (OpenAlex + Wikidata + OpenSanctions force-directed graph)
+  - `app/trade-flows/v1` (UN Comtrade Sankey)
+  - `app/network-topology/v1` (RIPE Stat ASN graph)
+- ✅ **Phase 6 — Generator + tooling**
+  - Generator `response_shape` field auto-wires shape URIs in scaffolded plugins
+  - `test_ui_bundle_sizes.py` CI gate (warn at 100KB, error at 1MB)
+  - Headless smoke-test coverage for `ui://` resources
+  - `make pr-check N=<num>` 7-step merge gate
 
-**opendata-generate-provider** (admin-only)
-```python
-class GenerateProviderParams(BaseModel):
-    intent: str  # "I need climate data for Southeast Asia"
-    max_wait_seconds: int = 300
-    auto_register: bool = True
+### v2.1 — Architecture hygiene + version bump
+**Released as `v2.1.0`** (commit `34f5946`).
 
-async def handle_generate_provider(arguments) -> ProviderGenerationResult:
-    # Async provider generation with progress updates
-```
+A 5-PR pass driven by the architecture review's H/M/L priority list,
+ending with version bump to 2.1.0.
 
-### Design Questions (Pending)
-- Who can trigger generation? (All users vs. admin only)
-- Where does generated code live? (Main repo vs. external registry)
-- Confidence threshold for auto-generation (0.5 vs. 0.8)
-- Rollback strategy if generated provider has issues
-
-### Testing
-- Mock provider generation agent
-- Integration tests for no-match hook
-- Load testing (prevent DOS via generation requests)
-
-### Timeline (re-baselined 2026-05-15)
-- Design & validation: 2 weeks
-- Implementation: 4 weeks
-- Testing & stabilization: 2 weeks
-- **Estimated ship date**: 2026-08-21 (depends on v1.2 ship)
+- ✅ **Repo invariants test** (PR #85) — generator-TODO lint + bundle CDN-origin allowlist
+- ✅ **H1: `utils.py` split** (PR #86) — extracted `serialize.py`, `transport.py`, `server.py`; `utils.py` becomes a back-compat re-export shim
+- ✅ **M2: ADR 0001** (PR #87) — no persistent state in v2.x; revisit triggers documented
+- ✅ **H2: Discovery extraction** (PR #88) — `discovery/state.py` + `discovery/loader.py` split out of `providers/meta_data_mcp.py`
+- ✅ **M1: `URIS` aggregator** (PR #89) — flat catalog mapping every `ui://` resource with 3-way alignment test
+- ✅ **L3: HealthScorer weight = 0.05** confirmed (was the 0.0 → 0.05 raise from v2.0 Phase 3; kept after review)
 
 ---
 
-## Future: v2.0+ Considerations
+## In flight
 
-### Learning & Personalization
-- Track which providers users choose for similar queries
-- Rank by user's past success patterns
-- Personalization via user profiles
+### v2.2 — Optional provenance (on branch `feat/provenance-meta`, PR #90)
 
-### Advanced Semantics
-- Replace SimpleSemanticScorer with embeddings (when deployed)
-- Support multi-language queries (translate → search)
-- Query reformulation suggestions ("I think you meant...")
+Opt-in tamper-evident provenance metadata on every `tools/call`
+result, attached to the first content block's `_meta` under the
+`meta-data-mcp/provenance` key:
 
-### Scaling
-- Redis backend for multi-instance deployments
-- Pre-compute similarity matrices for 500+ providers
-- Distributed caching strategy
+- `sha256` of the canonical `(tool, arguments, content)` envelope
+- `timestamp` (ISO 8601 UTC, millisecond precision)
 
-### Observability
-- Metrics: cache hit rate, latency, provider popularity
-- Tracing: request flow through routing engine
-- Feedback loops: surface ranking errors to maintainers
+Enabled by `META_DATA_MCP_PROVENANCE` env var. Default off — zero
+per-call overhead until opted in. Designed for downstream audit /
+compliance pipelines that need to verify "tool A returned X" vs.
+"tool B returned X" using only data the receiver already has.
 
-### Community
-- Public provider registry/marketplace
-- User-submitted provider improvements
-- Provider quality ratings/reviews
+**Status**: feature complete, 34 dedicated tests, full receiver
+verification recipe in module docstring + README. CI green; awaiting
+merge decision.
 
 ---
 
-## Success Metrics
+## Planned
 
-| Metric | v1.1 | v1.2 | v1.3 |
-|--------|------|------|------|
-| Query latency (p99) | <100ms | <150ms | <500ms |
-| Cache hit rate | >90% | >85% | >80% |
-| Provider coverage | 75 | 75+ | Dynamic |
-| `ProviderConfig` adoption | 1 / 75 | 75 / 75 | 75 / 75 |
-| `errors.py` adoption | 1 / 75 | 75 / 75 | 75 / 75 |
-| `fields.py` adoption | 4 / 75 | 75 / 75 | 75 / 75 |
-| `http_get(provider=)` adoption | 10 / 75 | 75 / 75 | 75 / 75 |
-| `HealthScorer` weight | 0.0 (feed live, weight gated) | >0 | >0 |
-| User satisfaction | TBD | >4/5 | >4.5/5 |
+### v2.3 — Security & maturity track (committed)
+
+Concrete items with target effort, prioritized for the next minor.
+See ADR 0002 and PROVENANCE_SPEC.md for the docs-side anchors.
+
+| Priority | Item | Effort |
+|---|---|---|
+| **P0** | **ADR 0002 — autogen plugin security posture.** Per-session ephemeral plugins by default; persistent plugins require explicit promotion; `META_DATA_MCP_AUTOGEN_BASE_URL_ALLOWLIST` env var; plugin-output content-type sniffing. **ADR shipped** at [`docs/adrs/0002-autogen-security.md`](./adrs/0002-autogen-security.md). Framework change to follow: ephemeral-by-default in `_activate_provider`, new `opendata-promote-plugin` tool, allow-list check, content-type warning. | Doc landed; small framework change pending |
+| **P0** | **OAuth2/OIDC support + scoped bearer tokens.** Today's `META_DATA_MCP_AUTH_TOKEN` is a single all-or-nothing bearer. Replace with scoped tokens: `read` (discovery + safe tool calls), `write` (activate/deactivate plugins), `admin` (promote plugin, modify allow-list). OAuth2 / OIDC provider integration for token issuance. **Prerequisite** for safe SSE deployment per ADR 0002. | 1–2 days |
+| **P1** | **Provenance canonicalization spec — standalone document.** The receiver recipe was previously in the `provenance.py` module docstring + README only. Promoted to [`docs/PROVENANCE_SPEC.md`](./PROVENANCE_SPEC.md) so audit pipelines have a stable URL to cite without source-diving. | Done |
+| **P1** | **Per-provider rate-limit governance + cost-class metadata.** Add `rate_limit_per_minute` and `cost_class` (free / metered / paid) fields to `ProviderEntry`; surface in `opendata-describe-provider`; enforce in `http_get` via per-provider semaphore. Lets operators bound expensive upstream calls and lets the LLM make cost-aware tool choices. | 2–3 days |
+| **P2** | **Streamable HTTP transport migration plan.** MCP is moving toward Streamable HTTP as the SSE successor. Design the transport-pluggability seam *now* (the `run_server` dispatch in `server.py` already has a transport arg) so the migration is a new branch in the dispatch, not a rewrite. Ship the design doc; defer implementation until upstream stabilizes. | 1 week (design + scaffold) |
+| **P2** | **Subprocess / sandbox isolation for autogen plugins.** The enforcement layer for ADR 0002. Options: firejail / nsjail (Linux), `subprocess` + restricted Python (cross-platform but weaker), JS-style V8-isolate equivalent. Decide on tradeoffs; ship the simplest viable. | 1–2 weeks |
+| **P3** | **New-domain proposal queue with similarity-check gate.** When `opendata-create-plugin` proposes a `ProviderEntry` whose `domain` value isn't in the static DOMAINS vocabulary, route it through a similarity-check gate (Levenshtein vs. existing entries) so we don't accumulate `health` / `healthcare` / `medical` duplicates. Maintainer reviews queued proposals before they enter the vocabulary. | 1 day |
+
+### v2.x opportunistic — no fixed timeline
+
+These ship as the codebase asks for them.
+
+- **Completion of the `provider=` migration sweep** — 41/75 providers
+  pass `provider=` to `http_get`/`http_post` today; the remaining 34
+  bypass the health/error pipeline and route around the kernel
+  guarantees. Goal: 75/75 so health weight can be raised above 0.05.
+- **Generator hardening** — round-trip parity test (regenerate every
+  provider from its spec, diff against committed module) to catch
+  drift between spec and hand-tuned code.
+- **Additional MCP Apps** — domain-specific apps as new providers
+  arrive (no committed list).
+- **Provenance HMAC variant** — current sha256 is integrity-only; a
+  keyed-HMAC mode would add authenticity. Gated on a concrete user
+  ask.
+- **Hosted deployment** — public SSE endpoint so non-Claude clients
+  can use the server remotely. Systemd installer already in `scripts/`;
+  the missing piece is the public deployment + ops story. Promotion
+  of v2.3 P0 items from "planned" to "shipped" is a prerequisite
+  for safe hosted SSE — see ADR 0002.
+
+### v3.0 — only if real demand justifies it
+
+The ADR-0001 revisit triggers double as v3.0 entry conditions:
+
+- **Persistent state.** Multi-tenant deployment or HA requirement →
+  health/cache need Redis or equivalent.
+- **Cold-start complaints.** Currently health weight is 0.05 across a
+  fresh process; if users notice ranking inversions in the first hour,
+  pre-warm or persist the registry.
+- **Health weight > 0.15.** Would require enough providers feeding the
+  registry and enough confidence in the decay model to make health a
+  dominant scorer.
+- **Multi-language SDK clients.** Discovery tools surface that non-MCP
+  integrations could benefit from — would require a more language-
+  neutral protocol surface.
+
+---
+
+## Abandoned scope
+
+Decisions to drop work that was originally on the roadmap, with
+reasons:
+
+| Item | Why dropped |
+|---|---|
+| `ProviderConfig` fleet migration (1/75 today) | The dataclass scaffold landed but didn't propagate. ADR-0001 implicitly accepts this — providers stay simple, kernel arguments stay per-call. Revisit only if a concrete pattern demands it. |
+| `opendata-list-subcategories` / `opendata-browse-providers` tools | The v1.2 browse UX shipped instead via the Discovery App (v2.0 Phase 3). Adding separate tools would duplicate the App's surface. |
+| Autonomous "no-match hook" provider generation (v1.3 design) | The runtime tools (`opendata-draft-spec`, `opendata-create-plugin`) put the LLM in the orchestration seat. Background-agent generation would require trust-boundary work that isn't on the critical path. |
+| Public provider marketplace (v2.0+ ideas section) | Out of scope until the hosted deployment story exists; tracked under "Hosted deployment" above. |
+| Embedding-based semantic scorer | `SimpleSemanticScorer` works well enough for the current 75-provider catalog. Revisit if the catalog grows past ~200 or query patterns shift. |
+| Redis-backed multi-instance scaling | Gated on HA requirement — see ADR-0001 revisit triggers. |
+
+---
+
+## Migration adoption (actual state — 2026-05-17)
+
+| Adoption metric | v1.1 baseline | v2.1 actual |
+|---|---|---|
+| `http_get(provider=)` adoption | 10 / 75 | **41 / 75** |
+| `ProviderConfig` adoption | 1 / 75 | 1 / 75 (scope dropped — see above) |
+| `fields.py` adoption | 4 / 75 | 5 / 75 (partial, opportunistic) |
+| `HealthScorer` weight | 0.0 | **0.05** (raised in v2.0 Phase 3, kept after L3 review) |
+| Plugins binding to `ui://shape/*` | 0 / 75 | **71 / 75** (v2.0 Phase 4) |
+| Lazy activation default | n/a | ✅ default surface 357 → 11 (v1.1.x) |
+| MCP Apps coverage | 0 | 11 ui:// resources (3 shapes + 8 apps) |
+
+---
+
+## Operational targets
+
+| Metric | v1.1 actual | v2.1 actual | Goal |
+|---|---|---|---|
+| Query latency (p99) | <100ms | <100ms | <100ms |
+| Cache hit rate | >90% | >90% | >85% |
+| Provider coverage | 75 | 75 | grow only when a real coverage gap exists |
+| Default tool catalog size | 357 | 11 (lazy) | keep <20 by default |
+| UI bundle weight per resource | n/a | <100KB warn / <1MB error | <100KB |
 
 ---
 
 ## How to Contribute
 
 ### Filing Issues
-- Feature requests: Use template `[ROADMAP]` prefix
-- Bugs: Include version (v1.1, v1.2, etc.)
-- Enhancement: Link to relevant roadmap section
+- Feature requests: prefix with `[ROADMAP]`
+- Bugs: include the running version (`meta-data-mcp version`)
+- Enhancements: link to the relevant roadmap section above
 
 ### Contributing Code
-- Pick an item from the roadmap
-- Open an issue to discuss approach
-- Submit PR with comprehensive tests
+1. Pick an item from "Planned" or "v2.3+ opportunistic"
+2. Open an issue or draft PR to discuss approach
+3. Submit PR with tests; the 7-step merge gate (`make pr-check N=<num>`) runs as part of review
 
 ### Feedback
-- Current experience with v1.1? File feedback issue
-- Prioritization for v1.2? Comment on roadmap
-- Missing a feature? Describe your use case
+- Current experience with v2.1? File a feedback issue
+- Missing a feature? Describe your use case — coverage decisions are driven by real asks, not speculation
+- Want a hosted instance? Comment on the "Hosted deployment" item
 
 ---
 
-**Last Updated**: 2026-05-15  
-**Maintained By**: meta-data-mcp team  
-**Status**: v1.1 merged + v1.1.x infra (PRs #40–#44) merged; v1.2 in design phase, 0% implemented
+**Last Updated**: 2026-05-17
+**Maintained By**: meta-data-mcp team
+**Current version**: `2.1.0` (commit `34f5946`); `feat/provenance-meta` branch (PR #90) staged for v2.2; v2.3 security & maturity track scoped (ADR 0002 + PROVENANCE_SPEC.md shipped, OAuth2 / rate-limit / sandbox / Streamable HTTP scaffolding pending)
 
 > Note: `docs/development-roadmap.md` is the legacy OpenDataMCP-era roadmap and is
 > superseded by this file. It should be removed in a follow-up cleanup.
