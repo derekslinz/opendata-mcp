@@ -139,15 +139,8 @@ def test_attach_empty_content_synthesizes_stub_and_warns(
     assert provenance.PROVENANCE_META_KEY in block.meta
 
     fp = block.meta[provenance.PROVENANCE_META_KEY]
-    dumped_block = block.model_dump(mode="json", by_alias=True, exclude_none=True)
-    dumped_block.pop("_meta", None)
-    expected_sha256 = hashlib.sha256(
-        json.dumps([dumped_block], sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
-    ).hexdigest()
+    expected_sha256 = _recompute_digest("my-tool", None, out)
     assert fp["sha256"] == expected_sha256
-
     # Empty content is suspicious — operators need visibility.
     assert any("my-tool" in rec.message for rec in caplog.records), (
         "expected a warning naming the tool that returned empty content"
