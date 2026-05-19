@@ -162,14 +162,6 @@ def attach(
     digest input, so callers can't accidentally compute an output-only
     digest that loses input-output binding.
     """
-    digest = hashlib.sha256(_canonicalize(tool_name, arguments, content)).hexdigest()
-    payload = {
-        PROVENANCE_META_KEY: {
-            "sha256": digest,
-            "timestamp": _utc_iso_ms(),
-        }
-    }
-
     blocks: list[Content] = list(content)
     if not blocks:
         log.warning(
@@ -177,7 +169,15 @@ def attach(
             "synthesizing stub TextContent to carry the fingerprint",
             tool_name,
         )
-        return [types.TextContent(type="text", text="", _meta=payload)]
+        blocks = [types.TextContent(type="text", text="")]
+
+    digest = hashlib.sha256(_canonicalize(tool_name, arguments, blocks)).hexdigest()
+    payload = {
+        PROVENANCE_META_KEY: {
+            "sha256": digest,
+            "timestamp": _utc_iso_ms(),
+        }
+    }
 
     first = blocks[0]
     merged_meta = dict(first.meta) if first.meta else {}
