@@ -265,8 +265,41 @@ def _migrate_legacy_entries(config: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+class _HelpOnErrorGroup(click.Group):
+    """Click group that prints full help (not just a hint) on unknown commands.
+
+    Default Click behavior on `meta-data-mcp bogus`:
+        Usage: meta-data-mcp [OPTIONS] COMMAND [ARGS]...
+        Try 'meta-data-mcp --help' for help.
+        Error: No such command 'bogus'.
+
+    With this subclass:
+        Error: No such command 'bogus'.
+        <full help output, listing all real commands>
+
+    The user can immediately see what they should have typed instead of
+    needing to re-run with --help.
+    """
+
+    def resolve_command(self, ctx, args):
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as exc:
+            click.echo(f"Error: {exc.format_message()}", err=True)
+            click.echo(err=True)
+            click.echo(ctx.get_help(), err=True)
+            ctx.exit(2)
+
+
 @click.group(
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+    cls=_HelpOnErrorGroup,
+    context_settings={
+        "allow_extra_args": True,
+        "ignore_unknown_options": True,
+        # Accept both `-h` and `--help`. Inherited by every subcommand via
+        # Click's context propagation, so `meta-data-mcp run -h` also works.
+        "help_option_names": ["-h", "--help"],
+    },
 )
 def cli() -> None:
     """meta-data-mcp — the single MCP server for ~60 open-data plugins."""
