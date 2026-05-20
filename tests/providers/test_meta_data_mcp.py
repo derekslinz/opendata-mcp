@@ -522,6 +522,61 @@ def test_validate_generated_provider_ast_rejects_builtins_attribute_bypass():
     assert "banned attribute" in err
 
 
+def test_validate_generated_provider_ast_rejects_globals_subscript_escape():
+    """`globals()["__builtins__"]["eval"](...)` should not slip past.
+
+    Regression found by an independent post-merge review: `globals()` was
+    not in the bare-name banlist, and the resulting subscript chain has
+    no Name/Attribute at the outer Call's func — so the validator never
+    inspected it. Closed by adding `globals`/`locals`/`vars`/`dir` to
+    the bare-name banlist; the inner namespace lookup is now refused.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "x = " + "glo" + 'bals()["__builtins__"]["ev" + "al"]("1+1")\n'
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "globals" in err
+
+
+def test_validate_generated_provider_ast_rejects_builtins_subscript_escape():
+    """`__builtins__["__import__"]("subprocess").run([...])` should not slip past.
+
+    Regression found by an independent post-merge review: `__builtins__`
+    is always available as an implicit Name at module top, and a Subscript
+    on it returns the requested builtin without going through any
+    Import/ImportFrom. Closed by refusing any direct reference to the
+    Name `__builtins__` at AST-walk time.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = '__builtins__["__import__"]("subprocess").' + 'run(["id"])\n'
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "__builtins__" in err
+
+
+def test_validate_generated_provider_ast_allows_anyio_run():
+    """`anyio.run(main)` is legitimate generator output and must still pass.
+
+    Pins the boundary: even though `run` was briefly added to the suffix
+    banlist during the bypass-closure work, the generator's `main_block`
+    template emits `anyio.run(main)` and pre-existing providers use this
+    pattern. A regression that re-introduced `run` to the suffix banlist
+    would break every generated provider; this test catches that.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "import anyio\n\nanyio.run(main)\n"
+    assert _validate_generated_provider_ast(src) is None
+
+
 def test_validate_generated_provider_ast_rejects_getattr_indirect_call():
     """`getattr(os, 'system')(...)` indirect call should be rejected.
 
