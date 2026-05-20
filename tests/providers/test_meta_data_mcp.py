@@ -422,9 +422,7 @@ async def test_create_plugin_rejects_param_name_injection():
 
     artifacts = _create_plugin_artifacts("secrgntest_param")
     try:
-        result = await handle_create_plugin(
-            {"spec_yaml": _MALICIOUS_PARAM_NAME_SPEC}
-        )
+        result = await handle_create_plugin({"spec_yaml": _MALICIOUS_PARAM_NAME_SPEC})
         payload = json.loads(result[0].text)
         assert "error" in payload
         provider_path = artifacts[1]
@@ -440,9 +438,7 @@ async def test_create_plugin_rejects_endpoint_injection():
 
     artifacts = _create_plugin_artifacts("secrgntest_endpoint")
     try:
-        result = await handle_create_plugin(
-            {"spec_yaml": _MALICIOUS_ENDPOINT_SPEC}
-        )
+        result = await handle_create_plugin({"spec_yaml": _MALICIOUS_ENDPOINT_SPEC})
         payload = json.loads(result[0].text)
         assert "error" in payload
         assert not artifacts[1].exists()
@@ -457,9 +453,7 @@ async def test_create_plugin_rejects_server_name_injection():
 
     artifacts = _create_plugin_artifacts("secrgntest_srvname")
     try:
-        result = await handle_create_plugin(
-            {"spec_yaml": _MALICIOUS_SERVER_NAME_SPEC}
-        )
+        result = await handle_create_plugin({"spec_yaml": _MALICIOUS_SERVER_NAME_SPEC})
         payload = json.loads(result[0].text)
         assert "error" in payload
         assert not artifacts[1].exists()
@@ -480,10 +474,7 @@ def test_validate_generated_provider_ast_rejects_dangerous_calls():
     danger_os = "import os\n" + "os." + "system('id')\n"
     assert _validate_generated_provider_ast(danger_os) is not None
     # disallowed top-level import (socket is not in the allowlist)
-    assert (
-        _validate_generated_provider_ast("import socket\nx = 1\n")
-        is not None
-    )
+    assert _validate_generated_provider_ast("import socket\nx = 1\n") is not None
     # legitimate generator output passes
     safe = (
         "import logging\n"

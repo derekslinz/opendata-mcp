@@ -324,9 +324,7 @@ _AST_ALLOWED_IMPORT_PREFIXES = (
     "meta_data_mcp",
     "anyio",
 )
-_AST_BANNED_CALL_NAMES = frozenset(
-    {"eval", "exec", "compile", "__import__", "open"}
-)
+_AST_BANNED_CALL_NAMES = frozenset({"eval", "exec", "compile", "__import__", "open"})
 # Built as concatenation to keep the constant out of literal-string grep
 # checks that flag dangerous-looking strings in source.
 _OS_DOTTED = "os" + "."
@@ -394,15 +392,14 @@ def _validate_generated_provider_ast(source: str) -> str | None:
             for alias in node.names:
                 root = alias.name.split(".", 1)[0]
                 if root not in _AST_ALLOWED_IMPORT_PREFIXES:
-                    return f"generated module imports disallowed package: {alias.name!r}"
+                    return (
+                        f"generated module imports disallowed package: {alias.name!r}"
+                    )
         elif isinstance(node, _ast.ImportFrom):
             module = node.module or ""
             root = module.split(".", 1)[0]
             if root not in _AST_ALLOWED_IMPORT_PREFIXES:
-                return (
-                    "generated module has disallowed 'from' import: "
-                    f"{module!r}"
-                )
+                return f"generated module has disallowed 'from' import: {module!r}"
         elif isinstance(node, _ast.Call):
             func = node.func
             if isinstance(func, _ast.Name) and func.id in _AST_BANNED_CALL_NAMES:
@@ -481,9 +478,7 @@ async def handle_create_plugin(
 
         plugin_id = spec["id"]
 
-        if not isinstance(plugin_id, str) or not _CREATE_PLUGIN_ID_RE.match(
-            plugin_id
-        ):
+        if not isinstance(plugin_id, str) or not _CREATE_PLUGIN_ID_RE.match(plugin_id):
             return [
                 types.TextContent(
                     type="text",
@@ -597,9 +592,7 @@ async def handle_create_plugin(
         # importing it. Refuses any module that uses disallowed imports or
         # calls dangerous builtins — closes residual template-injection
         # paths the generator's input validators might miss.
-        provider_path = (
-            repo_root / "meta_data_mcp" / "providers" / f"{plugin_id}.py"
-        )
+        provider_path = repo_root / "meta_data_mcp" / "providers" / f"{plugin_id}.py"
         try:
             generated_source = provider_path.read_text()
         except OSError as exc:
@@ -619,9 +612,7 @@ async def handle_create_plugin(
                 spec_path.unlink()
             with contextlib.suppress(OSError):
                 provider_path.unlink()
-            test_path = (
-                repo_root / "tests" / "providers" / f"test_{plugin_id}.py"
-            )
+            test_path = repo_root / "tests" / "providers" / f"test_{plugin_id}.py"
             with contextlib.suppress(OSError):
                 test_path.unlink()
             return [
