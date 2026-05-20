@@ -10,7 +10,7 @@ License note:
     subject to copyright. The SEC requires that all programmatic clients
     send a descriptive User-Agent including a contact email; this module
     relies on meta_data_mcp.utils.http_get, which sets such a User-Agent
-    (override via the OPENDATA_MCP_CONTACT environment variable).
+    (override via the META_DATA_MCP_CONTACT environment variable).
 
 Features:
 - Company submissions feed (recent filings) by CIK

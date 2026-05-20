@@ -11,7 +11,7 @@ License / source:
 
 Fair-use notes:
     - No API key is required for basic queries.
-    - Identify your application by setting OPENDATA_MCP_CONTACT.
+    - Identify your application by setting META_DATA_MCP_CONTACT.
 
 Features:
 - Network info for an IP or prefix (covering ASN and RIR details)

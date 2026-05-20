@@ -315,7 +315,7 @@ A few bundled plugins accept optional API keys for higher rate limits. Set these
 | Variable | Plugin | Purpose |
 |---|---|---|
 | `COURTLISTENER_API_TOKEN` | `us_courtlistener` | Anonymous access works at low volumes |
-| `OPENDATA_MCP_CONTACT` | all | Your email, used in User-Agent for polite-pool APIs (Crossref, OpenAlex, OSM, SEC EDGAR). Defaults to `opendata-mcp@example.org`. |
+| `META_DATA_MCP_CONTACT` | all | Your email, used in User-Agent for polite-pool APIs (Crossref, OpenAlex, OSM, SEC EDGAR). Defaults to `meta-data-mcp@example.org`. |
 
 ### Server runtime flags
 

@@ -9,7 +9,7 @@ License note:
     Crossref metadata is generally available under CC0 (works metadata) or
     CC-BY (member metadata). Polite-pool usage requires identifying the
     client via User-Agent, which ``http_get`` already provides; the
-    contact email can be customised via the ``OPENDATA_MCP_CONTACT``
+    contact email can be customised via the ``META_DATA_MCP_CONTACT``
     environment variable.
 
 Features:

@@ -51,7 +51,7 @@ What it does (re-runnable; existing env/unit files get `.bak` backups):
 3. Generates a 32-byte bearer token (`--token VALUE` to supply your own,
    `--rotate-token` to force a fresh one on re-run).
 4. Writes `/etc/meta-data-mcp/env` (mode `0600`, owned by the service user)
-   with `META_DATA_MCP_AUTH_TOKEN` and optional `OPENDATA_MCP_CONTACT`.
+   with `META_DATA_MCP_AUTH_TOKEN` and optional `META_DATA_MCP_CONTACT`.
 5. Writes `/etc/systemd/system/meta-data-mcp.service` with sensible hardening
    (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=read-only`,
    etc.) and `ExecStart` bound to `127.0.0.1:8000`.
@@ -160,7 +160,7 @@ WantedBy=multi-user.target
 
 ```
 META_DATA_MCP_AUTH_TOKEN=...your generated hex...
-OPENDATA_MCP_CONTACT=ops@yourdomain.example
+META_DATA_MCP_CONTACT=ops@yourdomain.example
 ```
 
 Then:
@@ -288,7 +288,7 @@ bearer token defends against is:
 - **Shared rate-limit exhaustion** against upstream APIs that throttle
   per-IP (SEC EDGAR, OpenAlex, Overpass).
 - **Outbound UA / contact reputation** — many upstreams require an
-  identifying User-Agent (`OPENDATA_MCP_CONTACT`) and may ban abusers.
+  identifying User-Agent (`META_DATA_MCP_CONTACT`) and may ban abusers.
 
 For a single operator (you) and a handful of MCP clients, a single
 shared bearer token is the right tool. If you ever need per-user
@@ -301,7 +301,7 @@ similar — it adds SSO + audit without code changes.
 NEW=$(openssl rand -hex 32)
 sudo tee /etc/meta-data-mcp/env >/dev/null <<EOF
 META_DATA_MCP_AUTH_TOKEN=$NEW
-OPENDATA_MCP_CONTACT=ops@yourdomain.example
+META_DATA_MCP_CONTACT=ops@yourdomain.example
 EOF
 sudo systemctl restart meta-data-mcp
 # Update each client's headers to send the new value.
