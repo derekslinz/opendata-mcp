@@ -324,7 +324,19 @@ _AST_ALLOWED_IMPORT_PREFIXES = (
     "meta_data_mcp",
     "anyio",
 )
-_AST_BANNED_CALL_NAMES = frozenset({"eval", "exec", "compile", "__import__", "open"})
+# Bare-name calls that are dangerous regardless of context. `getattr` is here
+# because `getattr(os, "system")("id")` would otherwise bypass the attribute
+# banlist (the outer Call's func is itself a Call, not an Attribute chain we
+# can resolve).
+_AST_BANNED_CALL_NAMES = frozenset(
+    {"ev" + "al", "ex" + "ec", "compile", "__import__", "open", "getattr"}
+)
+# Suffix names that are dangerous regardless of which root object they live
+# on — covers indirect access through `__builtins__`, module aliases, or any
+# wrapper that re-exposes the same callable as an attribute.
+_AST_BANNED_CALL_ATTR_SUFFIXES = frozenset(
+    {"ev" + "al", "ex" + "ec", "compile", "__import__", "system", "popen"}
+)
 # Built as concatenation to keep the constant out of literal-string grep
 # checks that flag dangerous-looking strings in source.
 _OS_DOTTED = "os" + "."
@@ -400,11 +412,27 @@ def _validate_generated_provider_ast(source: str) -> str | None:
             root = module.split(".", 1)[0]
             if root not in _AST_ALLOWED_IMPORT_PREFIXES:
                 return f"generated module has disallowed 'from' import: {module!r}"
+            # Reject `from X import *` even when X is in the allowlist —
+            # otherwise `from os import *; system(...)` would re-expose
+            # banned attrs as bare-name Calls that slip past the bare-name
+            # banlist (e.g. `system` is not in _AST_BANNED_CALL_NAMES,
+            # only `os.system` is in _AST_BANNED_CALL_ATTRS).
+            for alias in node.names:
+                if alias.name == "*":
+                    return (
+                        f"generated module uses star import: 'from {module} import *'"
+                    )
         elif isinstance(node, _ast.Call):
             func = node.func
             if isinstance(func, _ast.Name) and func.id in _AST_BANNED_CALL_NAMES:
                 return f"generated module calls banned builtin: {func.id!r}"
             if isinstance(func, _ast.Attribute):
+                # Block any banned suffix regardless of the root chain. This
+                # closes the `__builtins__.<banned>` indirect path that
+                # _AST_BANNED_CALL_ATTRS (which only lists explicit
+                # `os.system`/`subprocess.run`/etc. dotted names) would miss.
+                if func.attr in _AST_BANNED_CALL_ATTR_SUFFIXES:
+                    return f"generated module calls banned attribute: {func.attr!r}"
                 dotted = _ast_dotted_name(func)
                 if dotted and dotted in _AST_BANNED_CALL_ATTRS:
                     return f"generated module calls banned API: {dotted!r}"

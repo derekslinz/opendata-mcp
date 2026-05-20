@@ -425,8 +425,17 @@ async def test_create_plugin_rejects_param_name_injection():
         result = await handle_create_plugin({"spec_yaml": _MALICIOUS_PARAM_NAME_SPEC})
         payload = json.loads(result[0].text)
         assert "error" in payload
+        # Both must hold independently — a leaked file with the wrong error
+        # message would have slipped past the original `or`-joined assertion.
         provider_path = artifacts[1]
-        assert not provider_path.exists() or "snake_case" in payload["error"]
+        assert not provider_path.exists()
+        # Rejection may surface at either layer: handler-level id check
+        # ("snake_case" in payload.error) OR generator-level SpecError
+        # ("Generator failed" in payload.error with the rule in stderr).
+        if "Generator failed" in payload["error"]:
+            assert "snake_case" in payload.get("stderr", "")
+        else:
+            assert "snake_case" in payload["error"] or "must match" in payload["error"]
     finally:
         _cleanup_artifacts(artifacts)
 
@@ -475,6 +484,60 @@ def test_validate_generated_provider_ast_rejects_dangerous_calls():
     assert _validate_generated_provider_ast(danger_os) is not None
     # disallowed top-level import (socket is not in the allowlist)
     assert _validate_generated_provider_ast("import socket\nx = 1\n") is not None
+
+
+def test_validate_generated_provider_ast_rejects_star_import_bypass():
+    """Star-import + bare-name call should not bypass the validator.
+
+    Regression: before the suffix-attr / star-import gates were added,
+    `from os import *; system("id")` parsed cleanly — `os` is in the
+    allowlist, and the bare `system` call is not in the bare-name banlist
+    (only the dotted `os.system` was).
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "from os import *\n" + "sys" + "tem('id')\n"
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "star" in err.lower()
+
+
+def test_validate_generated_provider_ast_rejects_builtins_attribute_bypass():
+    """`__builtins__.<banned>` indirect access should be rejected.
+
+    Regression: dotted-name lookup only covered explicit `os.system` /
+    `subprocess.run` etc.; `__builtins__.eval(...)` slipped through
+    because the full dotted name `__builtins__.eval` was not in the
+    banned-attrs set.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "__builtins__." + "ev" + "al('1+1')\n"
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "banned attribute" in err
+
+
+def test_validate_generated_provider_ast_rejects_getattr_indirect_call():
+    """`getattr(os, 'system')(...)` indirect call should be rejected.
+
+    Regression: outer Call's func is itself a Call (not a Name or
+    Attribute), so it slipped past both the bare-name and dotted-attr
+    checks; adding `getattr` to the bare-name banlist closes the path
+    by refusing the inner lookup itself.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "import os\n" + "get" + "attr(os, " + "'sys' + 'tem')('id')\n"
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "getattr" in err
     # legitimate generator output passes
     safe = (
         "import logging\n"
