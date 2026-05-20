@@ -462,10 +462,25 @@ def _validate_generated_provider_ast(source: str) -> str | None:
             # banned attrs as bare-name Calls that slip past the bare-name
             # banlist (e.g. `system` is not in _AST_BANNED_CALL_NAMES,
             # only `os.system` is in _AST_BANNED_CALL_ATTRS).
+            #
+            # Also reject any named `from X import Y` where Y is itself a
+            # dangerous callable (system, popen, eval, ...). Without this,
+            # `from os import system; system('id')` would slip past every
+            # check — system as a bare Name is not banned (only as an
+            # attribute), and the bare-Name check only fires on names in
+            # _AST_BANNED_CALL_NAMES which doesn't include `system`.
             for alias in node.names:
                 if alias.name == "*":
                     return (
                         f"generated module uses star import: 'from {module} import *'"
+                    )
+                if (
+                    alias.name in _AST_BANNED_CALL_NAMES
+                    or alias.name in _AST_BANNED_CALL_ATTR_SUFFIXES
+                ):
+                    return (
+                        f"generated module imports banned callable by name: "
+                        f"'from {module} import {alias.name}'"
                     )
         elif isinstance(node, _ast.Call):
             func = node.func

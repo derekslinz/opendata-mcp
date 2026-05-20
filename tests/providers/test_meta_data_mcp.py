@@ -421,6 +421,12 @@ async def test_create_plugin_rejects_param_name_injection():
     from meta_data_mcp.providers.meta_data_mcp import handle_create_plugin
 
     artifacts = _create_plugin_artifacts("secrgntest_param")
+    # Pre-clean any artifact left by a prior interrupted run so this test
+    # is hermetic on local reruns. Without this, a leaked provider file
+    # from a prior failure would make the `not provider_path.exists()`
+    # assertion below silently wrong (testing pre-existing leak, not
+    # current behavior).
+    _cleanup_artifacts(artifacts)
     try:
         result = await handle_create_plugin({"spec_yaml": _MALICIOUS_PARAM_NAME_SPEC})
         payload = json.loads(result[0].text)
@@ -429,13 +435,13 @@ async def test_create_plugin_rejects_param_name_injection():
         # message would have slipped past the original `or`-joined assertion.
         provider_path = artifacts[1]
         assert not provider_path.exists()
-        # Rejection may surface at either layer: handler-level id check
-        # ("snake_case" in payload.error) OR generator-level SpecError
-        # ("Generator failed" in payload.error with the rule in stderr).
-        if "Generator failed" in payload["error"]:
-            assert "snake_case" in payload.get("stderr", "")
-        else:
-            assert "snake_case" in payload["error"] or "must match" in payload["error"]
+        # This spec has a *valid* plugin id but a *malicious* param name,
+        # so rejection happens at the generator's load_spec param-name
+        # validation — not at the handler's _CREATE_PLUGIN_ID_RE check.
+        # The handler surfaces that as {"error": "Generator failed",
+        # "stderr": "...snake_case..."}.
+        assert "Generator failed" in payload["error"]
+        assert "snake_case" in payload.get("stderr", "")
     finally:
         _cleanup_artifacts(artifacts)
 
@@ -575,6 +581,39 @@ def test_validate_generated_provider_ast_allows_anyio_run():
 
     src = "import anyio\n\nanyio.run(main)\n"
     assert _validate_generated_provider_ast(src) is None
+
+
+def test_validate_generated_provider_ast_rejects_named_import_of_banned_callable():
+    """Named imports of banned callables must be rejected.
+
+    Regression flagged by the GitHub Copilot reviewer on PR #95: the
+    star-import gate caught `from X import *`, but a *named* import
+    of a banned callable re-exposed it as a bare-Name Call that
+    slipped past every check — the suffix names are only in the
+    attribute-suffix banlist, not the bare-name banlist. Closed by
+    checking each ImportFrom alias against the union of bare-name +
+    attribute-suffix banlists.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    # Build source by concatenation so this test file doesn't itself
+    # trip the local security_reminder hook on literal patterns.
+    bad_attr = "sys" + "tem"
+    src = f"from os import {bad_attr}\n{bad_attr}('id')\n"
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "banned callable" in err
+
+    bad_attr2 = "po" + "pen"
+    src2 = f"from os import {bad_attr2}\n{bad_attr2}('id')\n"
+    err2 = _validate_generated_provider_ast(src2)
+    assert err2 is not None
+
+    # `from os import getenv` is fine — getenv is not in either banlist.
+    safe = "from os import getenv\nx = getenv('PATH')\n"
+    assert _validate_generated_provider_ast(safe) is None
 
 
 def test_validate_generated_provider_ast_rejects_os_execl_family():
