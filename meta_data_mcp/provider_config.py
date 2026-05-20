@@ -19,7 +19,7 @@ class ProviderConfig:
     Attributes:
         base_url: Root URL for the provider's API (no trailing slash).
         auth_env_var: If set, name of env var holding the API token.
-        contact_required: True if the provider requires OPENDATA_MCP_CONTACT
+        contact_required: True if the provider requires META_DATA_MCP_CONTACT
             to be set. ``http_get`` does not enforce this today; consult
             this flag in provider modules that need to fail fast.
         default_accept: Default Accept header for this provider's calls.

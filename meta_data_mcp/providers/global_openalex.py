@@ -13,7 +13,7 @@ Polite pool:
     OpenAlex routes traffic from clients that identify themselves via
     the ``mailto`` query parameter onto a faster, more reliable pool.
     This module injects ``mailto`` automatically from the
-    ``OPENDATA_MCP_CONTACT`` environment variable (falling back to a
+    ``META_DATA_MCP_CONTACT`` environment variable (falling back to a
     safe default).
 
 Features:
@@ -53,7 +53,7 @@ TOOLS_HANDLERS: dict[str, Any] = {}
 
 def _polite_params() -> dict[str, str]:
     """Return polite-pool query params (``mailto``) for every OpenAlex call."""
-    return {"mailto": os.getenv("OPENDATA_MCP_CONTACT", "opendata-mcp@example.org")}
+    return {"mailto": os.getenv("META_DATA_MCP_CONTACT", "meta-data-mcp@example.org")}
 
 
 def _merge_params(extra: dict[str, Any]) -> dict[str, Any]:

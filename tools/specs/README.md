@@ -19,7 +19,7 @@ uv run python tools/generate_provider.py tools/specs/example_weather_alert.yaml 
 
 Outputs are written to:
 
-- `opendata_mcp/providers/{id}.py`
+- `meta_data_mcp/providers/{id}.py`
 - `tests/providers/test_{id}.py`
 
 Generation is deterministic — running twice with the same spec produces
@@ -121,7 +121,7 @@ provider.
 - **Resources or Prompts** — only Tools are generated. `RESOURCES` and
   `RESOURCES_HANDLERS` are emitted as empty lists for forward compatibility.
 - **Registry entries** — the generator does NOT update
-  `opendata_mcp/registry.py`. Add a `ProviderEntry` there manually.
+  `meta_data_mcp/registry.py`. Add a `ProviderEntry` there manually.
 - **Rate-limit handling, retries, polite-pool headers** — beyond the
   defaults baked into `http_get`.
 
@@ -131,6 +131,6 @@ provider.
 2. Run `uv run python tools/generate_provider.py tools/specs/{id}.yaml --dry-run`
    to preview.
 3. Run without `--dry-run` to write the files.
-4. Add a `ProviderEntry` to `opendata_mcp/registry.py`.
+4. Add a `ProviderEntry` to `meta_data_mcp/registry.py`.
 5. Open the generated provider and test files; refine descriptions,
    tighten validation, and add tool-specific assertions.

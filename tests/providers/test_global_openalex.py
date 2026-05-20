@@ -66,7 +66,7 @@ async def test_openalex_search_works_adds_mailto():
 
 @pytest.mark.anyio
 async def test_openalex_search_works_respects_contact_env(monkeypatch):
-    monkeypatch.setenv("OPENDATA_MCP_CONTACT", "test@example.com")
+    monkeypatch.setenv("META_DATA_MCP_CONTACT", "test@example.com")
     with patch("httpx.get") as mock_get:
         mock_get.return_value.json.return_value = {"meta": {}, "results": []}
         mock_get.return_value.raise_for_status = Mock()

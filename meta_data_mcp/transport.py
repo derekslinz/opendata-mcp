@@ -159,9 +159,9 @@ def _default_user_agent() -> str:
 
     Several open-data APIs (Crossref, Europe PMC, OSM Nominatim, SEC EDGAR)
     require an identifiable User-Agent including a contact address. Callers
-    may override `OPENDATA_MCP_CONTACT` via environment variable.
+    may override `META_DATA_MCP_CONTACT` via environment variable.
     """
-    contact = os.getenv("OPENDATA_MCP_CONTACT")
+    contact = os.getenv("META_DATA_MCP_CONTACT")
     base = f"meta-data-mcp/{__version__} (+https://github.com/derekslinz/meta-data-mcp"
     if contact:
         return f"{base}; {contact})"
@@ -186,7 +186,7 @@ def http_get(
     accept full responsibility for the consequences.
 
     - Sets a default User-Agent identifying opendata-mcp (override via
-      ``OPENDATA_MCP_CONTACT`` env var or ``headers`` argument).
+      ``META_DATA_MCP_CONTACT`` env var or ``headers`` argument).
     - Sets ``Accept: application/json`` by default; override via ``headers``.
     - Calls ``raise_for_status()`` so handlers see a clean exception path.
     - Optional response caching: pass ``cache_ttl=<seconds>`` to cache the
