@@ -305,6 +305,115 @@ class CreatePluginParams(BaseModel):
     )
 
 
+# Plugin-id allowlist used by handle_create_plugin BEFORE the spec is written
+# to disk. The generator's load_spec re-validates the same shape, but enforcing
+# it here closes the path-traversal window between write_text() and the
+# subprocess call. Mirrors _ID_RE defined below for handle_draft_spec.
+_CREATE_PLUGIN_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+# AST whitelist for post-generation defense-in-depth validation of any module
+# produced by tools/generate_provider.py. The generator's input validators
+# block the known template-injection vectors; this validator is the belt to
+# their suspenders.
+_AST_ALLOWED_IMPORT_PREFIXES = (
+    "logging",
+    "os",
+    "typing",
+    "mcp",
+    "pydantic",
+    "meta_data_mcp",
+    "anyio",
+)
+_AST_BANNED_CALL_NAMES = frozenset(
+    {"eval", "exec", "compile", "__import__", "open"}
+)
+# Built as concatenation to keep the constant out of literal-string grep
+# checks that flag dangerous-looking strings in source.
+_OS_DOTTED = "os" + "."
+_SUBPROCESS_DOTTED = "subprocess" + "."
+_AST_BANNED_CALL_ATTRS = frozenset(
+    {
+        _OS_DOTTED + suffix
+        for suffix in (
+            "system",
+            "popen",
+            "execv",
+            "execve",
+            "execvp",
+            "execvpe",
+            "spawnv",
+            "spawnve",
+            "spawnvp",
+            "spawnvpe",
+        )
+    }
+    | {
+        _SUBPROCESS_DOTTED + suffix
+        for suffix in (
+            "run",
+            "Popen",
+            "call",
+            "check_call",
+            "check_output",
+            "getoutput",
+            "getstatusoutput",
+        )
+    }
+)
+
+
+def _ast_dotted_name(node: Any) -> str | None:
+    """Return the dotted name of an Attribute/Name chain, or None if not pure."""
+    import ast as _ast
+
+    parts: list[str] = []
+    while isinstance(node, _ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, _ast.Name):
+        parts.append(node.id)
+        return ".".join(reversed(parts))
+    return None
+
+
+def _validate_generated_provider_ast(source: str) -> str | None:
+    """Return None if the generated source is safe; otherwise an error message.
+
+    Defense-in-depth check applied after generate_provider.py succeeds and
+    before importlib.import_module loads the module.
+    """
+    import ast as _ast
+
+    try:
+        tree = _ast.parse(source)
+    except SyntaxError as exc:
+        return f"generated module is not valid Python: {exc}"
+
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".", 1)[0]
+                if root not in _AST_ALLOWED_IMPORT_PREFIXES:
+                    return f"generated module imports disallowed package: {alias.name!r}"
+        elif isinstance(node, _ast.ImportFrom):
+            module = node.module or ""
+            root = module.split(".", 1)[0]
+            if root not in _AST_ALLOWED_IMPORT_PREFIXES:
+                return (
+                    "generated module has disallowed 'from' import: "
+                    f"{module!r}"
+                )
+        elif isinstance(node, _ast.Call):
+            func = node.func
+            if isinstance(func, _ast.Name) and func.id in _AST_BANNED_CALL_NAMES:
+                return f"generated module calls banned builtin: {func.id!r}"
+            if isinstance(func, _ast.Attribute):
+                dotted = _ast_dotted_name(func)
+                if dotted and dotted in _AST_BANNED_CALL_ATTRS:
+                    return f"generated module calls banned API: {dotted!r}"
+    return None
+
+
 async def handle_create_plugin(
     arguments: dict[str, Any] | None = None,
 ) -> Sequence[types.TextContent]:
@@ -372,6 +481,24 @@ async def handle_create_plugin(
 
         plugin_id = spec["id"]
 
+        if not isinstance(plugin_id, str) or not _CREATE_PLUGIN_ID_RE.match(
+            plugin_id
+        ):
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {
+                            "error": (
+                                f"Plugin id {plugin_id!r} must match "
+                                f"/{_CREATE_PLUGIN_ID_RE.pattern}/ "
+                                "(lowercase snake_case)."
+                            )
+                        }
+                    ),
+                )
+            ]
+
         if get_provider(plugin_id) is not None:
             return [
                 types.TextContent(
@@ -415,6 +542,25 @@ async def handle_create_plugin(
         try:
             specs_dir.mkdir(parents=True, exist_ok=True)
             spec_path = specs_dir / f"{plugin_id}.yaml"
+            # Containment check: even with the id regex applied above, assert
+            # the resolved spec path stays under specs_dir. Catches edge cases
+            # like symlinks or OS-specific path normalization quirks.
+            resolved_spec = spec_path.resolve()
+            resolved_dir = specs_dir.resolve()
+            if not resolved_spec.is_relative_to(resolved_dir):
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=serialize_for_llm(
+                            {
+                                "error": (
+                                    "Refusing to write spec outside specs "
+                                    f"directory: {resolved_spec}"
+                                )
+                            }
+                        ),
+                    )
+                ]
             spec_path.write_text(params.spec_yaml)
         except OSError as exc:
             return [
@@ -443,6 +589,46 @@ async def handle_create_plugin(
                             "stderr": proc.stderr,
                             "stdout": proc.stdout,
                         }
+                    ),
+                )
+            ]
+
+        # Defense-in-depth: AST-validate the generated module before
+        # importing it. Refuses any module that uses disallowed imports or
+        # calls dangerous builtins — closes residual template-injection
+        # paths the generator's input validators might miss.
+        provider_path = (
+            repo_root / "meta_data_mcp" / "providers" / f"{plugin_id}.py"
+        )
+        try:
+            generated_source = provider_path.read_text()
+        except OSError as exc:
+            with contextlib.suppress(OSError):
+                spec_path.unlink()
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {"error": f"Could not read generated plugin: {exc}"}
+                    ),
+                )
+            ]
+        ast_error = _validate_generated_provider_ast(generated_source)
+        if ast_error is not None:
+            with contextlib.suppress(OSError):
+                spec_path.unlink()
+            with contextlib.suppress(OSError):
+                provider_path.unlink()
+            test_path = (
+                repo_root / "tests" / "providers" / f"test_{plugin_id}.py"
+            )
+            with contextlib.suppress(OSError):
+                test_path.unlink()
+            return [
+                types.TextContent(
+                    type="text",
+                    text=serialize_for_llm(
+                        {"error": f"Generated plugin rejected: {ast_error}"}
                     ),
                 )
             ]

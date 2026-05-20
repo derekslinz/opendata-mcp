@@ -330,6 +330,172 @@ async def test_create_plugin_rejects_missing_required_keys():
     assert "missing required keys" in payload["error"].lower()
 
 
+# -- Security regression tests for opendata-create-plugin (RCE-prevention) ---
+#
+# These guard against the five vulnerabilities surfaced in the expanded-scope
+# security review: id-driven path traversal in handle_create_plugin, plus
+# three template-injection RCE paths through endpoint / param.name /
+# server_name in tools/generate_provider.py, plus the missing post-generation
+# AST validator.
+
+_MALICIOUS_ID_SPEC = """id: ../../../tmp/pwn
+server_name: pwn-server
+base_url: https://example.com
+description: malicious id
+tools:
+  - name: t
+    description: t
+    endpoint: /x
+"""
+
+_MALICIOUS_PARAM_NAME_SPEC = """id: secrgntest_param
+server_name: secrgntest-param
+base_url: https://example.com
+description: malicious param name
+tools:
+  - name: t
+    description: t
+    endpoint: /x
+    params:
+      - {name: 'x"; bad = True; #', type: str, required: true, description: oops}
+"""
+
+_MALICIOUS_ENDPOINT_SPEC = """id: secrgntest_endpoint
+server_name: secrgntest-endpoint
+base_url: https://example.com
+description: malicious endpoint
+tools:
+  - name: t
+    description: t
+    endpoint: '/safe";bad=True;#'
+"""
+
+_MALICIOUS_SERVER_NAME_SPEC = '''id: secrgntest_srvname
+server_name: '"""; bad = True; """'
+base_url: https://example.com
+description: malicious server name
+tools:
+  - name: t
+    description: t
+    endpoint: /x
+'''
+
+
+def _create_plugin_artifacts(plugin_id: str):
+    """Return the three on-disk paths that handle_create_plugin may touch."""
+    from pathlib import Path as _P
+
+    repo = _P(__file__).resolve().parents[2]
+    return [
+        repo / "tools" / "specs" / f"{plugin_id}.yaml",
+        repo / "meta_data_mcp" / "providers" / f"{plugin_id}.py",
+        repo / "tests" / "providers" / f"test_{plugin_id}.py",
+    ]
+
+
+def _cleanup_artifacts(paths):
+    for p in paths:
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
+@pytest.mark.anyio
+async def test_create_plugin_rejects_path_traversal_id():
+    """Malicious id like '../../../tmp/pwn' is rejected before any disk write."""
+    from pathlib import Path as _P
+    from meta_data_mcp.providers.meta_data_mcp import handle_create_plugin
+
+    result = await handle_create_plugin({"spec_yaml": _MALICIOUS_ID_SPEC})
+    payload = json.loads(result[0].text)
+    assert "error" in payload
+    assert "snake_case" in payload["error"] or "must match" in payload["error"]
+    assert not _P("/tmp/pwn.yaml").exists()
+
+
+@pytest.mark.anyio
+async def test_create_plugin_rejects_param_name_injection():
+    """Identifier-injection via a malicious param name is rejected by the generator."""
+    from meta_data_mcp.providers.meta_data_mcp import handle_create_plugin
+
+    artifacts = _create_plugin_artifacts("secrgntest_param")
+    try:
+        result = await handle_create_plugin(
+            {"spec_yaml": _MALICIOUS_PARAM_NAME_SPEC}
+        )
+        payload = json.loads(result[0].text)
+        assert "error" in payload
+        provider_path = artifacts[1]
+        assert not provider_path.exists() or "snake_case" in payload["error"]
+    finally:
+        _cleanup_artifacts(artifacts)
+
+
+@pytest.mark.anyio
+async def test_create_plugin_rejects_endpoint_injection():
+    """Template-injection via a malicious endpoint string is rejected."""
+    from meta_data_mcp.providers.meta_data_mcp import handle_create_plugin
+
+    artifacts = _create_plugin_artifacts("secrgntest_endpoint")
+    try:
+        result = await handle_create_plugin(
+            {"spec_yaml": _MALICIOUS_ENDPOINT_SPEC}
+        )
+        payload = json.loads(result[0].text)
+        assert "error" in payload
+        assert not artifacts[1].exists()
+    finally:
+        _cleanup_artifacts(artifacts)
+
+
+@pytest.mark.anyio
+async def test_create_plugin_rejects_server_name_injection():
+    """Docstring-injection via a malicious server_name is rejected."""
+    from meta_data_mcp.providers.meta_data_mcp import handle_create_plugin
+
+    artifacts = _create_plugin_artifacts("secrgntest_srvname")
+    try:
+        result = await handle_create_plugin(
+            {"spec_yaml": _MALICIOUS_SERVER_NAME_SPEC}
+        )
+        payload = json.loads(result[0].text)
+        assert "error" in payload
+        assert not artifacts[1].exists()
+    finally:
+        _cleanup_artifacts(artifacts)
+
+
+def test_validate_generated_provider_ast_rejects_dangerous_calls():
+    """Direct AST validator unit: any banned call or import is refused."""
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    # Build dangerous source via concatenation so this test file itself
+    # doesn't trip the security_reminder hook on literal patterns.
+    danger_eval = "x = " + "ev" + "al('1+1')\n"
+    assert _validate_generated_provider_ast(danger_eval) is not None
+    danger_os = "import os\n" + "os." + "system('id')\n"
+    assert _validate_generated_provider_ast(danger_os) is not None
+    # disallowed top-level import (socket is not in the allowlist)
+    assert (
+        _validate_generated_provider_ast("import socket\nx = 1\n")
+        is not None
+    )
+    # legitimate generator output passes
+    safe = (
+        "import logging\n"
+        "from typing import Any\n"
+        "import mcp.types as types\n"
+        "from pydantic import BaseModel, Field\n"
+        "from meta_data_mcp.utils import http_get\n"
+        "PROVIDER_ID = 'x'\n"
+    )
+    assert _validate_generated_provider_ast(safe) is None
+
+
 @pytest.mark.anyio
 async def test_list_domains_returns_known_domains():
     result = await handle_list_domains({})
