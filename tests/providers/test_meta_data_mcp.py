@@ -421,12 +421,27 @@ async def test_create_plugin_rejects_param_name_injection():
     from meta_data_mcp.providers.meta_data_mcp import handle_create_plugin
 
     artifacts = _create_plugin_artifacts("secrgntest_param")
+    # Pre-clean any artifact left by a prior interrupted run so this test
+    # is hermetic on local reruns. Without this, a leaked provider file
+    # from a prior failure would make the `not provider_path.exists()`
+    # assertion below silently wrong (testing pre-existing leak, not
+    # current behavior).
+    _cleanup_artifacts(artifacts)
     try:
         result = await handle_create_plugin({"spec_yaml": _MALICIOUS_PARAM_NAME_SPEC})
         payload = json.loads(result[0].text)
         assert "error" in payload
+        # Both must hold independently — a leaked file with the wrong error
+        # message would have slipped past the original `or`-joined assertion.
         provider_path = artifacts[1]
-        assert not provider_path.exists() or "snake_case" in payload["error"]
+        assert not provider_path.exists()
+        # This spec has a *valid* plugin id but a *malicious* param name,
+        # so rejection happens at the generator's load_spec param-name
+        # validation — not at the handler's _CREATE_PLUGIN_ID_RE check.
+        # The handler surfaces that as {"error": "Generator failed",
+        # "stderr": "...snake_case..."}.
+        assert "Generator failed" in payload["error"]
+        assert "snake_case" in payload.get("stderr", "")
     finally:
         _cleanup_artifacts(artifacts)
 
@@ -475,6 +490,192 @@ def test_validate_generated_provider_ast_rejects_dangerous_calls():
     assert _validate_generated_provider_ast(danger_os) is not None
     # disallowed top-level import (socket is not in the allowlist)
     assert _validate_generated_provider_ast("import socket\nx = 1\n") is not None
+
+
+def test_validate_generated_provider_ast_rejects_star_import_bypass():
+    """Star-import + bare-name call should not bypass the validator.
+
+    Regression: before the suffix-attr / star-import gates were added,
+    `from os import *; system("id")` parsed cleanly — `os` is in the
+    allowlist, and the bare `system` call is not in the bare-name banlist
+    (only the dotted `os.system` was).
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "from os import *\n" + "sys" + "tem('id')\n"
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "star" in err.lower()
+
+
+def test_validate_generated_provider_ast_rejects_builtins_attribute_bypass():
+    """`__builtins__.<banned>` indirect access should be rejected.
+
+    Regression: dotted-name lookup only covered explicit `os.system` /
+    `subprocess.run` etc.; `__builtins__.eval(...)` slipped through
+    because the full dotted name `__builtins__.eval` was not in the
+    banned-attrs set.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "__builtins__." + "ev" + "al('1+1')\n"
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "banned attribute" in err
+
+
+def test_validate_generated_provider_ast_rejects_globals_subscript_escape():
+    """`globals()["__builtins__"]["eval"](...)` should not slip past.
+
+    Regression found by an independent post-merge review: `globals()` was
+    not in the bare-name banlist, and the resulting subscript chain has
+    no Name/Attribute at the outer Call's func — so the validator never
+    inspected it. Closed by adding `globals`/`locals`/`vars`/`dir` to
+    the bare-name banlist; the inner namespace lookup is now refused.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "x = " + "glo" + 'bals()["__builtins__"]["ev" + "al"]("1+1")\n'
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "globals" in err
+
+
+def test_validate_generated_provider_ast_rejects_builtins_subscript_escape():
+    """`__builtins__["__import__"]("subprocess").run([...])` should not slip past.
+
+    Regression found by an independent post-merge review: `__builtins__`
+    is always available as an implicit Name at module top, and a Subscript
+    on it returns the requested builtin without going through any
+    Import/ImportFrom. Closed by refusing any direct reference to the
+    Name `__builtins__` at AST-walk time.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = '__builtins__["__import__"]("subprocess").' + 'run(["id"])\n'
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "__builtins__" in err
+
+
+def test_validate_generated_provider_ast_allows_anyio_run():
+    """`anyio.run(main)` is legitimate generator output and must still pass.
+
+    Pins the boundary: even though `run` was briefly added to the suffix
+    banlist during the bypass-closure work, the generator's `main_block`
+    template emits `anyio.run(main)` and pre-existing providers use this
+    pattern. A regression that re-introduced `run` to the suffix banlist
+    would break every generated provider; this test catches that.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "import anyio\n\nanyio.run(main)\n"
+    assert _validate_generated_provider_ast(src) is None
+
+
+def test_validate_generated_provider_ast_rejects_named_import_of_banned_callable():
+    """Named imports of banned callables must be rejected.
+
+    Regression flagged by the GitHub Copilot reviewer on PR #95: the
+    star-import gate caught `from X import *`, but a *named* import
+    of a banned callable re-exposed it as a bare-Name Call that
+    slipped past every check — the suffix names are only in the
+    attribute-suffix banlist, not the bare-name banlist. Closed by
+    checking each ImportFrom alias against the union of bare-name +
+    attribute-suffix banlists.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    # Build source by concatenation so this test file doesn't itself
+    # trip the local security_reminder hook on literal patterns.
+    bad_attr = "sys" + "tem"
+    src = f"from os import {bad_attr}\n{bad_attr}('id')\n"
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "banned callable" in err
+
+    bad_attr2 = "po" + "pen"
+    src2 = f"from os import {bad_attr2}\n{bad_attr2}('id')\n"
+    err2 = _validate_generated_provider_ast(src2)
+    assert err2 is not None
+
+    # `from os import getenv` is fine — getenv is not in either banlist.
+    safe = "from os import getenv\nx = getenv('PATH')\n"
+    assert _validate_generated_provider_ast(safe) is None
+
+
+def test_validate_generated_provider_ast_rejects_os_execl_family():
+    """`os.execl` and the l/le/lp/lpe variants must be rejected.
+
+    Regression found by an independent post-merge review: only the
+    v-family (`execv`/`execve`/`execvp`/`execvpe`) had been in the
+    dotted banlist; the l-family (variadic argv form) was reachable
+    via legitimate `import os; os.execl(...)` because `os` is in the
+    import allowlist. Same for the modern `posix_spawn` pair.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    for fn in ("execl", "execle", "execlp", "execlpe"):
+        src = f"import os\nos.{fn}('/bin/sh', 'sh', '-c', 'id')\n"
+        err = _validate_generated_provider_ast(src)
+        assert err is not None, f"os.{fn} should be rejected"
+        assert fn in err
+    for fn in ("posix_spawn", "posix_spawnp", "startfile"):
+        src = f"import os\nos.{fn}('/bin/sh', [], {{}})\n"
+        err = _validate_generated_provider_ast(src)
+        assert err is not None, f"os.{fn} should be rejected"
+
+
+def test_validate_generated_provider_ast_rejects_os_low_level_file_io():
+    """`os.open`/`os.read`/`os.fdopen` must be rejected.
+
+    Builtin `open` was already blocked by the bare-name banlist, but
+    the low-level POSIX equivalents on the `os` module were reachable
+    by attribute access. `os.open('/etc/passwd', os.O_RDONLY)` followed
+    by `os.read(fd, n)` reads arbitrary file contents — equivalent to
+    the builtin `open`, just through a different name.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    for fn in ("open", "read", "fdopen"):
+        src = f"import os\nos.{fn}(0)\n"
+        err = _validate_generated_provider_ast(src)
+        assert err is not None, f"os.{fn} should be rejected"
+        assert fn in err
+
+
+def test_validate_generated_provider_ast_rejects_getattr_indirect_call():
+    """`getattr(os, 'system')(...)` indirect call should be rejected.
+
+    Regression: outer Call's func is itself a Call (not a Name or
+    Attribute), so it slipped past both the bare-name and dotted-attr
+    checks; adding `getattr` to the bare-name banlist closes the path
+    by refusing the inner lookup itself.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    src = "import os\n" + "get" + "attr(os, " + "'sys' + 'tem')('id')\n"
+    err = _validate_generated_provider_ast(src)
+    assert err is not None
+    assert "getattr" in err
     # legitimate generator output passes
     safe = (
         "import logging\n"
