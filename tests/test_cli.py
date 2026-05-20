@@ -90,6 +90,44 @@ def test_version_command(runner):
     assert "meta-data-mcp version: 1.0.0" in result.output
 
 
+def test_short_help_flag_works(runner):
+    """`-h` must be accepted as an alias for `--help` at the group level."""
+    short = runner.invoke(cli, ["-h"])
+    long = runner.invoke(cli, ["--help"])
+    assert short.exit_code == 0
+    assert long.exit_code == 0
+    # Both produce the same usage banner + commands list.
+    assert "Usage: cli [OPTIONS] COMMAND" in short.output
+    assert "Commands:" in short.output
+    # Help text must advertise both flags.
+    assert "-h, --help" in short.output
+
+
+def test_short_help_flag_works_on_subcommand(runner):
+    """Subcommands inherit `help_option_names` from the parent group."""
+    result = runner.invoke(cli, ["run", "-h"])
+    assert result.exit_code == 0
+    assert "Run the meta-data-mcp server." in result.output
+
+
+def test_unknown_command_shows_full_help(runner):
+    """An invalid command must exit non-zero AND emit the full help listing.
+
+    Default Click shows only a one-line "Try `--help` for help." hint; we
+    upgrade that to the full command listing so the user can self-correct
+    without a second invocation.
+    """
+    result = runner.invoke(cli, ["bogus-nonsense"])
+    assert result.exit_code != 0
+    # Error message identifies the bad input.
+    assert "No such command 'bogus-nonsense'" in result.output
+    # Full help must appear — at minimum the "Commands:" header AND at
+    # least one real command name.
+    assert "Commands:" in result.output
+    assert "version" in result.output
+    assert "setup" in result.output
+
+
 def test_setup_writes_one_server_key(runner, tmp_path):
     """`setup` registers exactly one key: ``meta-data-mcp``."""
     claude_dir = tmp_path / "Library" / "Application Support" / "Claude"
