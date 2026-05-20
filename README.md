@@ -342,10 +342,11 @@ uv run meta-data-mcp run --host 0.0.0.0 --port 3001       # SSE bound to all int
 
 - **Hierarchical discovery (v2.0):** the discovery app (`opendata-find-providers` with ranked scoring + breakdowns rendered inline as a UI panel) replaces the originally-planned `opendata-list-subcategories` / `opendata-browse-providers` tools.
 - **Agent-driven generation (v2.1):** `opendata-draft-spec` + `opendata-create-plugin` let the model close coverage gaps autonomously when the routing engine returns no match. Hardened in v2.1.1 with input allowlists, path containment, and a post-generation AST validator (14 RCE/path-traversal/bypass paths closed across PRs #94 and #95).
+- **Self-hosted SSE deployment:** bearer-auth-protected, systemd-managed, behind a reverse proxy. See [`docs/hosting.md`](docs/hosting.md) for the full runbook (Caddy/nginx + Let's Encrypt + the install script in `scripts/install-systemd-service.sh`).
 
 ### Still ahead
 
-- Public hosted deployment with SSE so non-Claude clients can use the server remotely.
+- A **public**, no-setup-required hosted instance so non-Claude clients can use the server without standing up their own deployment.
 - Multi-language SDK clients for the discovery tools so non-MCP integrations get the same routing benefits.
 
 
