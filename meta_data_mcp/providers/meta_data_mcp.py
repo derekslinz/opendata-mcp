@@ -365,14 +365,33 @@ _AST_BANNED_CALL_ATTRS = frozenset(
         for suffix in (
             "system",
             "popen",
+            # exec — both v-family (argv list) and l-family (variadic argv)
             "execv",
             "execve",
             "execvp",
             "execvpe",
+            "execl",
+            "execle",
+            "execlp",
+            "execlpe",
+            # spawn — same v/l split + the modern posix_spawn pair
             "spawnv",
             "spawnve",
             "spawnvp",
             "spawnvpe",
+            "spawnl",
+            "spawnle",
+            "spawnlp",
+            "spawnlpe",
+            "posix_spawn",
+            "posix_spawnp",
+            # Windows-only "open with default app" — RCE on Windows hosts
+            "startfile",
+            # Raw fd-based file IO — equivalent to builtin open() but bypasses
+            # the bare-name `open` ban via attribute access.
+            "open",
+            "fdopen",
+            "read",
         )
     }
     | {

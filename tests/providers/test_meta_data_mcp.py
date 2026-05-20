@@ -577,6 +577,50 @@ def test_validate_generated_provider_ast_allows_anyio_run():
     assert _validate_generated_provider_ast(src) is None
 
 
+def test_validate_generated_provider_ast_rejects_os_execl_family():
+    """`os.execl` and the l/le/lp/lpe variants must be rejected.
+
+    Regression found by an independent post-merge review: only the
+    v-family (`execv`/`execve`/`execvp`/`execvpe`) had been in the
+    dotted banlist; the l-family (variadic argv form) was reachable
+    via legitimate `import os; os.execl(...)` because `os` is in the
+    import allowlist. Same for the modern `posix_spawn` pair.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    for fn in ("execl", "execle", "execlp", "execlpe"):
+        src = f"import os\nos.{fn}('/bin/sh', 'sh', '-c', 'id')\n"
+        err = _validate_generated_provider_ast(src)
+        assert err is not None, f"os.{fn} should be rejected"
+        assert fn in err
+    for fn in ("posix_spawn", "posix_spawnp", "startfile"):
+        src = f"import os\nos.{fn}('/bin/sh', [], {{}})\n"
+        err = _validate_generated_provider_ast(src)
+        assert err is not None, f"os.{fn} should be rejected"
+
+
+def test_validate_generated_provider_ast_rejects_os_low_level_file_io():
+    """`os.open`/`os.read`/`os.fdopen` must be rejected.
+
+    Builtin `open` was already blocked by the bare-name banlist, but
+    the low-level POSIX equivalents on the `os` module were reachable
+    by attribute access. `os.open('/etc/passwd', os.O_RDONLY)` followed
+    by `os.read(fd, n)` reads arbitrary file contents — equivalent to
+    the builtin `open`, just through a different name.
+    """
+    from meta_data_mcp.providers.meta_data_mcp import (
+        _validate_generated_provider_ast,
+    )
+
+    for fn in ("open", "read", "fdopen"):
+        src = f"import os\nos.{fn}(0)\n"
+        err = _validate_generated_provider_ast(src)
+        assert err is not None, f"os.{fn} should be rejected"
+        assert fn in err
+
+
 def test_validate_generated_provider_ast_rejects_getattr_indirect_call():
     """`getattr(os, 'system')(...)` indirect call should be rejected.
 
