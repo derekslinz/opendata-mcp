@@ -57,6 +57,14 @@ TYPE_MAP: dict[str, str] = {
 
 PATH_PARAM_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
+# Allowlist regexes — gate every spec field that ends up in generated Python
+# source as a raw identifier or string fragment (not via _py_literal). These
+# block template-injection / RCE via the create-plugin flow where the YAML
+# spec comes from an untrusted MCP client.
+_PARAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_ENDPOINT_RE = re.compile(r"^[A-Za-z0-9/_\-\.\{\},:%~]+$")
+_SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9 _\-\.]+$")
+
 # MCP Apps (v2.0 Phase 6a) — declarative shape binding.
 #
 # When a tool's spec includes ``response_shape``, the generator emits:
@@ -132,12 +140,29 @@ def load_spec(path: Path) -> dict[str, Any]:
             "/^[a-z][a-z0-9_]*$/)"
         )
 
+    if not isinstance(raw["server_name"], str) or not _SERVER_NAME_RE.match(
+        raw["server_name"]
+    ):
+        raise SpecError(
+            f"server_name {raw['server_name']!r} must match "
+            f"/{_SERVER_NAME_RE.pattern}/ (alphanumerics, space, underscore, "
+            "hyphen, dot)"
+        )
+
     for i, tool in enumerate(raw["tools"]):
         if not isinstance(tool, dict):
             raise SpecError(f"tools[{i}] must be a mapping")
         for key in ("name", "description", "endpoint"):
             if key not in tool:
                 raise SpecError(f"tools[{i}] missing required key: {key!r}")
+        if not isinstance(tool["endpoint"], str) or not _ENDPOINT_RE.match(
+            tool["endpoint"]
+        ):
+            raise SpecError(
+                f"tools[{i}].endpoint {tool['endpoint']!r} must match "
+                f"/{_ENDPOINT_RE.pattern}/ — URL-path chars only, no quotes "
+                "or whitespace"
+            )
         # response_format defaults to 'json'
         tool.setdefault("response_format", "json")
         tool.setdefault("params", [])
@@ -169,6 +194,11 @@ def load_spec(path: Path) -> dict[str, Any]:
                     raise SpecError(
                         f"tools[{i}].params[{j}] missing required key: {key!r}"
                     )
+            if not isinstance(p["name"], str) or not _PARAM_NAME_RE.match(p["name"]):
+                raise SpecError(
+                    f"tools[{i}].params[{j}].name {p['name']!r} must match "
+                    f"/{_PARAM_NAME_RE.pattern}/ (lowercase snake_case identifier)"
+                )
             if p["type"] not in TYPE_MAP:
                 raise SpecError(
                     f"tools[{i}].params[{j}].type {p['type']!r} is not one of "
